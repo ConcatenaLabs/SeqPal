@@ -62,7 +62,7 @@ function PreviewHero({ cfg, iss }) {
           Verify with SeqPal ID to invest
         </button>
         <p className="mt-3 text-center text-[10px] text-ink-700/50">
-          Operated by {iss.principal?.name} · powered by SeqPal
+          Operated by {iss.entityName || iss.name} LLC · powered by SeqPal
         </p>
       </div>
     </div>
@@ -90,10 +90,10 @@ export default function PortalSetup() {
   const existing = iss.portal || {}
   const docs = dataRoomDocs(iss.structureId)
   const [cfg, setCfg] = useState({
-    brandName: existing.brandName || iss.principal?.name || iss.name,
+    brandName: existing.brandName || iss.entityName || iss.name,
     headline: existing.headline || `Invest in ${iss.name}`,
     accent: existing.accent || 'btc',
-    slug: existing.slug || slugify(iss.principal?.name || iss.name),
+    slug: existing.slug || slugify(iss.entityName || iss.name),
     docs: existing.docs || docs,
     minInvestment: existing.minInvestment || '25,000',
     escrowRequested: existing.escrowRequested || false,

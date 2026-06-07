@@ -340,7 +340,7 @@ export default function InvestorPortal() {
             </div>
 
             <p className="mt-3 text-center text-[11px] leading-relaxed text-ink-700/50">
-              Operated by {iss.principal?.name}. Powered by SeqPal technology. Not an offer
+              Operated by {iss.entityName || iss.name} LLC. Powered by SeqPal technology. Not an offer
               to sell or a solicitation to buy any security.
             </p>
           </div>
