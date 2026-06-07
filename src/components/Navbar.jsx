@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, NavLink, useLocation } from 'react-router-dom'
+import { Link, NavLink } from 'react-router-dom'
 import Logo from './Logo'
 import { Icon } from './icons'
 import { useStore } from '../lib/store'
@@ -13,8 +13,7 @@ const links = [
 
 export default function Navbar() {
   const [open, setOpen] = useState(false)
-  const { id } = useStore()
-  const loc = useLocation()
+  const { isLoggedIn, account } = useStore()
 
   return (
     <header className="sticky top-0 z-40 border-b border-ink-900/10 bg-white/80 backdrop-blur-lg">
@@ -42,9 +41,18 @@ export default function Navbar() {
         </nav>
 
         <div className="hidden items-center gap-2 lg:flex">
-          <Link to="/dashboard" className="btn-ghost">
-            {id ? 'Dashboard' : 'Sign in'}
-          </Link>
+          {isLoggedIn ? (
+            <Link to="/dashboard" className="btn-ghost gap-2">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-btc-50 text-xs font-bold text-btc-700">
+                {account.individual.name.slice(0, 1).toUpperCase()}
+              </span>
+              Dashboard
+            </Link>
+          ) : (
+            <Link to="/id" className="btn-ghost">
+              Sign in
+            </Link>
+          )}
           <Link to="/onboarding" className="btn-primary">
             Launch an issuance
             <Icon.arrowRight width={16} height={16} />
@@ -74,8 +82,12 @@ export default function Navbar() {
               </Link>
             ))}
             <div className="mt-2 flex flex-col gap-2">
-              <Link to="/dashboard" onClick={() => setOpen(false)} className="btn-outline w-full">
-                {id ? 'Dashboard' : 'Sign in'}
+              <Link
+                to={isLoggedIn ? '/dashboard' : '/id'}
+                onClick={() => setOpen(false)}
+                className="btn-outline w-full"
+              >
+                {isLoggedIn ? 'Dashboard' : 'Sign in'}
               </Link>
               <Link to="/onboarding" onClick={() => setOpen(false)} className="btn-primary w-full">
                 Launch an issuance

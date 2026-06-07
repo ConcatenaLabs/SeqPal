@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import Logo from '../../components/Logo'
 import { Icon } from '../../components/icons'
+import SignInGate from '../../components/SignInGate'
 import { useStore } from '../../lib/store'
 import {
   Step1Identity,
@@ -13,7 +14,7 @@ import {
 } from './Steps'
 
 const STEPS = [
-  { n: 1, title: 'Identity & KYB', sub: 'Verify your entity' },
+  { n: 1, title: 'Identity & principal', sub: 'Who is issuing' },
   { n: 2, title: 'Structure', sub: 'Choose an issuance type' },
   { n: 3, title: 'Data room', sub: 'Enter your deal terms' },
   { n: 4, title: 'Documents', sub: 'Generate & e-sign' },
@@ -23,9 +24,10 @@ const STEPS = [
 
 export default function NewIssuance() {
   const navigate = useNavigate()
-  const { id } = useStore()
+  const { isLoggedIn } = useStore()
   const [step, setStep] = useState(1)
   const [data, setData] = useState({
+    principal: null, // { type:'individual'|'corporate', name, idNumber }
     structureId: null,
     isPublic: false,
     fields: {},
@@ -42,11 +44,32 @@ export default function NewIssuance() {
 
   // Per-step guard: can the user advance?
   const canAdvance = () => {
-    if (step === 1) return !!id
+    if (step === 1) return !!data.principal
     if (step === 2) return !!data.structureId
     if (step === 4) return data.docsSigned
     if (step === 5) return !!data.name && !!data.ticker && !!data.policy
     return true
+  }
+
+  if (!isLoggedIn) {
+    return (
+      <div className="min-h-screen bg-ink-900/[0.03]">
+        <header className="border-b border-ink-900/10 bg-white">
+          <div className="container-x flex h-16 items-center justify-between">
+            <Link to="/">
+              <Logo />
+            </Link>
+            <Link to="/dashboard" className="btn-ghost text-ink-700">
+              Exit
+            </Link>
+          </div>
+        </header>
+        <SignInGate
+          title="Sign in to start an issuance"
+          body="Issuing requires a verified SeqPal ID — it’s your login and the identity that signs your issuance. Create one and we’ll bring you straight back."
+        />
+      </div>
+    )
   }
 
   const stepProps = { data, update, next }

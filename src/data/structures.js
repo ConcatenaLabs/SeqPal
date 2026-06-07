@@ -8,6 +8,7 @@ export const STRUCTURES = [
     short: 'Native Equity',
     icon: 'equity',
     accent: 'btc',
+    requiresKyb: false,
     claim:
       'Direct ownership in the issuer LLC — voting rights, dividends, and a pro-rata claim on residual assets.',
     description:
@@ -33,6 +34,7 @@ export const STRUCTURES = [
     short: 'Equity SPV',
     icon: 'spv',
     accent: 'liquid',
+    requiresKyb: true,
     claim:
       'Beneficial interest in a single concentrated position the SPV holds in a foreign operating company.',
     description:
@@ -58,6 +60,7 @@ export const STRUCTURES = [
     short: 'Debt / Yield',
     icon: 'debt',
     accent: 'btc',
+    requiresKyb: true,
     claim:
       'A senior or subordinated debt claim against the LLC’s loan portfolio.',
     description:
@@ -83,6 +86,7 @@ export const STRUCTURES = [
     short: 'Depository Receipt',
     icon: 'dr',
     accent: 'liquid',
+    requiresKyb: true,
     claim:
       'A 1:1 claim on a specific traditional financial instrument custodied on behalf of the LLC.',
     description:

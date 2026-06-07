@@ -10,6 +10,8 @@ import SeqPalId from './pages/SeqPalId'
 import Dashboard from './pages/Dashboard'
 import IssuanceDetail from './pages/IssuanceDetail'
 import NewIssuance from './pages/onboarding/NewIssuance'
+import PortalSetup from './pages/portal/PortalSetup'
+import InvestorPortal from './pages/portal/InvestorPortal'
 import NotFound from './pages/NotFound'
 
 function ScrollToTop() {
@@ -20,8 +22,12 @@ function ScrollToTop() {
 
 export default function App() {
   const { pathname } = useLocation()
-  // The onboarding wizard is a focused, full-screen flow without the marketing chrome.
-  const isFocused = pathname.startsWith('/onboarding')
+  // The onboarding wizard and portal surfaces are focused, full-screen flows
+  // without the marketing chrome.
+  const isFocused =
+    pathname.startsWith('/onboarding') ||
+    pathname.startsWith('/portal/') ||
+    /^\/issuance\/[^/]+\/portal$/.test(pathname)
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -36,6 +42,8 @@ export default function App() {
           <Route path="/id" element={<SeqPalId />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/issuance/:id" element={<IssuanceDetail />} />
+          <Route path="/issuance/:id/portal" element={<PortalSetup />} />
+          <Route path="/portal/:id" element={<InvestorPortal />} />
           <Route path="/onboarding" element={<NewIssuance />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
