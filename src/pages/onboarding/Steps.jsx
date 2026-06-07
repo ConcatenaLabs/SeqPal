@@ -274,7 +274,8 @@ export function Step2Structure({ data, update }) {
                 update({
                   structureId: s.id,
                   isPublic: s.id === 'depository-receipt',
-                  attested: false,
+                  // keep the attestation only if re-selecting the same structure
+                  attested: s.id === data.structureId ? data.attested : false,
                 })
               }
               className={`card relative p-6 text-left transition-all ${
@@ -1168,7 +1169,7 @@ export function Step6Checkout({ data, onDeployed }) {
             </div>
             {cost.secured > 0 && (
               <div className="flex justify-between">
-                <dt className="text-ink-700/80">Secured collateral add-on</dt>
+                <dt className="text-ink-700/80">Secured collateral add-on (est.)</dt>
                 <dd className="font-mono font-medium">${cost.secured.toLocaleString()}</dd>
               </div>
             )}
@@ -1194,6 +1195,9 @@ export function Step6Checkout({ data, onDeployed }) {
               , billed after launch.
             </p>
             <p>+ Platform Services Fee (3% cap, $10K floor) on capital raised.</p>
+            {cost.secured > 0 && (
+              <p>Secured add-on is quoted $5K–$15K by collateral complexity.</p>
+            )}
             {data.isPublic && (
               <p>+ Issuer-borne audit & per-jurisdiction local-counsel costs (outside SeqPal).</p>
             )}
