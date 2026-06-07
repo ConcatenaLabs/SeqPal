@@ -14,6 +14,7 @@ function buildSample(individual) {
     id: 'iss_' + Math.random().toString(36).slice(2, 9),
     name: 'Aurora Ventures Fund I',
     ticker: 'AURA',
+    entityName: 'Aurora Ventures Fund I',
     structureId: 'native-equity',
     principal: { type: 'individual', name: individual.name, idNumber: individual.idNumber },
     isPublic: false,

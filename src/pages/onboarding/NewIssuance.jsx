@@ -30,6 +30,7 @@ export default function NewIssuance() {
     principal: null, // { type:'individual'|'corporate', name, idNumber }
     structureId: null,
     isPublic: false,
+    entityName: '', // the new Próspera LLC's name (set before formation docs)
     fields: {},
     raise: '',
     name: '',

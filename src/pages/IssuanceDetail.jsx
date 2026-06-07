@@ -286,7 +286,7 @@ export default function IssuanceDetail() {
             )}
             <dl className="mt-4 divide-y divide-ink-900/10 text-sm">
               {[
-                ['Issuer of record', `${iss.name} LLC · Próspera`],
+                ['Issuer of record', `${iss.entityName || iss.name} LLC · Próspera`],
                 ['Applicant / owner', iss.principal?.name],
                 ['Network', 'Bitcoin · Liquid Network'],
                 ['Issuance layer', 'Blockstream AMP · Transfer-Restricted'],
