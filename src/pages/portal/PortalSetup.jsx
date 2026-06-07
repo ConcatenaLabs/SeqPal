@@ -131,7 +131,7 @@ export default function PortalSetup() {
 
       <div className="container-x grid gap-8 py-10 lg:grid-cols-[1.4fr_1fr]">
         {/* config */}
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
           <div>
             <h1 className="text-2xl font-extrabold tracking-tight text-ink-900">
               Set up your placement portal
@@ -211,8 +211,8 @@ export default function PortalSetup() {
                 Point your domain at the pre-integrated stack with a single CNAME record —
                 SeqPal facilitates the hosting agreement through the dashboard, so you
                 don’t procure or run any infrastructure.
-                <div className="mt-2 rounded-md bg-ink-950 px-3 py-2 font-mono text-xs text-white/80">
-                  invest.{cfg.slug || 'your-name'}.com&nbsp;&nbsp;CNAME&nbsp;&nbsp;portals.seqpal.io
+                <div className="mt-2 rounded-md bg-ink-950 px-3 py-2 font-mono text-xs leading-relaxed text-white/80 [word-break:break-all]">
+                  invest.{cfg.slug || 'your-name'}.com CNAME portals.seqpal.io
                 </div>
               </div>
               <DemoNote className="mt-3">DNS / hosting is mocked in the demo.</DemoNote>
