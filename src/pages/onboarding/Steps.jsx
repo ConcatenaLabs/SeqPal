@@ -803,6 +803,11 @@ export function Step5Compliance({ data, update }) {
 
   const optionsFor = (j) => {
     if (j.tier === 'blocked') return ['blocked']
+    if (data.isPublic) {
+      // Public offering: a jurisdiction is excluded until the issuer affirmatively
+      // confirms a public-offering registration/exemption is in place there.
+      return lifted[j.code] ? ['standard', 'restricted', 'excluded'] : ['excluded']
+    }
     if (j.tier === 'restricted')
       return lifted[j.code] ? ['standard', 'restricted', 'excluded'] : ['restricted', 'excluded']
     return ['standard', 'restricted', 'excluded']
@@ -902,21 +907,31 @@ export function Step5Compliance({ data, update }) {
                   </span>
                 ) : (
                   <div className="flex items-center gap-1.5">
-                    {j.tier === 'restricted' &&
+                    {(data.isPublic || j.tier === 'restricted') &&
                       (lifted[j.code] ? (
                         <span
                           className="inline-flex items-center gap-1 rounded-md bg-btc-50 px-1.5 py-1 text-[10px] font-semibold text-btc-700"
-                          title="Authorization uploaded — retail may be admitted"
+                          title={
+                            data.isPublic
+                              ? 'Public-offering registration / exemption confirmed'
+                              : 'Authorization uploaded — retail may be admitted'
+                          }
                         >
-                          <Icon.check width={10} height={10} /> lifted
+                          <Icon.check width={10} height={10} />{' '}
+                          {data.isPublic ? 'confirmed' : 'lifted'}
                         </span>
                       ) : (
                         <button
                           onClick={() => lift(j.code)}
-                          title="Upload a regulatory authorization to admit retail (demo)"
+                          title={
+                            data.isPublic
+                              ? 'Confirm a public-offering registration or exemption is in place (demo)'
+                              : 'Upload a regulatory authorization to admit retail (demo)'
+                          }
                           className="inline-flex items-center gap-1 rounded-md border border-ink-900/15 px-1.5 py-1 text-[10px] font-medium text-ink-600 hover:bg-ink-900/[0.04]"
                         >
-                          <Icon.upload width={10} height={10} /> lift
+                          <Icon.upload width={10} height={10} />{' '}
+                          {data.isPublic ? 'confirm' : 'lift'}
                         </button>
                       ))}
                     <div className="flex gap-1">
