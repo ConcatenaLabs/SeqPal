@@ -105,7 +105,9 @@ function Timeline({ iss, onAdvance }) {
           >
             {iss.status === 'awaiting_incorporation'
               ? 'Complete incorporation'
-              : 'Deploy on Liquid'}
+              : iss.structureId === 'depository-receipt'
+                ? 'Contract custody & deploy'
+                : 'Deploy on Liquid'}
             <Icon.arrowRight width={15} height={15} />
           </button>
         </div>
