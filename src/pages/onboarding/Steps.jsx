@@ -897,6 +897,19 @@ export function Step5Compliance({ data, update }) {
         </div>
       )}
 
+      {data.structureId === 'depository-receipt' && (
+        <div className="mb-5 flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+          <Icon.lock width={18} height={18} className="mt-0.5 shrink-0" />
+          <p className="leading-relaxed">
+            <span className="font-semibold">DR — US persons excluded at launch.</span>{' '}
+            Depository Receipts mirroring US-listed securities carry SEC unregistered-ADR
+            enforcement risk, so US persons are not admitted at launch. Admitting them
+            requires your own US counsel (e.g. a Reg S structure) — confirm US here only on
+            that basis.
+          </p>
+        </div>
+      )}
+
       <div className="card overflow-hidden">
         <div className="border-b border-ink-900/10 px-6 py-4">
           <h3 className="font-bold text-ink-900">Jurisdiction matrix</h3>
