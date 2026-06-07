@@ -166,6 +166,7 @@ export function Step1Identity({ data, update }) {
               <button
                 type="button"
                 onClick={() => setAdding(false)}
+                aria-label="Cancel"
                 className="text-ink-600 hover:text-ink-900"
               >
                 <Icon.close width={18} height={18} />

@@ -28,7 +28,11 @@ export default function Modal({ open, onClose, title, children, footer, wide }) 
       >
         <div className="flex items-center justify-between border-b border-ink-900/10 px-5 py-4">
           <h3 className="font-bold text-ink-900">{title}</h3>
-          <button onClick={onClose} className="text-ink-600 hover:text-ink-900">
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="text-ink-600 hover:text-ink-900"
+          >
             <Icon.close width={20} height={20} />
           </button>
         </div>
