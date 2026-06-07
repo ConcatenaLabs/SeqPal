@@ -181,8 +181,11 @@ export function Step1Identity({ data, update }) {
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <label className="label">Legal entity name</label>
+                <label className="label" htmlFor="oc-entity">
+                  Legal entity name
+                </label>
                 <input
+                  id="oc-entity"
                   className="input"
                   placeholder="Acme Holdings Ltd"
                   value={form.entity}
@@ -190,8 +193,11 @@ export function Step1Identity({ data, update }) {
                 />
               </div>
               <div>
-                <label className="label">Jurisdiction of formation</label>
+                <label className="label" htmlFor="oc-jur">
+                  Jurisdiction of formation
+                </label>
                 <select
+                  id="oc-jur"
                   className="select"
                   value={form.jurisdiction}
                   onChange={(e) => setForm({ ...form, jurisdiction: e.target.value })}

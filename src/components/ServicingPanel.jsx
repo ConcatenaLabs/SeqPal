@@ -156,12 +156,15 @@ export default function ServicingPanel({ iss }) {
       >
         <div className="space-y-4">
           <div>
-            <label className="label">Amount per token-holder pool</label>
+            <label className="label" htmlFor="sv-dist-amount">
+              Amount per token-holder pool
+            </label>
             <div className="relative">
               <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-ink-700/60">
                 $
               </span>
               <input
+                id="sv-dist-amount"
                 className="input pl-7"
                 placeholder="100,000"
                 value={dist.amount}
@@ -171,8 +174,11 @@ export default function ServicingPanel({ iss }) {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="label">Settlement asset</label>
+              <label className="label" htmlFor="sv-dist-asset">
+                Settlement asset
+              </label>
               <select
+                id="sv-dist-asset"
                 className="select"
                 value={dist.asset}
                 onChange={(e) => setDist({ ...dist, asset: e.target.value })}
@@ -182,8 +188,11 @@ export default function ServicingPanel({ iss }) {
               </select>
             </div>
             <div>
-              <label className="label">Record date</label>
+              <label className="label" htmlFor="sv-dist-date">
+                Record date
+              </label>
               <input
+                id="sv-dist-date"
                 type="date"
                 className="input"
                 value={dist.recordDate}
@@ -214,8 +223,11 @@ export default function ServicingPanel({ iss }) {
       >
         <div className="space-y-4">
           <div>
-            <label className="label">Action type</label>
+            <label className="label" htmlFor="sv-corp-type">
+              Action type
+            </label>
             <select
+              id="sv-corp-type"
               className="select"
               value={corp.type}
               onChange={(e) => setCorp({ ...corp, type: e.target.value })}
@@ -226,8 +238,11 @@ export default function ServicingPanel({ iss }) {
             </select>
           </div>
           <div>
-            <label className="label">Note (optional)</label>
+            <label className="label" htmlFor="sv-corp-note">
+              Note (optional)
+            </label>
             <textarea
+              id="sv-corp-note"
               className="input min-h-[72px] resize-y"
               placeholder="Context for the registry log…"
               value={corp.note}
@@ -258,8 +273,11 @@ export default function ServicingPanel({ iss }) {
       >
         <div className="space-y-4">
           <div>
-            <label className="label">Quantity</label>
+            <label className="label" htmlFor="sv-mint-qty">
+              Quantity
+            </label>
             <input
+              id="sv-mint-qty"
               className="input"
               placeholder="10,000"
               value={mint.qty}
@@ -267,8 +285,11 @@ export default function ServicingPanel({ iss }) {
             />
           </div>
           <div>
-            <label className="label">Execution</label>
+            <label className="label" htmlFor="sv-mint-exec">
+              Execution
+            </label>
             <select
+              id="sv-mint-exec"
               className="select"
               value={mint.mandate}
               onChange={(e) => setMint({ ...mint, mandate: e.target.value })}
@@ -302,8 +323,11 @@ export default function ServicingPanel({ iss }) {
       >
         <div className="space-y-4">
           <div>
-            <label className="label">Quantity to redeem</label>
+            <label className="label" htmlFor="sv-redeem-qty">
+              Quantity to redeem
+            </label>
             <input
+              id="sv-redeem-qty"
               className="input"
               placeholder="5,000"
               value={redeem.qty}

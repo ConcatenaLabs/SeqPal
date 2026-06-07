@@ -154,15 +154,18 @@ export default function PortalSetup() {
             </div>
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <div>
-                <label className="label">Brand / portal name</label>
+                <label className="label" htmlFor="pf-brand">
+                  Brand / portal name
+                </label>
                 <input
+                  id="pf-brand"
                   className="input"
                   value={cfg.brandName}
                   onChange={(e) => set({ brandName: e.target.value })}
                 />
               </div>
               <div>
-                <label className="label">Accent colour</label>
+                <span className="label">Accent colour</span>
                 <div className="flex gap-2 pt-1">
                   {ACCENTS.map((a) => (
                     <button
@@ -178,8 +181,11 @@ export default function PortalSetup() {
                 </div>
               </div>
               <div className="sm:col-span-2">
-                <label className="label">Headline</label>
+                <label className="label" htmlFor="pf-headline">
+                  Headline
+                </label>
                 <input
+                  id="pf-headline"
                   className="input"
                   value={cfg.headline}
                   onChange={(e) => set({ headline: e.target.value })}
@@ -197,10 +203,13 @@ export default function PortalSetup() {
               Domain & hosting
             </div>
             <div className="mt-4">
-              <label className="label">Your subdomain</label>
+              <label className="label" htmlFor="pf-slug">
+                Your subdomain
+              </label>
               <div className="flex items-center gap-2">
                 <span className="font-mono text-sm text-ink-700/60">invest.</span>
                 <input
+                  id="pf-slug"
                   className="input max-w-[180px]"
                   value={cfg.slug}
                   onChange={(e) => set({ slug: slugify(e.target.value) })}
@@ -249,12 +258,15 @@ export default function PortalSetup() {
               ))}
             </div>
             <div className="mt-4 max-w-[220px]">
-              <label className="label">Minimum investment</label>
+              <label className="label" htmlFor="pf-min">
+                Minimum investment
+              </label>
               <div className="relative">
                 <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-ink-700/60">
                   $
                 </span>
                 <input
+                  id="pf-min"
                   className="input pl-7"
                   value={cfg.minInvestment}
                   onChange={(e) => set({ minInvestment: e.target.value })}

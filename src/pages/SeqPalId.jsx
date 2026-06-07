@@ -162,8 +162,11 @@ function CorporateForm({ onAdded }) {
     <form onSubmit={submit} className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <label className="label">Legal entity name</label>
+          <label className="label" htmlFor="corp-entity">
+            Legal entity name
+          </label>
           <input
+            id="corp-entity"
             className="input"
             placeholder="Acme Holdings Ltd"
             value={form.entity}
@@ -171,8 +174,11 @@ function CorporateForm({ onAdded }) {
           />
         </div>
         <div>
-          <label className="label">Jurisdiction of formation</label>
+          <label className="label" htmlFor="corp-jur">
+            Jurisdiction of formation
+          </label>
           <select
+            id="corp-jur"
             className="select"
             value={form.jurisdiction}
             onChange={(e) => setForm({ ...form, jurisdiction: e.target.value })}
