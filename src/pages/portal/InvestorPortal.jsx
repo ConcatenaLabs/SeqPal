@@ -229,13 +229,32 @@ export default function InvestorPortal() {
                             onChange={(e) => setAmount(e.target.value)}
                           />
                         </div>
-                        <p className="mt-1.5 text-xs text-ink-700/60">
-                          Minimum ${p.minInvestment}
-                        </p>
-                        <button onClick={subscribe} className="btn-primary mt-4 w-full">
-                          Subscribe
-                          <Icon.arrowRight width={16} height={16} />
-                        </button>
+                        {(() => {
+                          const belowMin =
+                            parseMoney(amount) > 0 &&
+                            parseMoney(amount) < parseMoney(p.minInvestment)
+                          return (
+                            <>
+                              <p
+                                className={`mt-1.5 text-xs ${
+                                  belowMin ? 'font-medium text-rose-600' : 'text-ink-700/60'
+                                }`}
+                              >
+                                {belowMin
+                                  ? `Below the $${p.minInvestment} minimum for this offering`
+                                  : `Minimum $${p.minInvestment}`}
+                              </p>
+                              <button
+                                onClick={subscribe}
+                                disabled={belowMin}
+                                className="btn-primary mt-4 w-full"
+                              >
+                                Subscribe
+                                <Icon.arrowRight width={16} height={16} />
+                              </button>
+                            </>
+                          )
+                        })()}
                       </div>
                     )}
 
