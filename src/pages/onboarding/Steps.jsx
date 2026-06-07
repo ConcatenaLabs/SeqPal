@@ -803,7 +803,13 @@ export function Step5Compliance({ data, update }) {
   // public-offering overlay is reflected correctly.
   useEffect(() => {
     if (!data.policy || data.policyPublic !== data.isPublic) {
-      update({ policy: defaultPolicy(data.isPublic), policyPublic: data.isPublic })
+      // Reset lifted/confirmed flags too: they mean different things in public
+      // (registration confirmed) vs private (retail authorization) mode.
+      update({
+        policy: defaultPolicy(data.isPublic),
+        policyPublic: data.isPublic,
+        lifted: {},
+      })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.isPublic])
