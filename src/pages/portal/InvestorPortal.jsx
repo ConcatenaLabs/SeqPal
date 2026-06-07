@@ -39,7 +39,7 @@ export default function InvestorPortal() {
   // Eligibility: evaluate the visiting SeqPal ID against the token's policy.
   const inv = account.individual
   const tier = inv ? iss.policy?.[inv.residenceCode] : undefined
-  const eligible = tier === 'open' || (tier === 'restricted' && inv?.accredited)
+  const eligible = tier === 'standard' || (tier === 'restricted' && inv?.accredited)
   const jName = inv && JURISDICTIONS.find((j) => j.code === inv.residenceCode)?.name
 
   const subscribe = () => setPhase('signing')

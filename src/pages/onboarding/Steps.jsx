@@ -623,17 +623,17 @@ export function Step5Compliance({ data, update }) {
   const optionsFor = (j) => {
     if (j.tier === 'blocked') return ['blocked']
     if (j.tier === 'restricted') return ['restricted', 'excluded']
-    return ['open', 'restricted', 'excluded']
+    return ['standard', 'restricted', 'excluded']
   }
 
   const tierStyle = {
-    open: 'border-emerald-300 bg-emerald-50 text-emerald-700',
+    standard: 'border-emerald-300 bg-emerald-50 text-emerald-700',
     restricted: 'border-amber-300 bg-amber-50 text-amber-700',
     excluded: 'border-ink-900/15 bg-ink-900/[0.03] text-ink-600',
     blocked: 'border-rose-300 bg-rose-50 text-rose-700',
   }
   const tierLabel = {
-    open: 'Open',
+    standard: 'Standard',
     restricted: 'Qualified only',
     excluded: 'Excluded',
     blocked: 'Blocked',
@@ -677,7 +677,8 @@ export function Step5Compliance({ data, update }) {
             <span className="font-semibold">Public-offering overlay.</span> Every
             jurisdiction starts <span className="font-semibold">excluded</span>. Admit one
             only by confirming a public-offering registration or exemption is in place
-            there; admitting retail (Open) requires the upload-to-lift authorization below.
+            there; admitting retail (Standard) requires the upload-to-lift authorization
+            below.
           </p>
         </div>
       )}
@@ -704,6 +705,11 @@ export function Step5Compliance({ data, update }) {
                   <div className="truncate text-sm font-medium text-ink-900">{j.name}</div>
                   {j.basis && (
                     <div className="truncate text-xs text-ink-700/60">{j.basis}</div>
+                  )}
+                  {j.cap && j.tier !== 'blocked' && (
+                    <div className="truncate text-[11px] text-ink-700/45">
+                      Cap: {j.cap}
+                    </div>
                   )}
                 </div>
                 {j.tier === 'blocked' ? (
