@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Icon, StructureIcon } from '../components/icons'
 import { SectionHeading, Badge, DemoNote } from '../components/ui'
 import Passport from '../components/Passport'
-import { useStore, fakeIdNumber } from '../lib/store'
+import { useStore, fakeIdNumber, fakeGaid } from '../lib/store'
 import { RESIDENCE_OPTIONS } from '../data/jurisdictions'
 import { getStructure } from '../data/structures'
 
@@ -48,6 +48,7 @@ function IndividualForm({ onDone }) {
         accreditationBasis: form.accredited ? res.accreditationLabel : null,
         accreditationMethod: form.accredited ? (docVerify ? 'document' : 'self') : null,
         idNumber: fakeIdNumber('SQID-I'),
+        gaid: fakeGaid(),
         verifiedAt: new Date().toISOString(),
       })
       setVerifying(false)

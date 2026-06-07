@@ -206,7 +206,16 @@ export default function InvestorPortal() {
                     <h3 className="mt-3 font-bold text-ink-900">Subscription received</h3>
                     <p className="mt-1 text-sm text-ink-700/80">
                       ${amount || p.minInvestment} is held in escrow. On closing, your{' '}
-                      {iss.ticker} tokens are delivered to your whitelisted wallet.
+                      {iss.ticker} tokens are delivered to your whitelisted wallet
+                      {inv?.gaid ? (
+                        <>
+                          {' '}
+                          <span className="font-mono text-xs text-ink-700">
+                            (GAID {inv.gaid.slice(0, 6)}…{inv.gaid.slice(-4)})
+                          </span>
+                        </>
+                      ) : null}
+                      .
                     </p>
                   </div>
                 ) : (

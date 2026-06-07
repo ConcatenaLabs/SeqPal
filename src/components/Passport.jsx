@@ -49,6 +49,14 @@ export default function Passport({ profile, type = 'individual' }) {
             {profile.idNumber}
           </div>
         </div>
+        {!isCorp && profile.gaid && (
+          <div>
+            <div className="text-xs text-white/40">Linked wallet (Liquid GAID)</div>
+            <div className="font-mono text-xs text-white/70">
+              {profile.gaid.slice(0, 8)}…{profile.gaid.slice(-6)}
+            </div>
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-2 border-t border-white/10 pt-3 text-xs text-white/60">
           <span className="inline-flex items-center gap-1.5">
             <Icon.shield width={14} height={14} className="text-liquid-400" /> Sanctions
