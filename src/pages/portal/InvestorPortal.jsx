@@ -3,6 +3,8 @@ import { Link, useParams } from 'react-router-dom'
 import { Icon } from '../../components/icons'
 import { Badge, DemoNote } from '../../components/ui'
 import { useStore } from '../../lib/store'
+import { isEligible, tierFor } from '../../lib/policy'
+import { parseMoney, fmtUSD } from '../../lib/economics'
 import { getStructure } from '../../data/structures'
 import { JURISDICTIONS } from '../../data/jurisdictions'
 
@@ -14,10 +16,6 @@ const ACCENT_HEX = {
   slate: '#334155',
 }
 
-function parseMoney(s) {
-  return Number(String(s || '').replace(/[^0-9.]/g, '')) || 0
-}
-const fmtUSD = (n) => '$' + Math.round(n).toLocaleString()
 
 export default function InvestorPortal() {
   const { id } = useParams()
@@ -43,8 +41,8 @@ export default function InvestorPortal() {
 
   // Eligibility: evaluate the visiting SeqPal ID against the token's policy.
   const inv = account.individual
-  const tier = inv ? iss.policy?.[inv.residenceCode] : undefined
-  const eligible = tier === 'standard' || (tier === 'restricted' && inv?.accredited)
+  const tier = inv ? tierFor(iss.policy, inv.residenceCode) : undefined
+  const eligible = inv ? isEligible(iss.policy, inv.residenceCode, inv.accredited) : false
   const jName = inv && JURISDICTIONS.find((j) => j.code === inv.residenceCode)?.name
 
   // Round capacity: the target raise is treated as the hard cap.

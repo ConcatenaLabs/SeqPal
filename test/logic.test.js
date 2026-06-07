@@ -1,0 +1,95 @@
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+
+import { computeSetupCost } from '../src/data/pricing.js'
+import { completedCount, milestonesFor, nextStatus, MILESTONES } from '../src/lib/lifecycle.js'
+import { isEligible, tierFor } from '../src/lib/policy.js'
+import {
+  parseMoney,
+  ownershipDenominator,
+  ownershipPct,
+  platformServicesFee,
+} from '../src/lib/economics.js'
+
+test('computeSetupCost — Native Equity tiers, surcharge, secured, DR', () => {
+  // standard private placement
+  let c = computeSetupCost('native-equity', false, { raise: '5,000,000' })
+  assert.equal(c.base, 12500)
+  assert.equal(c.simple, false)
+  assert.equal(c.total, 12500)
+
+  // Simple Native Equity tier (raise <= $500K)
+  c = computeSetupCost('native-equity', false, { raise: '400,000' })
+  assert.equal(c.base, 7500)
+  assert.equal(c.simple, true)
+
+  // public offering surcharge
+  c = computeSetupCost('native-equity', true, { raise: '5,000,000' })
+  assert.equal(c.surcharge, 12500)
+  assert.equal(c.total, 25000)
+
+  // Equity SPV
+  assert.equal(computeSetupCost('equity-spv', false, {}).base, 17500)
+
+  // Debt unsecured vs secured add-on
+  assert.equal(computeSetupCost('debt-yield', false, { collateral: 'Unsecured' }).secured, 0)
+  const secured = computeSetupCost('debt-yield', false, { collateral: 'BTC multi-sig' })
+  assert.equal(secured.secured, 10000)
+  assert.equal(secured.total, 30000)
+
+  // DR: always public but excluded from the public surcharge
+  const dr = computeSetupCost('depository-receipt', true, {})
+  assert.equal(dr.base, 22500)
+  assert.equal(dr.surcharge, 0)
+  assert.equal(dr.total, 22500)
+})
+
+test('lifecycle — completedCount, milestones, nextStatus', () => {
+  assert.equal(completedCount('awaiting_incorporation'), 1)
+  assert.equal(completedCount('deploying'), 2)
+  assert.equal(completedCount('live', 'native-equity'), MILESTONES.length)
+
+  // DR has an extra brokerage-custody milestone
+  const drMs = milestonesFor('depository-receipt')
+  assert.equal(drMs.length, MILESTONES.length + 1)
+  assert.ok(drMs.some((m) => m.key === 'custody'))
+  assert.equal(completedCount('live', 'depository-receipt'), drMs.length)
+
+  assert.equal(nextStatus('awaiting_incorporation'), 'deploying')
+  assert.equal(nextStatus('deploying'), 'live')
+  assert.equal(nextStatus('live'), 'live')
+})
+
+test('policy.isEligible — standard / restricted / excluded / blocked', () => {
+  const policy = { SV: 'standard', US: 'restricted', FR: 'excluded', KP: 'blocked' }
+  assert.equal(isEligible(policy, 'SV', false), true) // standard admits regardless
+  assert.equal(isEligible(policy, 'SV', true), true)
+  assert.equal(isEligible(policy, 'US', true), true) // restricted needs accredited
+  assert.equal(isEligible(policy, 'US', false), false)
+  assert.equal(isEligible(policy, 'FR', true), false) // excluded
+  assert.equal(isEligible(policy, 'KP', true), false) // blocked
+  assert.equal(isEligible(policy, 'ZZ', true), false) // unknown jurisdiction
+  assert.equal(isEligible(null, 'US', true), false)
+  assert.equal(tierFor(policy, 'US'), 'restricted')
+})
+
+test('economics — money, post-money ownership, platform fee', () => {
+  assert.equal(parseMoney('5,000,000'), 5000000)
+  assert.equal(parseMoney('$1,250'), 1250)
+  assert.equal(parseMoney(''), 0)
+  assert.equal(parseMoney(undefined), 0)
+
+  // Native Equity: investment / post-money (pre-money + raise)
+  const fields = { premoney: '20,000,000' }
+  assert.equal(ownershipDenominator('native-equity', fields, 5000000), 25000000)
+  assert.equal(ownershipPct('native-equity', fields, 5000000, 250000).toFixed(2), '1.00')
+
+  // Debt: investment / raise (no post-money)
+  assert.equal(ownershipDenominator('debt-yield', {}, 5000000), 5000000)
+  assert.equal(ownershipPct('debt-yield', {}, 5000000, 250000).toFixed(2), '5.00')
+
+  // Platform Services Fee: 3% with a $10K floor
+  assert.equal(platformServicesFee(750000), 22500)
+  assert.equal(platformServicesFee(100000), 10000) // floor
+  assert.equal(platformServicesFee(0), 10000)
+})
