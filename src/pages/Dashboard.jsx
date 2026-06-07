@@ -2,9 +2,48 @@ import { Link } from 'react-router-dom'
 import { Icon, StructureIcon } from '../components/icons'
 import { Badge } from '../components/ui'
 import SignInGate from '../components/SignInGate'
-import { useStore } from '../lib/store'
+import { useStore, fakeAssetId, fakeTxid } from '../lib/store'
 import { getStructure } from '../data/structures'
+import { JURISDICTIONS } from '../data/jurisdictions'
 import { STATUS } from '../lib/lifecycle'
+
+function buildSample(individual) {
+  const policy = Object.fromEntries(JURISDICTIONS.map((j) => [j.code, j.tier]))
+  const now = new Date().toISOString()
+  return {
+    id: 'iss_' + Math.random().toString(36).slice(2, 9),
+    name: 'Aurora Ventures Fund I',
+    ticker: 'AURA',
+    structureId: 'native-equity',
+    principal: { type: 'individual', name: individual.name, idNumber: individual.idNumber },
+    isPublic: false,
+    raise: '$5,000,000',
+    fields: { raise: '5,000,000', premoney: '20,000,000', supply: '10,000,000' },
+    policy,
+    mintTarget: 'placement-portal escrow address',
+    assetId: fakeAssetId(),
+    txid: fakeTxid(),
+    status: 'live',
+    createdAt: now,
+    liveAt: now,
+    portal: {
+      configured: true,
+      published: true,
+      brandName: 'Aurora Ventures',
+      headline: 'Invest in Aurora Ventures Fund I',
+      accent: 'btc',
+      slug: 'aurora-ventures',
+      docs: ['Offering Memorandum', 'Term Sheet', 'Subscription Agreement', 'Cap table summary'],
+      minInvestment: '25,000',
+      escrowRequested: true,
+      tosAccepted: true,
+    },
+    subscriptions: [
+      { id: 'sub_a', name: 'Imani Okafor', jur: 'SV', amount: 250000, status: 'settled', at: now },
+      { id: 'sub_b', name: 'Lukas Meyer', jur: 'CH', amount: 500000, status: 'in_escrow', at: now },
+    ],
+  }
+}
 
 function StatusBadge({ status }) {
   const s = STATUS[status]
@@ -18,7 +57,7 @@ function StatusBadge({ status }) {
 }
 
 export default function Dashboard() {
-  const { account, isLoggedIn, issuances, reset } = useStore()
+  const { account, isLoggedIn, issuances, reset, addIssuance } = useStore()
 
   if (!isLoggedIn) {
     return (
@@ -30,6 +69,7 @@ export default function Dashboard() {
   }
 
   const liveCount = issuances.filter((i) => i.status === 'live').length
+  const loadSample = () => addIssuance(buildSample(account.individual))
 
   return (
     <section className="container-x py-12">
@@ -50,6 +90,9 @@ export default function Dashboard() {
               Reset demo
             </button>
           )}
+          <button onClick={loadSample} className="btn-outline">
+            Load sample
+          </button>
           <Link to="/onboarding" className="btn-primary">
             <Icon.spark width={16} height={16} />
             New issuance
@@ -104,10 +147,15 @@ export default function Dashboard() {
               Start your first issuance and walk through the six-step onboarding flow —
               from structure choice to live deployment on the Liquid Network.
             </p>
-            <Link to="/onboarding" className="btn-primary mt-6">
-              Launch an issuance
-              <Icon.arrowRight width={16} height={16} />
-            </Link>
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+              <Link to="/onboarding" className="btn-primary">
+                Launch an issuance
+                <Icon.arrowRight width={16} height={16} />
+              </Link>
+              <button onClick={loadSample} className="btn-outline">
+                Load a sample issuance
+              </button>
+            </div>
           </div>
         ) : (
           <div className="mt-4 space-y-3">
