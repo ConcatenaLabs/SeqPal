@@ -31,6 +31,7 @@ export default function NewIssuance() {
     structureId: null,
     isPublic: false,
     entityName: '', // the new Próspera LLC's name (set before formation docs)
+    attested: false, // structure-specific mandatory attestation
     fields: {},
     raise: '',
     name: '',
@@ -44,9 +45,12 @@ export default function NewIssuance() {
   const back = () => setStep((s) => Math.max(1, s - 1))
 
   // Per-step guard: can the user advance?
+  const REQUIRES_ATTESTATION = ['equity-spv', 'debt-yield', 'depository-receipt']
   const canAdvance = () => {
     if (step === 1) return !!data.principal
     if (step === 2) return !!data.structureId
+    if (step === 3)
+      return !REQUIRES_ATTESTATION.includes(data.structureId) || !!data.attested
     if (step === 4) return data.docsSigned
     if (step === 5) return !!data.name && !!data.ticker && !!data.policy
     return true
