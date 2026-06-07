@@ -595,19 +595,29 @@ export function Step4Documents({ data, update }) {
 
 /* ─────────────── Step 5 — Tokenomics & Compliance Baking ─────────────── */
 
-function defaultPolicy() {
+function defaultPolicy(isPublic) {
   const p = {}
-  for (const j of JURISDICTIONS) p[j.code] = j.tier
+  // Private placement: start from the suggested-minimum per-jurisdiction tier.
+  // Public offering overlay: everything is excluded by default; the issuer must
+  // affirmatively admit each jurisdiction by confirming a registration/exemption.
+  for (const j of JURISDICTIONS) {
+    if (j.tier === 'blocked') p[j.code] = 'blocked'
+    else p[j.code] = isPublic ? 'excluded' : j.tier
+  }
   return p
 }
 
 export function Step5Compliance({ data, update }) {
+  // (Re)build the default policy whenever the offering type changes so the
+  // public-offering overlay is reflected correctly.
   useEffect(() => {
-    if (!data.policy) update({ policy: defaultPolicy() })
+    if (!data.policy || data.policyPublic !== data.isPublic) {
+      update({ policy: defaultPolicy(data.isPublic), policyPublic: data.isPublic })
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [data.isPublic])
 
-  const policy = data.policy || defaultPolicy()
+  const policy = data.policy || defaultPolicy(data.isPublic)
   const setTier = (code, tier) => update({ policy: { ...policy, [code]: tier } })
 
   const optionsFor = (j) => {
@@ -660,12 +670,25 @@ export function Step5Compliance({ data, update }) {
         </div>
       </div>
 
+      {data.isPublic && (
+        <div className="mb-5 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <Icon.globe width={18} height={18} className="mt-0.5 shrink-0" />
+          <p className="leading-relaxed">
+            <span className="font-semibold">Public-offering overlay.</span> Every
+            jurisdiction starts <span className="font-semibold">excluded</span>. Admit one
+            only by confirming a public-offering registration or exemption is in place
+            there; admitting retail (Open) requires the upload-to-lift authorization below.
+          </p>
+        </div>
+      )}
+
       <div className="card overflow-hidden">
         <div className="border-b border-ink-900/10 px-6 py-4">
           <h3 className="font-bold text-ink-900">Jurisdiction matrix</h3>
           <p className="mt-1 text-sm text-ink-700/70">
-            Cross-checked against the SeqPal ID jurisdiction matrix. Blocked jurisdictions
-            are a mandatory floor and cannot be admitted.
+            {data.isPublic
+              ? 'Confirm, jurisdiction by jurisdiction, where the public offering is conducted. Unconfirmed jurisdictions stay excluded.'
+              : 'Cross-checked against the SeqPal ID jurisdiction matrix. Blocked jurisdictions are a mandatory floor and cannot be admitted.'}
           </p>
         </div>
         <div className="max-h-[420px] divide-y divide-ink-900/10 overflow-y-auto">
