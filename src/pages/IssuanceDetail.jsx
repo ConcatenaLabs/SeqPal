@@ -403,6 +403,18 @@ export default function IssuanceDetail() {
                           </div>
                         </div>
                       )}
+                      <div className="mt-3 flex items-center justify-between rounded-lg bg-ink-900/[0.03] px-3 py-2 text-xs">
+                        <span className="text-ink-700/70">
+                          Platform Services Fee · 3% cap, $10K floor
+                        </span>
+                        <span className="font-mono font-semibold text-ink-900">
+                          ~{fmtUSD(Math.max(10000, 0.03 * (escrowTotal + settledTotal)))}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-[11px] text-ink-700/55">
+                        Invoiced for the technology, escrow, document automation, and
+                        SeqPal ID bundle — not a placement commission.
+                      </p>
                       {escrowSubs.length > 0 && (
                         <button onClick={closeRound} className="btn-primary mt-4 w-full">
                           <Icon.check width={16} height={16} />
