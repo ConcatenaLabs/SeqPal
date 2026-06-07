@@ -14,9 +14,30 @@ import PortalSetup from './pages/portal/PortalSetup'
 import InvestorPortal from './pages/portal/InvestorPortal'
 import NotFound from './pages/NotFound'
 
+const TITLES = {
+  '/': 'SeqPal — Tokenization-as-a-Service on Bitcoin',
+  '/products': 'Products — SeqPal',
+  '/structures': 'Issuance Structures — SeqPal',
+  '/pricing': 'Pricing — SeqPal',
+  '/id': 'SeqPal ID',
+  '/dashboard': 'Issuer Dashboard — SeqPal',
+  '/onboarding': 'New issuance — SeqPal',
+}
+
 function ScrollToTop() {
   const { pathname } = useLocation()
-  useEffect(() => window.scrollTo(0, 0), [pathname])
+  useEffect(() => {
+    window.scrollTo(0, 0)
+    document.title =
+      TITLES[pathname] ||
+      (pathname.startsWith('/portal/')
+        ? 'Investor portal'
+        : pathname.includes('/portal')
+          ? 'Placement portal setup — SeqPal'
+          : pathname.startsWith('/issuance/')
+            ? 'Issuance — SeqPal'
+            : 'SeqPal')
+  }, [pathname])
   return null
 }
 
