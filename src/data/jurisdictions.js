@@ -31,7 +31,7 @@ export const JURISDICTIONS = [
   { code: 'MX', name: 'Mexico', tier: 'restricted', basis: 'CNBV institutional / qualified investor', cap: 'No retail' },
   { code: 'IN', name: 'India', tier: 'restricted', basis: 'Documented RBI / SEBI eligibility', cap: 'Subject to FEMA constraints' },
   { code: 'SV', name: 'El Salvador', tier: 'standard', basis: 'Local accredited / sophisticated (Digital Assets Law)', cap: 'Local-law caps apply' },
-  { code: 'PA', name: 'Panama', tier: 'standard', basis: 'Local qualified investor (Law 67 of 2020)', cap: 'Local-law caps apply' },
+  { code: 'PA', name: 'Panama', tier: 'standard', basis: 'SMV inversionista calificado (Decree Law 1/1999, as amended)', cap: 'Local-law caps apply' },
   { code: 'AR', name: 'Argentina', tier: 'standard', basis: 'CNV inversor calificado', cap: 'Local-law caps apply' },
   { code: 'HN', name: 'Honduras', tier: 'standard', basis: 'Local accredited / sophisticated investor', cap: 'Local-law caps apply' },
   { code: 'CN', name: 'Mainland China', tier: 'blocked', basis: 'PRC prohibition on cross-border retail securities', cap: 'n/a' },
