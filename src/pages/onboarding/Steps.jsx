@@ -1182,8 +1182,17 @@ export function Step6Checkout({ data, onDeployed }) {
             </div>
           </dl>
           <div className="mt-4 space-y-1.5 text-xs text-ink-700/60">
-            <p>+ ${s?.annual.toLocaleString()}/yr support, billed after launch.</p>
+            <p>
+              + ${s?.annual.toLocaleString()}/yr support
+              {data.isPublic && data.structureId !== 'depository-receipt'
+                ? ' + $6,000/yr public-reporting'
+                : ''}
+              , billed after launch.
+            </p>
             <p>+ Platform Services Fee (3% cap, $10K floor) on capital raised.</p>
+            {data.isPublic && (
+              <p>+ Issuer-borne audit & per-jurisdiction local-counsel costs (outside SeqPal).</p>
+            )}
           </div>
           <DemoNote className="mt-5">Payment is mocked — nothing is charged.</DemoNote>
           <button onClick={pay} className="btn-primary mt-5 w-full">
