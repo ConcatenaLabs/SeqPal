@@ -8,6 +8,11 @@ import { getStructure } from '../data/structures'
 import { JURISDICTIONS } from '../data/jurisdictions'
 import { STATUS, MILESTONES, completedCount, nextStatus } from '../lib/lifecycle'
 
+function parseMoney(s) {
+  return Number(String(s || '').replace(/[^0-9.]/g, '')) || 0
+}
+const fmtUSD = (n) => '$' + Math.round(n).toLocaleString()
+
 function Truncate({ value }) {
   if (!value) return <span className="text-ink-700/50">—</span>
   return (
@@ -188,6 +193,24 @@ export default function IssuanceDetail() {
     updateIssuance(iss.id, patch)
   }
 
+  // Fundraising — derived from portal subscriptions.
+  const isRaise = iss.structureId !== 'depository-receipt'
+  const subs = iss.subscriptions || []
+  const escrowSubs = subs.filter((s) => s.status === 'in_escrow')
+  const settledSubs = subs.filter((s) => s.status === 'settled')
+  const raiseNum = parseMoney(iss.raise)
+  const escrowTotal = escrowSubs.reduce((a, s) => a + s.amount, 0)
+  const settledTotal = settledSubs.reduce((a, s) => a + s.amount, 0)
+  const heldPct = raiseNum ? Math.min(100, (settledTotal / raiseNum) * 100) : 0
+  const treasuryPct = Math.max(0, 100 - heldPct)
+
+  const closeRound = () =>
+    updateIssuance(iss.id, (i) => ({
+      subscriptions: (i.subscriptions || []).map((s) =>
+        s.status === 'in_escrow' ? { ...s, status: 'settled' } : s
+      ),
+    }))
+
   const openJ = JURISDICTIONS.filter((j) => iss.policy?.[j.code] === 'standard')
   const restrictedJ = JURISDICTIONS.filter((j) => iss.policy?.[j.code] === 'restricted')
 
@@ -304,30 +327,115 @@ export default function IssuanceDetail() {
                 </div>
               </div>
 
+              {isRaise && (
+                <div className="card p-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Icon.coins width={18} height={18} className="text-btc-600" />
+                      <h2 className="font-bold text-ink-900">Fundraising</h2>
+                    </div>
+                    <span className="text-xs text-ink-700/60">
+                      via {iss.portal?.published ? `invest.${iss.portal.slug}.com` : 'placement portal'}
+                    </span>
+                  </div>
+
+                  {subs.length === 0 ? (
+                    <div className="mt-4 rounded-lg bg-ink-900/[0.03] px-4 py-3 text-sm text-ink-700/70">
+                      No subscriptions yet.{' '}
+                      {iss.portal?.published ? (
+                        <Link
+                          to={`/portal/${iss.id}`}
+                          className="font-semibold text-btc-600 hover:underline"
+                        >
+                          Open your investor portal
+                        </Link>
+                      ) : (
+                        'Publish your placement portal to start raising.'
+                      )}
+                    </div>
+                  ) : (
+                    <>
+                      <div className="mt-4 grid grid-cols-3 gap-3">
+                        <div className="rounded-lg bg-ink-900/[0.03] px-3 py-2.5">
+                          <div className="text-xs text-ink-700/60">In escrow</div>
+                          <div className="mt-0.5 font-bold text-ink-900">
+                            {fmtUSD(escrowTotal)}
+                          </div>
+                        </div>
+                        <div className="rounded-lg bg-ink-900/[0.03] px-3 py-2.5">
+                          <div className="text-xs text-ink-700/60">Settled</div>
+                          <div className="mt-0.5 font-bold text-ink-900">
+                            {fmtUSD(settledTotal)}
+                          </div>
+                        </div>
+                        <div className="rounded-lg bg-ink-900/[0.03] px-3 py-2.5">
+                          <div className="text-xs text-ink-700/60">Subscribers</div>
+                          <div className="mt-0.5 font-bold text-ink-900">{subs.length}</div>
+                        </div>
+                      </div>
+                      {raiseNum > 0 && (
+                        <div className="mt-3">
+                          <div className="h-2 w-full overflow-hidden rounded-full bg-ink-900/10">
+                            <div
+                              className="h-full rounded-full bg-btc"
+                              style={{
+                                width: `${Math.min(100, ((escrowTotal + settledTotal) / raiseNum) * 100)}%`,
+                              }}
+                            />
+                          </div>
+                          <div className="mt-1 text-xs text-ink-700/60">
+                            {fmtUSD(escrowTotal + settledTotal)} of {iss.raise} target
+                          </div>
+                        </div>
+                      )}
+                      {escrowSubs.length > 0 && (
+                        <button onClick={closeRound} className="btn-primary mt-4 w-full">
+                          <Icon.check width={16} height={16} />
+                          Close round · release escrow & deliver tokens
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
               <div className="grid gap-6 sm:grid-cols-2">
                 <div className="card overflow-hidden">
                   <div className="flex items-center justify-between border-b border-ink-900/10 px-5 py-3.5">
                     <h2 className="font-bold text-ink-900">Registry of Members</h2>
-                    <span className="text-xs text-ink-700/60">snapshot</span>
+                    <span className="text-xs text-ink-700/60">live</span>
                   </div>
                   <div className="divide-y divide-ink-900/10">
-                    {[
-                      ['Treasury (issuer wallet)', 'HN', '72.0%'],
-                      ['GAID ····8f2a', 'AE', '12.5%'],
-                      ['GAID ····1b03', 'SV', '9.5%'],
-                      ['GAID ····d77c', 'CH', '6.0%'],
-                    ].map(([who, jur, pct]) => (
+                    <div className="flex items-center justify-between px-5 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-ink-900">
+                          {isRaise ? 'Treasury / escrow' : 'Issuer treasury'}
+                        </span>
+                        <Badge color="slate">HN</Badge>
+                      </div>
+                      <span className="font-mono text-sm text-ink-800">
+                        {treasuryPct.toFixed(1)}%
+                      </span>
+                    </div>
+                    {settledSubs.map((s) => (
                       <div
-                        key={who}
+                        key={s.id}
                         className="flex items-center justify-between px-5 py-3"
                       >
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-ink-900">{who}</span>
-                          <Badge color="slate">{jur}</Badge>
+                          <span className="text-sm font-medium text-ink-900">{s.name}</span>
+                          <Badge color="slate">{s.jur}</Badge>
                         </div>
-                        <span className="font-mono text-sm text-ink-800">{pct}</span>
+                        <span className="font-mono text-sm text-ink-800">
+                          {raiseNum ? `${((s.amount / raiseNum) * 100).toFixed(1)}%` : fmtUSD(s.amount)}
+                        </span>
                       </div>
                     ))}
+                    {settledSubs.length === 0 && (
+                      <div className="px-5 py-3 text-xs text-ink-700/55">
+                        Holders appear here once subscriptions settle on closing.
+                      </div>
+                    )}
                   </div>
                 </div>
 

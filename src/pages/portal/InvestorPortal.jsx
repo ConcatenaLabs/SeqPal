@@ -14,9 +14,13 @@ const ACCENT_HEX = {
   slate: '#334155',
 }
 
+function parseMoney(s) {
+  return Number(String(s || '').replace(/[^0-9.]/g, '')) || 0
+}
+
 export default function InvestorPortal() {
   const { id } = useParams()
-  const { account, isLoggedIn, issuances } = useStore()
+  const { account, isLoggedIn, issuances, updateIssuance } = useStore()
   const iss = issuances.find((i) => i.id === id)
   const [phase, setPhase] = useState('offering') // offering | signing | wiring | done
   const [amount, setAmount] = useState('')
@@ -44,7 +48,25 @@ export default function InvestorPortal() {
 
   const subscribe = () => setPhase('signing')
   const sign = () => setPhase('wiring')
-  const wire = () => setPhase('done')
+  const wire = () => {
+    // Record the subscription against the issuance: funds into escrow, pending
+    // settlement on the issuer closing the round.
+    const amt = parseMoney(amount || p.minInvestment)
+    updateIssuance(iss.id, (i) => ({
+      subscriptions: [
+        {
+          id: 'sub_' + Math.random().toString(36).slice(2, 9),
+          name: inv.name,
+          jur: inv.residenceCode,
+          amount: amt,
+          status: 'in_escrow',
+          at: new Date().toISOString(),
+        },
+        ...(i.subscriptions || []),
+      ],
+    }))
+    setPhase('done')
+  }
 
   return (
     <div className="min-h-screen bg-ink-50/40" style={{ background: '#f7f8fa' }}>
