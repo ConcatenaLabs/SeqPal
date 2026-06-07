@@ -4,6 +4,7 @@ import { Icon, StructureIcon } from '../components/icons'
 import { SectionHeading, Badge, DemoNote } from '../components/ui'
 import Passport from '../components/Passport'
 import { useStore, fakeIdNumber, fakeGaid } from '../lib/store'
+import { isEligible } from '../lib/policy'
 import { RESIDENCE_OPTIONS } from '../data/jurisdictions'
 import { getStructure } from '../data/structures'
 
@@ -225,10 +226,7 @@ function CorporateForm({ onAdded }) {
 function AccessibleOfferings({ individual, issuances }) {
   const eligible = issuances
     .filter((i) => i.portal?.published)
-    .filter((i) => {
-      const tier = i.policy?.[individual.residenceCode]
-      return tier === 'standard' || (tier === 'restricted' && individual.accredited)
-    })
+    .filter((i) => isEligible(i.policy, individual.residenceCode, individual.accredited))
 
   return (
     <div className="mt-12 border-t border-ink-900/10 pt-10">

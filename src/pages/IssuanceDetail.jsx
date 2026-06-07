@@ -7,11 +7,14 @@ import { useStore } from '../lib/store'
 import { getStructure } from '../data/structures'
 import { JURISDICTIONS } from '../data/jurisdictions'
 import { STATUS, milestonesFor, completedCount, nextStatus } from '../lib/lifecycle'
+import {
+  parseMoney,
+  fmtUSD,
+  ownershipPct,
+  ownershipDenominator,
+  platformServicesFee,
+} from '../lib/economics'
 
-function parseMoney(s) {
-  return Number(String(s || '').replace(/[^0-9.]/g, '')) || 0
-}
-const fmtUSD = (n) => '$' + Math.round(n).toLocaleString()
 
 function Truncate({ value }) {
   if (!value) return <span className="text-ink-700/50">—</span>
@@ -204,21 +207,19 @@ export default function IssuanceDetail() {
   const raiseNum = parseMoney(iss.raise)
   const escrowTotal = escrowSubs.reduce((a, s) => a + s.amount, 0)
   const settledTotal = settledSubs.reduce((a, s) => a + s.amount, 0)
-  // Ownership basis differs by structure: Native Equity holders own a slice of
-  // the post-money company (investment / post-money); SPV holders share the
-  // single funded position and Debt holders share the note principal (both
-  // investment / raise). DRs are not subscription-based.
-  const premoney = parseMoney(iss.fields?.premoney)
-  const isEquity = iss.structureId === 'native-equity'
-  const denom = isEquity && premoney > 0 ? premoney + raiseNum : raiseNum
-  const ownerPct = (amt) => (denom ? (amt / denom) * 100 : null)
-  const ownBasis = isEquity
-    ? 'post-money'
-    : iss.structureId === 'equity-spv'
-      ? '% of SPV'
-      : iss.structureId === 'debt-yield'
-        ? '% of principal'
-        : 'live'
+  // Ownership basis differs by structure (see lib/economics): Native Equity
+  // holders own a slice of the post-money company; SPV/Debt holders share the
+  // funded position / note principal. DRs are not subscription-based.
+  const denom = ownershipDenominator(iss.structureId, iss.fields, raiseNum)
+  const ownerPct = (amt) => ownershipPct(iss.structureId, iss.fields, raiseNum, amt)
+  const ownBasis =
+    iss.structureId === 'native-equity'
+      ? 'post-money'
+      : iss.structureId === 'equity-spv'
+        ? '% of SPV'
+        : iss.structureId === 'debt-yield'
+          ? '% of principal'
+          : 'live'
   const treasuryPct = Math.max(0, 100 - (ownerPct(settledTotal) || 0))
 
   const closeRound = () =>
@@ -410,7 +411,7 @@ export default function IssuanceDetail() {
                           Platform Services Fee · 3% cap, $10K floor
                         </span>
                         <span className="font-mono font-semibold text-ink-900">
-                          ~{fmtUSD(Math.max(10000, 0.03 * (escrowTotal + settledTotal)))}
+                          ~{fmtUSD(platformServicesFee(escrowTotal + settledTotal))}
                         </span>
                       </div>
                       <p className="mt-1 text-[11px] text-ink-700/55">
