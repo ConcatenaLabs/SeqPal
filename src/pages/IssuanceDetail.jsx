@@ -287,6 +287,40 @@ export default function IssuanceDetail() {
                 </div>
               </div>
 
+              <div className="card p-6">
+                <div className="flex items-center gap-2">
+                  <Icon.exchange width={18} height={18} className="text-liquid-600" />
+                  <h2 className="font-bold text-ink-900">Secondary market</h2>
+                </div>
+                <p className="mt-1.5 text-sm text-ink-700/70">
+                  Because eligibility is enforced at the token-contract level, the asset
+                  can trade freely between whitelisted holders — no proprietary trading
+                  system required.
+                </p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-lg border border-ink-900/10 bg-ink-900/[0.02] px-4 py-3">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-ink-900">
+                      <span className="h-2 w-2 rounded-full bg-emerald-500" /> Discoverable
+                      on SideSwap
+                    </div>
+                    <p className="mt-1 text-xs text-ink-700/70">
+                      Liquid-native DEXs index every AMP asset automatically — no paid
+                      listing.
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-ink-900/10 bg-ink-900/[0.02] px-4 py-3">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-ink-900">
+                      <Icon.shield width={15} height={15} className="text-liquid-600" />{' '}
+                      Eligibility on every transfer
+                    </div>
+                    <p className="mt-1 text-xs text-ink-700/70">
+                      AMP queries SeqPal ID to approve or reject each transfer against your
+                      policy.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
               <div className="grid gap-6 sm:grid-cols-2">
                 <div className="card overflow-hidden">
                   <div className="flex items-center justify-between border-b border-ink-900/10 px-5 py-3.5">
