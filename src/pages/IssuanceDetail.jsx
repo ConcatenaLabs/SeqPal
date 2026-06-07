@@ -202,8 +202,22 @@ export default function IssuanceDetail() {
   const raiseNum = parseMoney(iss.raise)
   const escrowTotal = escrowSubs.reduce((a, s) => a + s.amount, 0)
   const settledTotal = settledSubs.reduce((a, s) => a + s.amount, 0)
-  const heldPct = raiseNum ? Math.min(100, (settledTotal / raiseNum) * 100) : 0
-  const treasuryPct = Math.max(0, 100 - heldPct)
+  // Ownership basis differs by structure: Native Equity holders own a slice of
+  // the post-money company (investment / post-money); SPV holders share the
+  // single funded position and Debt holders share the note principal (both
+  // investment / raise). DRs are not subscription-based.
+  const premoney = parseMoney(iss.fields?.premoney)
+  const isEquity = iss.structureId === 'native-equity'
+  const denom = isEquity && premoney > 0 ? premoney + raiseNum : raiseNum
+  const ownerPct = (amt) => (denom ? (amt / denom) * 100 : null)
+  const ownBasis = isEquity
+    ? 'post-money'
+    : iss.structureId === 'equity-spv'
+      ? '% of SPV'
+      : iss.structureId === 'debt-yield'
+        ? '% of principal'
+        : 'live'
+  const treasuryPct = Math.max(0, 100 - (ownerPct(settledTotal) || 0))
 
   const closeRound = () =>
     updateIssuance(iss.id, (i) => ({
@@ -404,7 +418,7 @@ export default function IssuanceDetail() {
                 <div className="card overflow-hidden">
                   <div className="flex items-center justify-between border-b border-ink-900/10 px-5 py-3.5">
                     <h2 className="font-bold text-ink-900">Registry of Members</h2>
-                    <span className="text-xs text-ink-700/60">live</span>
+                    <span className="text-xs text-ink-700/60">{ownBasis}</span>
                   </div>
                   <div className="divide-y divide-ink-900/10">
                     <div className="flex items-center justify-between px-5 py-3">
@@ -428,7 +442,7 @@ export default function IssuanceDetail() {
                           <Badge color="slate">{s.jur}</Badge>
                         </div>
                         <span className="font-mono text-sm text-ink-800">
-                          {raiseNum ? `${((s.amount / raiseNum) * 100).toFixed(1)}%` : fmtUSD(s.amount)}
+                          {denom ? `${ownerPct(s.amount).toFixed(2)}%` : fmtUSD(s.amount)}
                         </span>
                       </div>
                     ))}

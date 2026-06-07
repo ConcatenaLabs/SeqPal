@@ -906,6 +906,7 @@ export function Step6Checkout({ data, onDeployed }) {
         principal: data.principal,
         isPublic: data.isPublic,
         raise: data.raise,
+        fields: data.fields,
         policy: data.policy,
         mintTarget,
         assetId: fakeAssetId(),
