@@ -69,37 +69,57 @@ function PreviewHero({ cfg, iss }) {
   )
 }
 
+function Notice({ title, body }) {
+  return (
+    <section className="container-x py-24 text-center">
+      <p className="font-semibold text-ink-900">{title}</p>
+      {body && <p className="mx-auto mt-2 max-w-md text-sm text-ink-700/70">{body}</p>}
+      <Link to="/dashboard" className="btn-outline mt-6">
+        Back to dashboard
+      </Link>
+    </section>
+  )
+}
+
 export default function PortalSetup() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { isLoggedIn, issuances, updateIssuance } = useStore()
-
-  if (!isLoggedIn) return <SignInGate />
   const iss = issuances.find((i) => i.id === id)
-  if (!iss) {
-    return (
-      <section className="container-x py-24 text-center">
-        <p className="text-ink-700">Issuance not found.</p>
-        <Link to="/dashboard" className="btn-outline mt-6">
-          Back to dashboard
-        </Link>
-      </section>
-    )
-  }
 
-  const existing = iss.portal || {}
-  const docs = dataRoomDocs(iss.structureId)
-  const [cfg, setCfg] = useState({
-    brandName: existing.brandName || iss.entityName || iss.name,
-    headline: existing.headline || `Invest in ${iss.name}`,
+  // Hooks must run before any early return (Rules of Hooks). Initialise the
+  // form defensively in case `iss` is absent at mount.
+  const existing = iss?.portal || {}
+  const [cfg, setCfg] = useState(() => ({
+    brandName: existing.brandName || iss?.entityName || iss?.name || '',
+    headline: existing.headline || (iss ? `Invest in ${iss.name}` : ''),
     accent: existing.accent || 'btc',
-    slug: existing.slug || slugify(iss.entityName || iss.name),
-    docs: existing.docs || docs,
+    slug: existing.slug || slugify(iss?.entityName || iss?.name || ''),
+    docs: existing.docs || dataRoomDocs(iss?.structureId),
     minInvestment: existing.minInvestment || '25,000',
     escrowRequested: existing.escrowRequested || false,
     tosAccepted: existing.tosAccepted || false,
-  })
+  }))
 
+  if (!isLoggedIn) return <SignInGate />
+  if (!iss) return <Notice title="Issuance not found." />
+  // A placement portal is a capital-raise surface; DRs are minted/redeemed directly.
+  if (iss.structureId === 'depository-receipt')
+    return (
+      <Notice
+        title="Depository Receipts don’t use a placement portal"
+        body="DRs are minted and redeemed directly from the asset’s transfer-agent controls rather than raised through a subscription portal."
+      />
+    )
+  if (iss.status !== 'live')
+    return (
+      <Notice
+        title="Available once your issuance is live"
+        body="Set up your placement portal after incorporation and deployment complete."
+      />
+    )
+
+  const docs = dataRoomDocs(iss.structureId)
   const set = (patch) => setCfg((c) => ({ ...c, ...patch }))
   const toggleDoc = (d) =>
     set({ docs: cfg.docs.includes(d) ? cfg.docs.filter((x) => x !== d) : [...cfg.docs, d] })
