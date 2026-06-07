@@ -271,7 +271,11 @@ export function Step2Structure({ data, update }) {
               key={s.id}
               disabled={locked}
               onClick={() =>
-                update({ structureId: s.id, isPublic: s.id === 'depository-receipt' })
+                update({
+                  structureId: s.id,
+                  isPublic: s.id === 'depository-receipt',
+                  attested: false,
+                })
               }
               className={`card relative p-6 text-left transition-all ${
                 locked
@@ -366,6 +370,16 @@ const FIELD_CONFIG = {
     { k: 'redemption', label: 'Redemption mechanics', type: 'select', options: ['In-kind', 'Cash', 'Either'] },
     { k: 'nav', label: 'NAV reporting frequency', type: 'select', options: ['Daily', 'Weekly', 'Monthly'] },
   ],
+}
+
+// Structure-specific mandatory attestations the flow won't advance without.
+const ATTESTATIONS = {
+  'equity-spv':
+    'I attest that I have board consent, or a clean reading of the underlying company’s shareholder agreement, permitting this SPV tokenization — no right of first refusal, drag-along, or transfer restriction is breached. SeqPal disclaims responsibility for shareholder-agreement compliance.',
+  'debt-yield':
+    'I attest that borrower KYB is complete and a financial disclosure pack will be published verbatim to investors in the Note Purchase Agreement schedules. SeqPal is the platform, not the credit underwriter.',
+  'depository-receipt':
+    'I understand a contracted brokerage-custody relationship must be operational before this Depository Receipt programme can deploy.',
 }
 
 function DynamicField({ cfg, value, onChange }) {
@@ -497,6 +511,25 @@ export function Step3DataRoom({ data, update }) {
           All fields are optional in this demo — enter as much or as little as you like.
         </p>
       </div>
+
+      {ATTESTATIONS[data.structureId] && (
+        <div className="card mt-5 border-amber-200 bg-amber-50/60 p-5">
+          <div className="flex items-center gap-2 text-sm font-semibold text-amber-800">
+            <Icon.shield width={16} height={16} /> Required attestation
+          </div>
+          <label className="mt-3 flex cursor-pointer items-start gap-3">
+            <input
+              type="checkbox"
+              checked={!!data.attested}
+              onChange={(e) => update({ attested: e.target.checked })}
+              className="mt-0.5 h-4 w-4 accent-btc"
+            />
+            <span className="text-sm leading-relaxed text-ink-800">
+              {ATTESTATIONS[data.structureId]}
+            </span>
+          </label>
+        </div>
+      )}
     </div>
   )
 }
