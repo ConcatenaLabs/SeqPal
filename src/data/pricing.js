@@ -91,14 +91,37 @@ export const ID_FEES = [
   },
 ]
 
-// Computed checkout breakdown for the onboarding demo.
-export function computeSetupCost(structureId, isPublic) {
-  const base = {
+// Computed checkout breakdown for the onboarding demo. `opts` carries data-room
+// inputs (raise, collateral) that affect the fixed price.
+export function computeSetupCost(structureId, isPublic, opts = {}) {
+  let base = {
     'native-equity': 12500,
     'equity-spv': 17500,
     'debt-yield': 20000,
     'depository-receipt': 22500,
   }[structureId]
+  let baseLabel = 'Setup'
+  let simple = false
+
+  const raiseNum = Number(String(opts.raise || '').replace(/[^0-9.]/g, '')) || 0
+
+  // Simple Native Equity tier for raises up to $500K.
+  if (structureId === 'native-equity' && raiseNum > 0 && raiseNum <= 500000) {
+    base = 7500
+    simple = true
+    baseLabel = 'Setup — Simple Native Equity'
+  }
+
+  // Secured Debt/Yield add-on ($5K–$15K; representative $10K in the demo).
+  let secured = 0
+  if (
+    structureId === 'debt-yield' &&
+    opts.collateral &&
+    opts.collateral !== 'Unsecured'
+  ) {
+    secured = 10000
+  }
+
   const surcharge = isPublic && structureId !== 'depository-receipt' ? 12500 : 0
-  return { base, surcharge, total: base + surcharge }
+  return { base, baseLabel, simple, secured, surcharge, total: base + secured + surcharge }
 }
