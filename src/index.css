@@ -1,0 +1,62 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-white text-ink-900 antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+  ::selection {
+    @apply bg-btc/20 text-ink-900;
+  }
+}
+
+@layer components {
+  .container-x {
+    @apply mx-auto w-full max-w-7xl px-5 sm:px-8;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-btc/50 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-btc text-white shadow-sm hover:bg-btc-600 active:translate-y-px;
+  }
+  .btn-dark {
+    @apply btn bg-ink-900 text-white hover:bg-ink-800 active:translate-y-px;
+  }
+  .btn-ghost {
+    @apply btn text-ink-700 hover:bg-ink-900/5;
+  }
+  .btn-outline {
+    @apply btn border border-ink-900/15 bg-white text-ink-900 hover:border-ink-900/30 hover:bg-ink-900/[0.02];
+  }
+  .card {
+    @apply rounded-2xl border border-ink-900/10 bg-white shadow-card;
+  }
+  .label {
+    @apply mb-1.5 block text-sm font-medium text-ink-800;
+  }
+  .input {
+    @apply w-full rounded-lg border border-ink-900/15 bg-white px-3.5 py-2.5 text-sm text-ink-900 placeholder:text-ink-600/50 focus:border-btc focus:outline-none focus:ring-2 focus:ring-btc/20;
+  }
+  .select {
+    @apply input appearance-none bg-[length:18px] bg-[right_0.7rem_center] bg-no-repeat pr-9;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%232b3c59'%3E%3Cpath fill-rule='evenodd' d='M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z' clip-rule='evenodd'/%3E%3C/svg%3E");
+  }
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium;
+  }
+  .eyebrow {
+    @apply text-xs font-semibold uppercase tracking-[0.18em] text-btc-600;
+  }
+}
+
+/* subtle dotted grid for hero */
+.grid-bg {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
