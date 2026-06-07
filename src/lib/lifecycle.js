@@ -41,11 +41,32 @@ export const MILESTONES = [
   { key: 'live', label: 'Live', detail: 'Ready for the placement portal' },
 ]
 
+// Depository Receipts additionally require a contracted brokerage-custody
+// relationship (the plan's single largest DR operational risk), so their
+// lifecycle carries an extra milestone.
+export function milestonesFor(structureId) {
+  if (structureId === 'depository-receipt') {
+    return [
+      MILESTONES[0],
+      MILESTONES[1],
+      {
+        key: 'custody',
+        label: 'Brokerage custody contracted',
+        detail: 'Segregated custody sub-account at the partner broker',
+      },
+      MILESTONES[2],
+      MILESTONES[3],
+      { key: 'live', label: 'Live', detail: 'Ready to mint & redeem' },
+    ]
+  }
+  return MILESTONES
+}
+
 // How many milestones are complete for a given status.
-export function completedCount(status) {
+export function completedCount(status, structureId) {
   if (status === 'awaiting_incorporation') return 1
   if (status === 'deploying') return 2
-  if (status === 'live') return MILESTONES.length
+  if (status === 'live') return milestonesFor(structureId).length
   return 0
 }
 
