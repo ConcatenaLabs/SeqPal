@@ -57,6 +57,88 @@ const products = [
   },
 ]
 
+function Architecture() {
+  const stages = [
+    {
+      icon: Icon.layers,
+      n: '1',
+      name: 'Issuer Dashboard',
+      body: 'Structure, draft, configure, and deploy in six steps.',
+    },
+    {
+      icon: Icon.exchange,
+      n: '2',
+      name: 'Automated Transfer Agent',
+      body: 'Registry of Members, distributions, corporate actions.',
+    },
+    {
+      icon: Icon.globe,
+      n: '3',
+      name: 'Placement Portal',
+      body: 'Raise into escrow on your domain; deliver tokens on closing.',
+    },
+  ]
+  return (
+    <div className="mt-12">
+      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-700/50">
+        How it fits together
+      </div>
+      <div className="mt-4 rounded-2xl border border-ink-900/10 bg-white p-5 shadow-card sm:p-7">
+        {/* identity layer */}
+        <div className="flex items-center gap-3 rounded-xl bg-liquid/10 px-4 py-3 text-liquid-600">
+          <Icon.id width={20} height={20} className="shrink-0" />
+          <div className="text-sm">
+            <span className="font-bold text-ink-900">SeqPal ID</span>
+            <span className="text-ink-700/80">
+              {' '}
+              — identity & eligibility, verified once and read on every transfer
+            </span>
+          </div>
+        </div>
+
+        {/* lifecycle stages */}
+        <div className="my-3 flex flex-col items-stretch gap-3 lg:flex-row lg:items-center">
+          {stages.map((s, i) => (
+            <div key={s.name} className="flex items-center gap-3 lg:flex-1">
+              <div className="flex flex-1 items-start gap-3 rounded-xl border border-ink-900/10 bg-ink-900/[0.02] p-4">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ink-900 text-white">
+                  <s.icon width={18} height={18} />
+                </div>
+                <div>
+                  <div className="text-sm font-bold text-ink-900">{s.name}</div>
+                  <div className="mt-0.5 text-xs leading-snug text-ink-700/80">
+                    {s.body}
+                  </div>
+                </div>
+              </div>
+              {i < stages.length - 1 && (
+                <Icon.arrowRight
+                  width={18}
+                  height={18}
+                  className="hidden shrink-0 text-ink-500 lg:block"
+                />
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* settlement layer */}
+        <div className="flex items-center gap-3 rounded-xl bg-btc-50 px-4 py-3 text-btc-700">
+          <Icon.bitcoin width={20} height={20} className="shrink-0" />
+          <div className="text-sm">
+            <span className="font-bold text-ink-900">Bitcoin · Liquid Network</span>
+            <span className="text-ink-700/80">
+              {' '}
+              — Transfer-Restricted assets issued via Blockstream AMP, settled in BTC or
+              stablecoins
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Products() {
   return (
     <>
@@ -67,6 +149,7 @@ export default function Products() {
             title="The complete issuance stack"
             sub="Four tightly integrated products. Every third-party integration — KYC, e-signature, escrow, and the AMP issuance layer — is pre-built once, so the platform is plug-and-play for every issuer."
           />
+          <Architecture />
         </div>
       </section>
 
