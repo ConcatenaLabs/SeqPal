@@ -257,12 +257,15 @@ export default function InvestorPortal() {
                             {fmtUSD(remaining)} remaining of {iss.raise}
                           </p>
                         )}
-                        <label className="label">Investment amount</label>
+                        <label className="label" htmlFor="inv-amount">
+                          Investment amount
+                        </label>
                         <div className="relative">
                           <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-ink-700/60">
                             $
                           </span>
                           <input
+                            id="inv-amount"
                             className="input pl-7"
                             placeholder={p.minInvestment}
                             value={amount}
