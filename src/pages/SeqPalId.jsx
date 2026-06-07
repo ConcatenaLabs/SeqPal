@@ -11,7 +11,7 @@ import { getStructure } from '../data/structures'
 const stored = [
   ['Verified identity', 'Passport scan + selfie liveness'],
   ['Residence & tax residency', 'Verified address and jurisdiction'],
-  ['Sanctions, PEP & adverse-media', 'Re-screened on a monthly cadence'],
+  ['Sanctions, PEP & adverse-media', 'Screened continuously (every 24 hours)'],
   ['Accreditation status', 'Jurisdiction-aware, self-certified or documented'],
   ['Linked wallets', 'Liquid GAIDs (EVM / Solana on the roadmap)'],
   ['Cryptographic claim envelope', 'Signed claims that token contracts verify'],
