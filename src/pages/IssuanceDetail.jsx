@@ -2,6 +2,7 @@ import { Link, useParams } from 'react-router-dom'
 import { Icon, StructureIcon } from '../components/icons'
 import { Badge, DemoNote } from '../components/ui'
 import SignInGate from '../components/SignInGate'
+import ServicingPanel from '../components/ServicingPanel'
 import { useStore } from '../lib/store'
 import { getStructure } from '../data/structures'
 import { JURISDICTIONS } from '../data/jurisdictions'
@@ -265,27 +266,7 @@ export default function IssuanceDetail() {
 
           {live && (
             <>
-              <div className="card p-6">
-                <h2 className="font-bold text-ink-900">Transfer Agent</h2>
-                <p className="mt-1 text-sm text-ink-700/70">
-                  The blockchain is the official Registry of Members.
-                </p>
-                <div className="mt-4 grid gap-2 sm:grid-cols-3">
-                  {[
-                    [Icon.coins, 'Schedule distribution'],
-                    [Icon.exchange, 'Corporate action'],
-                    [Icon.doc, 'Holder statements'],
-                  ].map(([I, label]) => (
-                    <button
-                      key={label}
-                      className="flex items-center gap-2.5 rounded-lg border border-ink-900/10 px-3 py-2.5 text-left text-sm font-medium text-ink-800 hover:bg-ink-900/[0.02]"
-                    >
-                      <I width={18} height={18} className="text-ink-600" />
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              <ServicingPanel iss={iss} />
 
               <div className="card p-6">
                 <div className="flex items-center gap-2">
