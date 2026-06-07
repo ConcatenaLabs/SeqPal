@@ -80,8 +80,8 @@ export function Step1Identity({ data, update }) {
     <div>
       <StepHeader
         n={1}
-        title="Who is issuing?"
-        sub="Every issuance has a principal — the party legally responsible for the offering. SeqPal acts only as enforcement agent for the configuration the principal signs off on."
+        title="Who is forming this issuance?"
+        sub="Choose who applies for and will own the new Próspera LLC. On every issuance that newly-formed LLC is the issuer of record — the principal legally responsible for the offering — and SeqPal acts only as enforcement agent for the configuration it signs off on."
       />
 
       <div className="space-y-3">
@@ -883,7 +883,8 @@ export function Step6Checkout({ data, onDeployed }) {
           <h3 className="font-bold text-ink-900">Summary</h3>
           <dl className="mt-4 divide-y divide-ink-900/10 text-sm">
             {[
-              ['Principal', data.principal?.name],
+              ['Applicant / owner', data.principal?.name],
+              ['Issuer of record', data.name ? `${data.name} LLC` : 'New Próspera LLC'],
               ['Structure', s?.name],
               ['Asset name', data.name || '—'],
               ['Ticker', data.ticker || '—'],

@@ -219,7 +219,7 @@ export default function IssuanceDetail() {
               <span className="font-mono text-sm text-ink-700/60">{iss.ticker}</span>
             </div>
             <div className="mt-1 text-sm text-ink-700/80">
-              {s?.name} · {iss.principal?.name}
+              {s?.name} · owned by {iss.principal?.name}
             </div>
           </div>
         </div>
@@ -248,6 +248,8 @@ export default function IssuanceDetail() {
             )}
             <dl className="mt-4 divide-y divide-ink-900/10 text-sm">
               {[
+                ['Issuer of record', `${iss.name} LLC · Próspera`],
+                ['Applicant / owner', iss.principal?.name],
                 ['Network', 'Bitcoin · Liquid Network'],
                 ['Issuance layer', 'Blockstream AMP · Transfer-Restricted'],
                 ['Asset id', live ? <Truncate key="a" value={iss.assetId} /> : 'pending'],
