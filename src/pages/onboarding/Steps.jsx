@@ -384,9 +384,10 @@ const ATTESTATIONS = {
 }
 
 function DynamicField({ cfg, value, onChange }) {
+  const id = `f-${cfg.k}`
   if (cfg.type === 'select') {
     return (
-      <select className="select" value={value || ''} onChange={(e) => onChange(e.target.value)}>
+      <select id={id} className="select" value={value || ''} onChange={(e) => onChange(e.target.value)}>
         <option value="" disabled>
           Select…
         </option>
@@ -399,6 +400,7 @@ function DynamicField({ cfg, value, onChange }) {
   if (cfg.type === 'textarea') {
     return (
       <textarea
+        id={id}
         className="input min-h-[88px] resize-y"
         placeholder={cfg.placeholder}
         value={value || ''}
@@ -413,6 +415,7 @@ function DynamicField({ cfg, value, onChange }) {
           $
         </span>
         <input
+          id={id}
           className="input pl-7"
           placeholder={cfg.placeholder}
           value={value || ''}
@@ -423,6 +426,7 @@ function DynamicField({ cfg, value, onChange }) {
   }
   return (
     <input
+      id={id}
       className="input"
       placeholder={cfg.placeholder}
       value={value || ''}
@@ -485,8 +489,11 @@ export function Step3DataRoom({ data, update }) {
 
       <div className="card p-7">
         <div className="mb-5 border-b border-ink-900/10 pb-5">
-          <label className="label">Entity name (the new Próspera LLC)</label>
+          <label className="label" htmlFor="f-entityName">
+            Entity name (the new Próspera LLC)
+          </label>
           <input
+            id="f-entityName"
             className="input"
             placeholder="Aurora Ventures Fund I"
             value={data.entityName}
@@ -503,7 +510,9 @@ export function Step3DataRoom({ data, update }) {
         <div className="grid gap-5 sm:grid-cols-2">
           {config.map((cfg) => (
             <div key={cfg.k} className={cfg.type === 'textarea' ? 'sm:col-span-2' : ''}>
-              <label className="label">{cfg.label}</label>
+              <label className="label" htmlFor={`f-${cfg.k}`}>
+                {cfg.label}
+              </label>
               <DynamicField
                 cfg={cfg}
                 value={data.fields[cfg.k]}
@@ -864,8 +873,11 @@ export function Step5Compliance({ data, update }) {
       <div className="card mb-5 p-7">
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="label">Asset name</label>
+            <label className="label" htmlFor="f-assetName">
+              Asset name
+            </label>
             <input
+              id="f-assetName"
               className="input"
               placeholder="Acme SPV Series A"
               value={data.name}
@@ -873,8 +885,11 @@ export function Step5Compliance({ data, update }) {
             />
           </div>
           <div>
-            <label className="label">Ticker</label>
+            <label className="label" htmlFor="f-ticker">
+              Ticker
+            </label>
             <input
+              id="f-ticker"
               className="input font-mono uppercase"
               placeholder="ACMEA"
               value={data.ticker}

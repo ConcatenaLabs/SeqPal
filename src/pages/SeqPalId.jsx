@@ -59,8 +59,11 @@ function IndividualForm({ onDone }) {
   return (
     <form onSubmit={submit} className="space-y-4">
       <div>
-        <label className="label">Full legal name</label>
+        <label className="label" htmlFor="ind-name">
+          Full legal name
+        </label>
         <input
+          id="ind-name"
           className="input"
           placeholder="Jordan Avery"
           value={form.name}
@@ -68,8 +71,11 @@ function IndividualForm({ onDone }) {
         />
       </div>
       <div>
-        <label className="label">Country of residence</label>
+        <label className="label" htmlFor="ind-residence">
+          Country of residence
+        </label>
         <select
+          id="ind-residence"
           className="select"
           value={form.residence}
           onChange={(e) => setForm({ ...form, residence: e.target.value })}
