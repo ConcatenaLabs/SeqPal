@@ -10,6 +10,13 @@ import {
   ownershipPct,
   platformServicesFee,
 } from '../src/lib/economics.js'
+import {
+  slugify,
+  addBusinessDays,
+  fakeGaid,
+  fakeHex,
+  fakeIdNumber,
+} from '../src/lib/util.js'
 
 test('computeSetupCost — Native Equity tiers, surcharge, secured, DR', () => {
   // standard private placement
@@ -92,4 +99,25 @@ test('economics — money, post-money ownership, platform fee', () => {
   assert.equal(platformServicesFee(750000), 22500)
   assert.equal(platformServicesFee(100000), 10000) // floor
   assert.equal(platformServicesFee(0), 10000)
+})
+
+test('util — slugify, addBusinessDays, id/hash formats', () => {
+  assert.equal(slugify('Aurora Ventures Fund I'), 'aurora-ventures-fund-i')
+  assert.equal(slugify('  Helvetia Digital AG!! '), 'helvetia-digital-ag')
+  assert.equal(slugify('a'.repeat(40)).length, 24) // capped
+  assert.equal(slugify(''), '')
+
+  // Fri 2026-06-05 + 1 business day = Mon 2026-06-08 (skips the weekend)
+  const fri = new Date('2026-06-05T12:00:00Z')
+  const next = addBusinessDays(fri, 1)
+  assert.equal(next.getUTCDay(), 1) // Monday
+  // 5 business days never lands on a weekend
+  const d = addBusinessDays(new Date('2026-06-01T12:00:00Z'), 5)
+  assert.ok(d.getUTCDay() !== 0 && d.getUTCDay() !== 6)
+
+  assert.equal(fakeHex(64).length, 64)
+  assert.match(fakeHex(64), /^[0-9a-f]{64}$/)
+  assert.equal(fakeGaid().length, 40)
+  assert.match(fakeGaid(), /^[A-Za-z0-9]{40}$/)
+  assert.match(fakeIdNumber('SQID-I'), /^SQID-I-[A-Z0-9]+-[A-Z0-9]+$/)
 })
