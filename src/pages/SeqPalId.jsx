@@ -386,6 +386,7 @@ export default function SeqPalId() {
                       </span>
                       <button
                         onClick={() => setAddingCorp(false)}
+                        aria-label="Cancel"
                         className="text-ink-600 hover:text-ink-900"
                       >
                         <Icon.close width={18} height={18} />
