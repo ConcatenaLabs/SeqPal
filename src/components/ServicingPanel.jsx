@@ -27,12 +27,13 @@ export default function ServicingPanel({ iss }) {
   const [modal, setModal] = useState(null) // 'dist' | 'corp' | 'mint' | 'redeem' | null
   const [toast, setToast] = useState(null)
 
-  const distLabel = DIST_LABEL[iss.structureId]
+  const distLabel = DIST_LABEL[iss.structureId] || 'Distribution'
+  const corpActions = CORP_ACTIONS[iss.structureId] || ['Corporate action']
   const isDR = iss.structureId === 'depository-receipt'
 
   // forms
   const [dist, setDist] = useState({ amount: '', asset: 'USDt', recordDate: '' })
-  const [corp, setCorp] = useState({ type: CORP_ACTIONS[iss.structureId][0], note: '' })
+  const [corp, setCorp] = useState({ type: corpActions[0], note: '' })
   const [mint, setMint] = useState({ qty: '', mandate: 'Direct deposit of securities' })
   const [redeem, setRedeem] = useState({ qty: '' })
 
@@ -232,7 +233,7 @@ export default function ServicingPanel({ iss }) {
               value={corp.type}
               onChange={(e) => setCorp({ ...corp, type: e.target.value })}
             >
-              {CORP_ACTIONS[iss.structureId].map((a) => (
+              {corpActions.map((a) => (
                 <option key={a}>{a}</option>
               ))}
             </select>
