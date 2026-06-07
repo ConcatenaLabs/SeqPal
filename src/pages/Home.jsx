@@ -301,7 +301,7 @@ export default function Home() {
               {[
                 'Transfer-Restricted assets issued via Blockstream AMP',
                 'Whitelist enforced by SeqPal ID at the protocol level',
-                'Discoverable and tradable on Liquid-native venues such as SideSwap',
+                'Discoverable and tradable on Liquid-native venues such as SideSwap, with asset-level KYC',
                 'Distributions paid pro-rata in BTC or stablecoins',
               ].map((t) => (
                 <li key={t} className="flex items-start gap-3">
