@@ -17,6 +17,7 @@ const ACCENT_HEX = {
 function parseMoney(s) {
   return Number(String(s || '').replace(/[^0-9.]/g, '')) || 0
 }
+const fmtUSD = (n) => '$' + Math.round(n).toLocaleString()
 
 export default function InvestorPortal() {
   const { id } = useParams()
@@ -45,6 +46,12 @@ export default function InvestorPortal() {
   const tier = inv ? iss.policy?.[inv.residenceCode] : undefined
   const eligible = tier === 'standard' || (tier === 'restricted' && inv?.accredited)
   const jName = inv && JURISDICTIONS.find((j) => j.code === inv.residenceCode)?.name
+
+  // Round capacity: the target raise is treated as the hard cap.
+  const raiseNum = parseMoney(iss.raise)
+  const committed = (iss.subscriptions || []).reduce((a, su) => a + su.amount, 0)
+  const remaining = raiseNum > 0 ? Math.max(0, raiseNum - committed) : null
+  const full = raiseNum > 0 && committed >= raiseNum
 
   const subscribe = () => setPhase('signing')
   const sign = () => setPhase('wiring')
@@ -218,14 +225,37 @@ export default function InvestorPortal() {
                       .
                     </p>
                   </div>
+                ) : full && phase === 'offering' ? (
+                  <div className="text-center">
+                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-ink-900/[0.06] text-ink-700">
+                      <Icon.check width={24} height={24} />
+                    </div>
+                    <h3 className="mt-3 font-bold text-ink-900">Fully subscribed</h3>
+                    <p className="mt-1 text-sm text-ink-700/80">
+                      This round has reached its {iss.raise} target. The issuer may close
+                      or open a further tranche.
+                    </p>
+                  </div>
                 ) : (
                   <>
                     <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">
                       <Icon.check width={16} height={16} /> Eligible · {jName}
                     </div>
+                    {tier === 'standard' && (
+                      <p className="mt-2 text-xs text-ink-700/60">
+                        Admitted on a standard basis. Local-law eligibility (often
+                        accredited / sophisticated status) is screened at admission and is
+                        the issuer’s responsibility.
+                      </p>
+                    )}
 
                     {phase === 'offering' && (
                       <div className="mt-4">
+                        {remaining !== null && (
+                          <p className="mb-2 text-xs text-ink-700/60">
+                            {fmtUSD(remaining)} remaining of {iss.raise}
+                          </p>
+                        )}
                         <label className="label">Investment amount</label>
                         <div className="relative">
                           <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-ink-700/60">
