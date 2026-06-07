@@ -6,7 +6,7 @@ import ServicingPanel from '../components/ServicingPanel'
 import { useStore } from '../lib/store'
 import { getStructure } from '../data/structures'
 import { JURISDICTIONS } from '../data/jurisdictions'
-import { STATUS, MILESTONES, completedCount, nextStatus } from '../lib/lifecycle'
+import { STATUS, milestonesFor, completedCount, nextStatus } from '../lib/lifecycle'
 
 function parseMoney(s) {
   return Number(String(s || '').replace(/[^0-9.]/g, '')) || 0
@@ -23,7 +23,8 @@ function Truncate({ value }) {
 }
 
 function Timeline({ iss, onAdvance }) {
-  const done = completedCount(iss.status)
+  const milestones = milestonesFor(iss.structureId)
+  const done = completedCount(iss.status, iss.structureId)
   const eta = iss.incorporationEta ? new Date(iss.incorporationEta) : null
 
   return (
@@ -39,7 +40,7 @@ function Timeline({ iss, onAdvance }) {
       </div>
 
       <ol className="mt-5 space-y-1">
-        {MILESTONES.map((m, i) => {
+        {milestones.map((m, i) => {
           const state = i < done ? 'done' : i === done ? 'active' : 'todo'
           return (
             <li key={m.key} className="flex gap-3">
@@ -61,7 +62,7 @@ function Timeline({ iss, onAdvance }) {
                     i + 1
                   )}
                 </span>
-                {i < MILESTONES.length - 1 && (
+                {i < milestones.length - 1 && (
                   <span
                     className={`my-0.5 w-0.5 flex-1 ${
                       i < done ? 'bg-emerald-500/40' : 'bg-ink-900/10'
