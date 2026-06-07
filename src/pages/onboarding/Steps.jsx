@@ -554,6 +554,7 @@ const DOC_PACKAGE = (structureId, isPublic) => {
   // brokerage custody mandate (added above) instead.
   if (structureId !== 'depository-receipt') docs.push('Tri-party escrow agreement')
   if (isPublic || structureId === 'depository-receipt') docs.push('RFSA Offering Memorandum filing package')
+  if (isPublic) docs.push('Board & governance attestations')
   return docs
 }
 
@@ -731,6 +732,19 @@ export function Step4Documents({ data, update }) {
               ))}
             </div>
           </div>
+
+          {data.isPublic && (
+            <div className="mt-5 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              <Icon.doc width={18} height={18} className="mt-0.5 shrink-0" />
+              <p className="leading-relaxed">
+                <span className="font-semibold">Public offering — issuer-supplied items.</span>{' '}
+                Beyond this generated package you’ll also provide audited (or audit-reviewed)
+                financials and a signed local-counsel opinion for each admitted jurisdiction.
+                SeqPal supplies the template framework and RFSA filing path; these are
+                procured by you.
+              </p>
+            </div>
+          )}
 
           <DemoNote className="mt-5">
             Click any document to preview the prefilled template. E-signature runs through
