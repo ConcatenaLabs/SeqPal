@@ -14,11 +14,18 @@ import { STRUCTURES, getStructure } from '../../data/structures'
 import { JURISDICTIONS } from '../../data/jurisdictions'
 import { computeSetupCost } from '../../data/pricing'
 
+// Target time-to-live in business days, [private, public]. Public offerings take
+// materially longer (extra RFSA disclosure, audited financials, per-jurisdiction
+// filings) per the plan's deploy-time table.
 const DEPLOY_DAYS = {
-  'native-equity': 3,
-  'equity-spv': 5,
-  'debt-yield': 6,
-  'depository-receipt': 9,
+  'native-equity': [3, 10],
+  'equity-spv': [5, 12],
+  'debt-yield': [6, 12],
+  'depository-receipt': [9, 9],
+}
+const deployDays = (structureId, isPublic) => {
+  const [priv, pub] = DEPLOY_DAYS[structureId] || [3, 10]
+  return isPublic ? pub : priv
 }
 
 function StepHeader({ n, title, sub }) {
@@ -897,7 +904,7 @@ export function Step6Checkout({ data, onDeployed }) {
     setPhase('processing')
     setTimeout(() => {
       const created = new Date()
-      const etaDate = addBusinessDays(created, DEPLOY_DAYS[data.structureId] || 3)
+      const etaDate = addBusinessDays(created, deployDays(data.structureId, data.isPublic))
       const issuance = {
         id: 'iss_' + Math.random().toString(36).slice(2, 9),
         name: data.name,
