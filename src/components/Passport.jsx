@@ -33,7 +33,13 @@ export default function Passport({ profile, type = 'individual' }) {
               {isCorp ? 'Type' : 'Accreditation'}
             </div>
             <div className="font-semibold">
-              {isCorp ? 'Corporate' : profile.accredited ? 'Qualified' : 'Retail'}
+              {isCorp
+                ? 'Corporate'
+                : profile.accredited
+                  ? profile.accreditationMethod === 'document'
+                    ? 'Qualified · documented'
+                    : 'Qualified · self-cert.'
+                  : 'Retail'}
             </div>
           </div>
         </div>

@@ -32,6 +32,9 @@ function IndividualForm({ onDone }) {
   const [verifying, setVerifying] = useState(false)
 
   const res = RESIDENCE_OPTIONS.find((r) => r.code === form.residence)
+  // US (Reg D 506(c)) and Canada require the issuer to take reasonable steps to
+  // *verify* accredited status — self-certification alone is not sufficient.
+  const docVerify = ['US', 'CA'].includes(form.residence)
 
   const submit = (e) => {
     e.preventDefault()
@@ -43,6 +46,7 @@ function IndividualForm({ onDone }) {
         residenceCode: form.residence,
         accredited: form.accredited,
         accreditationBasis: form.accredited ? res.accreditationLabel : null,
+        accreditationMethod: form.accredited ? (docVerify ? 'document' : 'self') : null,
         idNumber: fakeIdNumber('SQID-I'),
         verifiedAt: new Date().toISOString(),
       })
@@ -85,9 +89,18 @@ function IndividualForm({ onDone }) {
         />
         <span className="text-sm">
           <span className="font-medium text-ink-900">
-            I self-certify as a qualified / accredited investor
+            {docVerify
+              ? 'I will verify my accredited-investor status with documentation'
+              : 'I self-certify as a qualified / accredited investor'}
           </span>
           <span className="mt-0.5 block text-xs text-ink-700/70">{res.accreditationLabel}</span>
+          {docVerify && (
+            <span className="mt-1 block text-xs text-amber-700">
+              {form.residence === 'US' ? 'Reg D Rule 506(c)' : 'Local rules'} require the
+              issuer to take reasonable steps to verify accredited status — self-certification
+              alone is not sufficient.
+            </span>
+          )}
         </span>
       </label>
       <UploadBox
