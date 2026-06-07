@@ -95,6 +95,14 @@ export function fakeHex(len = 64) {
 export const fakeAssetId = () => fakeHex(64)
 export const fakeTxid = () => fakeHex(64)
 
+// A plausible Blockstream Green Account ID (the wallet identifier AMP whitelists).
+export function fakeGaid() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz0123456789'
+  let s = ''
+  for (let i = 0; i < 40; i++) s += chars[Math.floor(Math.random() * chars.length)]
+  return s
+}
+
 export function fakeIdNumber(prefix) {
   return (
     prefix +
