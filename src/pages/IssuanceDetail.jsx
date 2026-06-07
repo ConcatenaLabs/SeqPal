@@ -1,11 +1,14 @@
 import { Link, useParams } from 'react-router-dom'
 import { Icon, StructureIcon } from '../components/icons'
 import { Badge, DemoNote } from '../components/ui'
+import SignInGate from '../components/SignInGate'
 import { useStore } from '../lib/store'
 import { getStructure } from '../data/structures'
 import { JURISDICTIONS } from '../data/jurisdictions'
+import { STATUS, MILESTONES, completedCount, nextStatus } from '../lib/lifecycle'
 
 function Truncate({ value }) {
+  if (!value) return <span className="text-ink-700/50">—</span>
   return (
     <span className="font-mono text-xs text-ink-700">
       {value.slice(0, 10)}…{value.slice(-8)}
@@ -13,11 +16,156 @@ function Truncate({ value }) {
   )
 }
 
+function Timeline({ iss, onAdvance }) {
+  const done = completedCount(iss.status)
+  const eta = iss.incorporationEta ? new Date(iss.incorporationEta) : null
+
+  return (
+    <div className="card p-6">
+      <div className="flex items-center justify-between">
+        <h2 className="font-bold text-ink-900">Issuance lifecycle</h2>
+        <Badge color={STATUS[iss.status]?.color}>
+          {iss.status === 'live' && (
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+          )}
+          {STATUS[iss.status]?.label}
+        </Badge>
+      </div>
+
+      <ol className="mt-5 space-y-1">
+        {MILESTONES.map((m, i) => {
+          const state = i < done ? 'done' : i === done ? 'active' : 'todo'
+          return (
+            <li key={m.key} className="flex gap-3">
+              <div className="flex flex-col items-center">
+                <span
+                  className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${
+                    state === 'done'
+                      ? 'bg-emerald-500 text-white'
+                      : state === 'active'
+                        ? 'bg-btc text-white'
+                        : 'bg-ink-900/10 text-ink-600'
+                  }`}
+                >
+                  {state === 'done' ? (
+                    <Icon.check width={14} height={14} />
+                  ) : state === 'active' ? (
+                    <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-white" />
+                  ) : (
+                    i + 1
+                  )}
+                </span>
+                {i < MILESTONES.length - 1 && (
+                  <span
+                    className={`my-0.5 w-0.5 flex-1 ${
+                      i < done ? 'bg-emerald-500/40' : 'bg-ink-900/10'
+                    }`}
+                  />
+                )}
+              </div>
+              <div className={`pb-4 ${state === 'todo' ? 'opacity-55' : ''}`}>
+                <div className="text-sm font-semibold text-ink-900">{m.label}</div>
+                <div className="text-xs text-ink-700/70">{m.detail}</div>
+                {m.key === 'incorporation' && state === 'active' && eta && (
+                  <div className="mt-1 text-xs font-medium text-amber-700">
+                    Est. completion{' '}
+                    {eta.toLocaleDateString(undefined, {
+                      weekday: 'short',
+                      month: 'short',
+                      day: 'numeric',
+                    })}{' '}
+                    · 1–3 business days
+                  </div>
+                )}
+              </div>
+            </li>
+          )
+        })}
+      </ol>
+
+      {iss.status !== 'live' && (
+        <div className="mt-2 rounded-xl border border-dashed border-btc/30 bg-btc-50 p-4">
+          <div className="flex items-center gap-2 text-sm font-semibold text-btc-700">
+            <Icon.spark width={16} height={16} /> Demo fast-forward
+          </div>
+          <p className="mt-1 text-xs text-btc-700/80">
+            In production these steps complete over 1–3 business days. Advance them here to
+            preview the live state.
+          </p>
+          <button
+            onClick={() => onAdvance(nextStatus(iss.status))}
+            className="btn-primary mt-3 w-full py-2"
+          >
+            {iss.status === 'awaiting_incorporation'
+              ? 'Complete incorporation'
+              : 'Deploy on Liquid'}
+            <Icon.arrowRight width={15} height={15} />
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function PortalCard({ iss }) {
+  const isRaise = iss.structureId !== 'depository-receipt'
+  const live = iss.status === 'live'
+  const published = iss.portal?.published
+
+  return (
+    <div className="card p-6">
+      <div className="flex items-center gap-2">
+        <Icon.globe width={18} height={18} className="text-liquid-600" />
+        <h2 className="font-bold text-ink-900">Placement Portal</h2>
+        {published && <Badge color="emerald" className="ml-auto">Published</Badge>}
+      </div>
+      <p className="mt-1.5 text-sm text-ink-700/70">
+        {isRaise
+          ? 'Your own branded fundraising portal, operated on your domain. Investors clear the SeqPal ID gate, sign the subscription agreement, and wire into escrow.'
+          : 'Depository Receipts are minted and redeemed directly rather than raised through a subscription portal.'}
+      </p>
+
+      {!isRaise ? (
+        <div className="mt-4 rounded-lg bg-ink-900/[0.03] px-4 py-3 text-sm text-ink-700/80">
+          Mint and redemption are handled from the asset’s transfer-agent controls.
+        </div>
+      ) : !live ? (
+        <div className="mt-4 rounded-lg bg-ink-900/[0.03] px-4 py-3 text-sm text-ink-700/70">
+          Available once your issuance is live.
+        </div>
+      ) : published ? (
+        <div className="mt-4 space-y-3">
+          <div className="flex items-center justify-between rounded-lg bg-ink-900/[0.03] px-4 py-2.5 text-sm">
+            <span className="text-ink-700">Live at</span>
+            <span className="font-mono text-xs text-liquid-600">
+              invest.{iss.portal.slug}.com
+            </span>
+          </div>
+          <div className="flex gap-2">
+            <Link to={`/portal/${iss.id}`} className="btn-primary flex-1">
+              <Icon.external width={15} height={15} /> View investor portal
+            </Link>
+            <Link to={`/issuance/${iss.id}/portal`} className="btn-outline">
+              Edit
+            </Link>
+          </div>
+        </div>
+      ) : (
+        <Link to={`/issuance/${iss.id}/portal`} className="btn-primary mt-4 w-full">
+          <Icon.spark width={16} height={16} /> Set up your placement portal
+        </Link>
+      )}
+    </div>
+  )
+}
+
 export default function IssuanceDetail() {
   const { id } = useParams()
-  const { issuances } = useStore()
-  const iss = issuances.find((i) => i.id === id)
+  const { isLoggedIn, issuances, updateIssuance } = useStore()
 
+  if (!isLoggedIn) return <SignInGate />
+
+  const iss = issuances.find((i) => i.id === id)
   if (!iss) {
     return (
       <section className="container-x py-24 text-center">
@@ -31,6 +179,13 @@ export default function IssuanceDetail() {
 
   const s = getStructure(iss.structureId)
   const Ic = StructureIcon[s?.icon] || Icon.layers
+  const live = iss.status === 'live'
+
+  const advance = (status) => {
+    const patch = { status }
+    if (status === 'live') patch.liveAt = new Date().toISOString()
+    updateIssuance(iss.id, patch)
+  }
 
   const openJ = JURISDICTIONS.filter((j) => iss.policy?.[j.code] === 'open')
   const restrictedJ = JURISDICTIONS.filter((j) => iss.policy?.[j.code] === 'restricted')
@@ -62,132 +217,149 @@ export default function IssuanceDetail() {
               </h1>
               <span className="font-mono text-sm text-ink-700/60">{iss.ticker}</span>
             </div>
-            <div className="mt-1 text-sm text-ink-700/80">{s?.name}</div>
+            <div className="mt-1 text-sm text-ink-700/80">
+              {s?.name} · {iss.principal?.name}
+            </div>
           </div>
         </div>
-        <Badge color="emerald">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Live on Liquid
+        <Badge color={STATUS[iss.status]?.color}>
+          {live && <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />}
+          {STATUS[iss.status]?.label}
         </Badge>
       </div>
 
-      <DemoNote className="mt-6">
-        This issuance was deployed in the demo. The asset id, transactions, and cap table
-        below are illustrative — nothing was broadcast to a live network.
-      </DemoNote>
-
       <div className="mt-8 grid gap-6 lg:grid-cols-3">
-        {/* Asset card */}
-        <div className="card p-6 lg:col-span-2">
-          <h2 className="font-bold text-ink-900">Asset</h2>
-          <dl className="mt-4 divide-y divide-ink-900/10 text-sm">
-            {[
-              ['Network', 'Bitcoin · Liquid Network'],
-              ['Issuance layer', 'Blockstream AMP · Transfer-Restricted'],
-              ['Asset id', <Truncate key="a" value={iss.assetId} />],
-              ['Issuance txid', <Truncate key="t" value={iss.txid} />],
-              ['Target raise', iss.raise || '—'],
-              ['Offering type', iss.isPublic ? 'Public offering' : 'Private placement'],
-            ].map(([k, v]) => (
-              <div key={k} className="flex items-center justify-between py-3">
-                <dt className="text-ink-700/70">{k}</dt>
-                <dd className="font-medium text-ink-900">{v}</dd>
-              </div>
-            ))}
-          </dl>
+        {/* left: lifecycle + portal */}
+        <div className="space-y-6">
+          <Timeline iss={iss} onAdvance={advance} />
+          <PortalCard iss={iss} />
         </div>
 
-        {/* Transfer agent actions */}
-        <div className="card p-6">
-          <h2 className="font-bold text-ink-900">Transfer Agent</h2>
-          <p className="mt-1 text-sm text-ink-700/70">
-            The blockchain is the official Registry of Members.
-          </p>
-          <div className="mt-4 space-y-2">
-            {[
-              [Icon.coins, 'Schedule distribution'],
-              [Icon.exchange, 'Process corporate action'],
-              [Icon.doc, 'Export holder statements'],
-            ].map(([I, label]) => (
-              <button
-                key={label}
-                className="flex w-full items-center gap-3 rounded-lg border border-ink-900/10 px-3 py-2.5 text-left text-sm font-medium text-ink-800 hover:bg-ink-900/[0.02]"
-              >
-                <I width={18} height={18} className="text-ink-600" />
-                {label}
-                <Icon.arrowRight width={15} height={15} className="ml-auto text-ink-500" />
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Cap table + policy */}
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <div className="card overflow-hidden">
-          <div className="flex items-center justify-between border-b border-ink-900/10 px-6 py-4">
-            <h2 className="font-bold text-ink-900">Registry of Members</h2>
-            <span className="text-xs text-ink-700/60">snapshot</span>
-          </div>
-          <div className="divide-y divide-ink-900/10">
-            {[
-              ['Treasury (issuer wallet)', 'HN', '72.0%'],
-              ['Investor — GAID ····8f2a', 'AE', '12.5%'],
-              ['Investor — GAID ····1b03', 'SV', '9.5%'],
-              ['Investor — GAID ····d77c', 'CH', '6.0%'],
-            ].map(([who, jur, pct]) => (
-              <div key={who} className="flex items-center justify-between px-6 py-3.5">
-                <div className="flex items-center gap-3">
-                  <span className="font-medium text-ink-900">{who}</span>
-                  <Badge color="slate">{jur}</Badge>
+        {/* right: asset + servicing */}
+        <div className="space-y-6 lg:col-span-2">
+          <div className="card p-6">
+            <h2 className="font-bold text-ink-900">Asset</h2>
+            {!live && (
+              <DemoNote className="mt-3">
+                The AMP asset is deployed once incorporation and RFSA filing complete.
+                Asset identifiers appear here when the issuance goes live.
+              </DemoNote>
+            )}
+            <dl className="mt-4 divide-y divide-ink-900/10 text-sm">
+              {[
+                ['Network', 'Bitcoin · Liquid Network'],
+                ['Issuance layer', 'Blockstream AMP · Transfer-Restricted'],
+                ['Asset id', live ? <Truncate key="a" value={iss.assetId} /> : 'pending'],
+                ['Issuance txid', live ? <Truncate key="t" value={iss.txid} /> : 'pending'],
+                ['Initial mint to', iss.mintTarget],
+                ['Target raise', iss.raise || '—'],
+                ['Offering type', iss.isPublic ? 'Public offering' : 'Private placement'],
+              ].map(([k, v]) => (
+                <div key={k} className="flex items-center justify-between py-3">
+                  <dt className="text-ink-700/70">{k}</dt>
+                  <dd className="font-medium text-ink-900">{v}</dd>
                 </div>
-                <span className="font-mono text-sm text-ink-800">{pct}</span>
-              </div>
-            ))}
+              ))}
+            </dl>
           </div>
-        </div>
 
-        <div className="card overflow-hidden">
-          <div className="border-b border-ink-900/10 px-6 py-4">
-            <h2 className="font-bold text-ink-900">Compliance policy</h2>
-          </div>
-          <div className="space-y-4 px-6 py-5 text-sm">
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-wide text-ink-700/60">
-                Open jurisdictions
+          {live && (
+            <>
+              <div className="card p-6">
+                <h2 className="font-bold text-ink-900">Transfer Agent</h2>
+                <p className="mt-1 text-sm text-ink-700/70">
+                  The blockchain is the official Registry of Members.
+                </p>
+                <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                  {[
+                    [Icon.coins, 'Schedule distribution'],
+                    [Icon.exchange, 'Corporate action'],
+                    [Icon.doc, 'Holder statements'],
+                  ].map(([I, label]) => (
+                    <button
+                      key={label}
+                      className="flex items-center gap-2.5 rounded-lg border border-ink-900/10 px-3 py-2.5 text-left text-sm font-medium text-ink-800 hover:bg-ink-900/[0.02]"
+                    >
+                      <I width={18} height={18} className="text-ink-600" />
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {openJ.length ? (
-                  openJ.map((j) => (
-                    <Badge key={j.code} color="emerald">
-                      {j.code}
-                    </Badge>
-                  ))
-                ) : (
-                  <span className="text-ink-700/60">None</span>
-                )}
+
+              <div className="grid gap-6 sm:grid-cols-2">
+                <div className="card overflow-hidden">
+                  <div className="flex items-center justify-between border-b border-ink-900/10 px-5 py-3.5">
+                    <h2 className="font-bold text-ink-900">Registry of Members</h2>
+                    <span className="text-xs text-ink-700/60">snapshot</span>
+                  </div>
+                  <div className="divide-y divide-ink-900/10">
+                    {[
+                      ['Treasury (issuer wallet)', 'HN', '72.0%'],
+                      ['GAID ····8f2a', 'AE', '12.5%'],
+                      ['GAID ····1b03', 'SV', '9.5%'],
+                      ['GAID ····d77c', 'CH', '6.0%'],
+                    ].map(([who, jur, pct]) => (
+                      <div
+                        key={who}
+                        className="flex items-center justify-between px-5 py-3"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-ink-900">{who}</span>
+                          <Badge color="slate">{jur}</Badge>
+                        </div>
+                        <span className="font-mono text-sm text-ink-800">{pct}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="card overflow-hidden">
+                  <div className="border-b border-ink-900/10 px-5 py-3.5">
+                    <h2 className="font-bold text-ink-900">Compliance policy</h2>
+                  </div>
+                  <div className="space-y-4 px-5 py-4 text-sm">
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-wide text-ink-700/60">
+                        Open jurisdictions
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {openJ.length ? (
+                          openJ.map((j) => (
+                            <Badge key={j.code} color="emerald">
+                              {j.code}
+                            </Badge>
+                          ))
+                        ) : (
+                          <span className="text-ink-700/60">None</span>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-wide text-ink-700/60">
+                        Qualified / accredited only
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {restrictedJ.length ? (
+                          restrictedJ.map((j) => (
+                            <Badge key={j.code} color="amber">
+                              {j.code}
+                            </Badge>
+                          ))
+                        ) : (
+                          <span className="text-ink-700/60">None</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="rounded-lg bg-ink-900/[0.03] px-3 py-2.5 text-xs text-ink-700/80">
+                      Mandatory floors enforced on every transfer: SeqPal ID verification,
+                      sanctions screening, and OFAC/FATF-aligned blocks.
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-wide text-ink-700/60">
-                Qualified / accredited only
-              </div>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {restrictedJ.length ? (
-                  restrictedJ.map((j) => (
-                    <Badge key={j.code} color="amber">
-                      {j.code}
-                    </Badge>
-                  ))
-                ) : (
-                  <span className="text-ink-700/60">None</span>
-                )}
-              </div>
-            </div>
-            <div className="rounded-lg bg-ink-900/[0.03] px-3 py-2.5 text-xs text-ink-700/80">
-              Mandatory floors enforced on every transfer: SeqPal ID verification,
-              sanctions screening, and OFAC/FATF-aligned blocks.
-            </div>
-          </div>
+            </>
+          )}
         </div>
       </div>
     </section>

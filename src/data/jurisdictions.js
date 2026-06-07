@@ -34,3 +34,16 @@ export const JURISDICTIONS = [
   { code: 'SY', name: 'Syria', tier: 'blocked', basis: 'OFAC / FATF' },
   { code: 'CU', name: 'Cuba', tier: 'blocked', basis: 'OFAC / FATF' },
 ]
+
+// Jurisdiction options offered at SeqPal ID registration, with the qualified-
+// investor basis SeqPal applies for that residence.
+export const RESIDENCE_OPTIONS = [
+  { code: 'US', name: 'United States', accreditationLabel: 'Accredited investor — Reg D Rule 501' },
+  { code: 'GB', name: 'United Kingdom', accreditationLabel: 'High-net-worth / sophisticated — FSMA s.86' },
+  { code: 'EU', name: 'European Union', accreditationLabel: 'Professional / qualified investor — MiFID II' },
+  { code: 'CH', name: 'Switzerland', accreditationLabel: 'Professional client — FinSA' },
+  { code: 'SG', name: 'Singapore', accreditationLabel: 'Accredited investor — SFA' },
+  { code: 'AE', name: 'United Arab Emirates', accreditationLabel: 'Self-certified qualified investor' },
+  { code: 'SV', name: 'El Salvador', accreditationLabel: 'Self-certified qualified investor' },
+  { code: 'BR', name: 'Brazil', accreditationLabel: 'Self-certified qualified investor' },
+]

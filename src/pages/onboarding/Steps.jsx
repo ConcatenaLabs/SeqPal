@@ -2,10 +2,23 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Icon, StructureIcon } from '../../components/icons'
 import { Badge, DemoNote } from '../../components/ui'
-import { useStore, fakeAssetId, fakeTxid } from '../../lib/store'
+import {
+  useStore,
+  fakeAssetId,
+  fakeTxid,
+  fakeIdNumber,
+  addBusinessDays,
+} from '../../lib/store'
 import { STRUCTURES, getStructure } from '../../data/structures'
 import { JURISDICTIONS } from '../../data/jurisdictions'
 import { computeSetupCost } from '../../data/pricing'
+
+const DEPLOY_DAYS = {
+  'native-equity': 3,
+  'equity-spv': 5,
+  'debt-yield': 6,
+  'depository-receipt': 9,
+}
 
 function StepHeader({ n, title, sub }) {
   return (
@@ -21,111 +34,198 @@ function StepHeader({ n, title, sub }) {
   )
 }
 
-/* ───────────────────────── Step 1 — Identity & KYB ───────────────────────── */
+/* ──────────────────── Step 1 — Identity & principal ──────────────────── */
 
-export function Step1Identity({ next }) {
-  const { id, setId } = useStore()
+export function Step1Identity({ data, update }) {
+  const { account, addCorporate } = useStore()
+  const [adding, setAdding] = useState(false)
+  const [form, setForm] = useState({ entity: '', jurisdiction: 'United Arab Emirates' })
   const [verifying, setVerifying] = useState(false)
 
-  const verify = () => {
+  const selectIndividual = () =>
+    update({
+      principal: {
+        type: 'individual',
+        name: account.individual.name,
+        idNumber: account.individual.idNumber,
+      },
+    })
+
+  const selectCorporate = (c) =>
+    update({
+      principal: { type: 'corporate', name: c.entity, idNumber: c.idNumber, corpId: c.id },
+    })
+
+  const addEntity = (e) => {
+    e.preventDefault()
     setVerifying(true)
     setTimeout(() => {
-      setId({
-        entity: 'Acme Holdings Ltd',
-        jurisdiction: 'United Arab Emirates',
-        idNumber:
-          'SQID-' +
-          Math.random().toString(36).slice(2, 8).toUpperCase() +
-          '-' +
-          Math.random().toString(36).slice(2, 6).toUpperCase(),
+      const corp = {
+        id: 'corp_' + Math.random().toString(36).slice(2, 9),
+        entity: form.entity || 'Acme Holdings Ltd',
+        jurisdiction: form.jurisdiction,
+        idNumber: fakeIdNumber('SQID-C'),
         verifiedAt: new Date().toISOString(),
-      })
+      }
+      addCorporate(corp)
+      selectCorporate(corp)
       setVerifying(false)
-    }, 1400)
+      setAdding(false)
+    }, 1300)
   }
+
+  const isSel = (pred) => data.principal && pred(data.principal)
 
   return (
     <div>
       <StepHeader
         n={1}
-        title="Identity & KYB check"
-        sub="Issuing on SeqPal starts with a verified corporate SeqPal ID. Submit your entity details, UBO and director documents, and the relevant W-8/W-9 forms — then you’re admitted to the flow."
+        title="Who is issuing?"
+        sub="Every issuance has a principal — the party legally responsible for the offering. SeqPal acts only as enforcement agent for the configuration the principal signs off on."
       />
 
-      {id ? (
-        <div className="card p-7">
-          <div className="flex items-center gap-3">
-            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
-              <Icon.check width={24} height={24} />
+      <div className="space-y-3">
+        {/* Individual */}
+        <button
+          onClick={selectIndividual}
+          className={`card flex w-full items-start gap-4 p-5 text-left transition-all ${
+            isSel((p) => p.type === 'individual')
+              ? 'ring-2 ring-btc shadow-glow'
+              : 'hover:shadow-card'
+          }`}
+        >
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-btc-50 text-btc-600">
+            <Icon.users width={22} height={22} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-2">
+              <span className="font-bold text-ink-900">Issue as myself</span>
+              <span className="font-mono text-xs text-ink-700/60">
+                {account.individual.name}
+              </span>
             </span>
-            <div>
-              <div className="font-bold text-ink-900">{id.entity}</div>
-              <div className="text-sm text-ink-700/70">
-                Corporate SeqPal ID verified · {id.idNumber}
-              </div>
-            </div>
-            <Badge color="emerald" className="ml-auto">
-              Verified
-            </Badge>
-          </div>
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            {[
-              'Document verification & liveness',
-              'Sanctions screening (OFAC, EU, UN, UK HMT, PEP)',
-              'AML risk scoring',
-              'Cryptographically linked UBO IDs',
-            ].map((t) => (
-              <div key={t} className="flex items-center gap-2 text-sm text-ink-800">
-                <Icon.check width={15} height={15} className="text-btc-600" />
-                {t}
-              </div>
-            ))}
-          </div>
-          <p className="mt-5 text-sm text-ink-700/70">
-            You’re verified — continue to choose an issuance structure.
-          </p>
-        </div>
-      ) : (
-        <div className="card p-7">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="label">Legal entity name</label>
-              <input className="input" defaultValue="Acme Holdings Ltd" />
-            </div>
-            <div>
-              <label className="label">Jurisdiction of formation</label>
-              <input className="input" defaultValue="United Arab Emirates" />
-            </div>
-          </div>
-          <div className="mt-4 rounded-xl border border-dashed border-ink-900/20 p-6 text-center">
-            <Icon.upload width={24} height={24} className="mx-auto text-ink-600" />
-            <p className="mt-2 text-sm font-medium text-ink-800">
-              UBO & director passports, proof-of-address, W-8/W-9
-            </p>
-            <p className="mt-1 text-xs text-ink-700/60">
-              Document upload and KYC verification are mocked in this demo
-            </p>
-          </div>
-          <DemoNote className="mt-5">
-            The real platform runs document verification, liveness, and sanctions
-            screening through a KYC vendor. Here we simulate an instant pass. The $150
-            corporate ID fee is not charged.
-          </DemoNote>
-          <button onClick={verify} disabled={verifying} className="btn-primary mt-5 w-full">
-            {verifying ? (
-              <>
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                Running verification…
-              </>
-            ) : (
-              <>
-                Simulate KYB verification
-                <Icon.arrowRight width={16} height={16} />
-              </>
+            <span className="mt-1 block text-sm text-ink-700/80">
+              For forming a brand-new Próspera LLC. You become the founder of the new
+              entity — the LLC itself is the business.
+            </span>
+            <span className="mt-2 inline-block">
+              <Badge color="btc">Native Equity only</Badge>
+            </span>
+          </span>
+          {isSel((p) => p.type === 'individual') && (
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-btc text-white">
+              <Icon.check width={14} height={14} />
+            </span>
+          )}
+        </button>
+
+        {/* Corporates */}
+        {account.corporates.map((c) => (
+          <button
+            key={c.id}
+            onClick={() => selectCorporate(c)}
+            className={`card flex w-full items-start gap-4 p-5 text-left transition-all ${
+              isSel((p) => p.corpId === c.id)
+                ? 'ring-2 ring-liquid shadow-glow'
+                : 'hover:shadow-card'
+            }`}
+          >
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-liquid/10 text-liquid-600">
+              <Icon.building width={22} height={22} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center gap-2">
+                <span className="font-bold text-ink-900">{c.entity}</span>
+                <span className="font-mono text-xs text-ink-700/60">{c.idNumber}</span>
+              </span>
+              <span className="mt-1 block text-sm text-ink-700/80">
+                Issue on behalf of this verified entity (KYB). Unlocks all four structures.
+              </span>
+              <span className="mt-2 inline-block">
+                <Badge color="emerald">
+                  <Icon.check width={12} height={12} /> KYB verified
+                </Badge>
+              </span>
+            </span>
+            {isSel((p) => p.corpId === c.id) && (
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-liquid text-white">
+                <Icon.check width={14} height={14} />
+              </span>
             )}
           </button>
-        </div>
-      )}
+        ))}
+
+        {/* Add corporate */}
+        {adding ? (
+          <form onSubmit={addEntity} className="card p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <span className="text-sm font-semibold text-ink-900">
+                Add a corporate SeqPal ID (KYB)
+              </span>
+              <button
+                type="button"
+                onClick={() => setAdding(false)}
+                className="text-ink-600 hover:text-ink-900"
+              >
+                <Icon.close width={18} height={18} />
+              </button>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="label">Legal entity name</label>
+                <input
+                  className="input"
+                  placeholder="Acme Holdings Ltd"
+                  value={form.entity}
+                  onChange={(e) => setForm({ ...form, entity: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="label">Jurisdiction of formation</label>
+                <select
+                  className="select"
+                  value={form.jurisdiction}
+                  onChange={(e) => setForm({ ...form, jurisdiction: e.target.value })}
+                >
+                  {[
+                    'United Arab Emirates',
+                    'Switzerland',
+                    'Singapore',
+                    'Cayman Islands',
+                    'United States',
+                    'El Salvador',
+                  ].map((j) => (
+                    <option key={j}>{j}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <DemoNote className="mt-4">
+              KYB verification is mocked. The $150 corporate ID fee is not charged.
+            </DemoNote>
+            <button disabled={verifying} className="btn-primary mt-4 w-full">
+              {verifying ? (
+                <>
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                  Running KYB verification…
+                </>
+              ) : (
+                <>
+                  Verify & select entity
+                  <Icon.arrowRight width={16} height={16} />
+                </>
+              )}
+            </button>
+          </form>
+        ) : (
+          <button
+            onClick={() => setAdding(true)}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-ink-900/20 py-4 text-sm font-semibold text-ink-700 hover:border-ink-900/40 hover:bg-ink-900/[0.02]"
+          >
+            <Icon.spark width={16} height={16} /> Add a corporate entity (KYB)
+          </button>
+        )}
+      </div>
     </div>
   )
 }
@@ -133,6 +233,18 @@ export function Step1Identity({ next }) {
 /* ─────────────────────── Step 2 — Architecture Routing ─────────────────────── */
 
 export function Step2Structure({ data, update }) {
+  const isCorp = data.principal?.type === 'corporate'
+
+  // If the selected structure became invalid (e.g. principal switched to
+  // individual), clear it.
+  useEffect(() => {
+    if (data.structureId) {
+      const s = getStructure(data.structureId)
+      if (s?.requiresKyb && !isCorp) update({ structureId: null })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCorp])
+
   return (
     <div>
       <StepHeader
@@ -143,25 +255,31 @@ export function Step2Structure({ data, update }) {
       <div className="grid gap-4 sm:grid-cols-2">
         {STRUCTURES.map((s) => {
           const Ic = StructureIcon[s.icon]
+          const locked = s.requiresKyb && !isCorp
           const selected = data.structureId === s.id
           return (
             <button
               key={s.id}
+              disabled={locked}
               onClick={() =>
-                update({
-                  structureId: s.id,
-                  isPublic: s.id === 'depository-receipt',
-                })
+                update({ structureId: s.id, isPublic: s.id === 'depository-receipt' })
               }
               className={`card relative p-6 text-left transition-all ${
-                selected
-                  ? 'ring-2 ring-btc shadow-glow'
-                  : 'hover:-translate-y-0.5 hover:shadow-card'
+                locked
+                  ? 'cursor-not-allowed opacity-55'
+                  : selected
+                    ? 'ring-2 ring-btc shadow-glow'
+                    : 'hover:-translate-y-0.5 hover:shadow-card'
               }`}
             >
               {selected && (
                 <span className="absolute right-4 top-4 flex h-6 w-6 items-center justify-center rounded-full bg-btc text-white">
                   <Icon.check width={14} height={14} />
+                </span>
+              )}
+              {locked && (
+                <span className="absolute right-4 top-4 text-ink-500">
+                  <Icon.lock width={18} height={18} />
                 </span>
               )}
               <div
@@ -175,14 +293,20 @@ export function Step2Structure({ data, update }) {
               </div>
               <h3 className="mt-4 font-bold text-ink-900">{s.name}</h3>
               <p className="mt-1.5 text-sm leading-relaxed text-ink-700/90">{s.claim}</p>
-              <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-700/70">
-                <span className="inline-flex items-center gap-1">
-                  <Icon.tag width={13} height={13} /> from {s.setup.label}
-                </span>
-                <span className="inline-flex items-center gap-1">
-                  <Icon.clock width={13} height={13} /> {s.timeToDeploy}
-                </span>
-              </div>
+              {locked ? (
+                <p className="mt-3 text-xs font-medium text-ink-600">
+                  Requires a corporate (KYB) principal — switch in step 1.
+                </p>
+              ) : (
+                <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-700/70">
+                  <span className="inline-flex items-center gap-1">
+                    <Icon.tag width={13} height={13} /> from {s.setup.label}
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <Icon.clock width={13} height={13} /> {s.timeToDeploy}
+                  </span>
+                </div>
+              )}
             </button>
           )
         })}
@@ -276,7 +400,6 @@ function DynamicField({ cfg, value, onChange }) {
   return (
     <input
       className="input"
-      type={cfg.type === 'number' ? 'text' : 'text'}
       placeholder={cfg.placeholder}
       value={value || ''}
       onChange={(e) => onChange(e.target.value)}
@@ -304,7 +427,6 @@ export function Step3DataRoom({ data, update }) {
         sub={`Enter the parameters for your ${s?.name} issuance. These feed directly into the templated paperwork generated in the next step.`}
       />
 
-      {/* offering type */}
       <div className="card mb-5 p-5">
         <div className="text-sm font-semibold text-ink-900">Offering type</div>
         <p className="mt-1 text-sm text-ink-700/70">
@@ -376,7 +498,7 @@ const DOC_PACKAGE = (structureId, isPublic) => {
 }
 
 export function Step4Documents({ data, update }) {
-  const [phase, setPhase] = useState(data.docsSigned ? 'signed' : 'idle') // idle | generating | ready | signed
+  const [phase, setPhase] = useState(data.docsSigned ? 'signed' : 'idle')
   const docs = DOC_PACKAGE(data.structureId, data.isPublic)
 
   const generate = () => {
@@ -418,9 +540,7 @@ export function Step4Documents({ data, update }) {
         <div className="card p-8 text-center">
           <span className="mx-auto block h-10 w-10 animate-spin rounded-full border-4 border-btc/20 border-t-btc" />
           <h3 className="mt-5 font-bold text-ink-900">Drafting your documents…</h3>
-          <p className="mt-1 text-sm text-ink-700/70">
-            Mapping inputs to clause templates
-          </p>
+          <p className="mt-1 text-sm text-ink-700/70">Mapping inputs to clause templates</p>
         </div>
       )}
 
@@ -482,20 +602,18 @@ function defaultPolicy() {
 }
 
 export function Step5Compliance({ data, update }) {
-  // initialise policy once
   useEffect(() => {
     if (!data.policy) update({ policy: defaultPolicy() })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const policy = data.policy || defaultPolicy()
-
   const setTier = (code, tier) => update({ policy: { ...policy, [code]: tier } })
 
   const optionsFor = (j) => {
     if (j.tier === 'blocked') return ['blocked']
     if (j.tier === 'restricted') return ['restricted', 'excluded']
-    return ['open', 'restricted', 'excluded'] // suggested-open can be tightened
+    return ['open', 'restricted', 'excluded']
   }
 
   const tierStyle = {
@@ -620,99 +738,110 @@ export function Step5Compliance({ data, update }) {
 
 /* ──────────────────── Step 6 — Checkout & Deployment ──────────────────── */
 
-const DEPLOY_STEPS = [
-  'Registering entity on the Próspera e-registry',
-  'Filing offering documents with the RFSA',
-  'Deploying Transfer-Restricted asset via Blockstream AMP',
-  'Minting initial supply & activating the Transfer Agent',
-]
-
 export function Step6Checkout({ data, onDeployed }) {
   const { addIssuance } = useStore()
   const s = getStructure(data.structureId)
   const cost = computeSetupCost(data.structureId, data.isPublic)
-  const [phase, setPhase] = useState('summary') // summary | deploying | done
-  const [progress, setProgress] = useState(0)
+  const [phase, setPhase] = useState('summary') // summary | processing | submitted
+  const [eta, setEta] = useState(null)
+  const [issuanceId, setIssuanceId] = useState(null)
 
-  const deploy = () => {
-    setPhase('deploying')
-    let i = 0
-    const tick = () => {
-      i += 1
-      setProgress(i)
-      if (i < DEPLOY_STEPS.length) {
-        setTimeout(tick, 900)
-      } else {
-        const issuance = {
-          id: 'iss_' + Math.random().toString(36).slice(2, 9),
-          name: data.name,
-          ticker: data.ticker,
-          structureId: data.structureId,
-          isPublic: data.isPublic,
-          raise: data.raise,
-          policy: data.policy,
-          assetId: fakeAssetId(),
-          txid: fakeTxid(),
-          status: 'deployed',
-          createdAt: new Date().toISOString(),
-        }
-        setTimeout(() => {
-          addIssuance(issuance)
-          setPhase('done')
-          setTimeout(() => onDeployed(issuance.id), 1100)
-        }, 700)
+  const isRaise = data.structureId !== 'depository-receipt'
+  // Private placements mint to the escrow address; DRs / public equity to the issuer wallet.
+  const mintTarget =
+    isRaise && !data.isPublic ? 'placement-portal escrow address' : 'issuer wallet'
+
+  const pay = () => {
+    setPhase('processing')
+    setTimeout(() => {
+      const created = new Date()
+      const etaDate = addBusinessDays(created, DEPLOY_DAYS[data.structureId] || 3)
+      const issuance = {
+        id: 'iss_' + Math.random().toString(36).slice(2, 9),
+        name: data.name,
+        ticker: data.ticker,
+        structureId: data.structureId,
+        principal: data.principal,
+        isPublic: data.isPublic,
+        raise: data.raise,
+        policy: data.policy,
+        mintTarget,
+        assetId: fakeAssetId(),
+        txid: fakeTxid(),
+        status: 'awaiting_incorporation',
+        createdAt: created.toISOString(),
+        incorporationEta: etaDate.toISOString(),
+        portal: { configured: false, published: false },
       }
-    }
-    setTimeout(tick, 900)
+      addIssuance(issuance)
+      setIssuanceId(issuance.id)
+      setEta(etaDate)
+      setPhase('submitted')
+    }, 1600)
   }
 
-  if (phase === 'deploying' || phase === 'done') {
+  if (phase === 'processing') {
     return (
       <div>
-        <StepHeader n={6} title="Deploying your issuance" />
+        <StepHeader n={6} title="Processing payment" />
+        <div className="card p-10 text-center">
+          <span className="mx-auto block h-10 w-10 animate-spin rounded-full border-4 border-btc/20 border-t-btc" />
+          <p className="mt-5 font-medium text-ink-900">Confirming your setup-fee payment…</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (phase === 'submitted') {
+    return (
+      <div>
+        <StepHeader n={6} title="Submitted for incorporation" />
         <div className="card p-8">
-          <div className="space-y-4">
-            {DEPLOY_STEPS.map((label, i) => {
-              const state = i < progress ? 'done' : i === progress ? 'active' : 'todo'
-              return (
-                <div key={label} className="flex items-center gap-3">
-                  <span
-                    className={`flex h-7 w-7 items-center justify-center rounded-full ${
-                      state === 'done'
-                        ? 'bg-emerald-500 text-white'
-                        : state === 'active'
-                          ? 'bg-btc text-white'
-                          : 'bg-ink-900/10 text-ink-600'
-                    }`}
-                  >
-                    {state === 'done' ? (
-                      <Icon.check width={15} height={15} />
-                    ) : state === 'active' ? (
-                      <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                    ) : (
-                      <span className="text-xs font-bold">{i + 1}</span>
-                    )}
-                  </span>
-                  <span
-                    className={`text-sm ${
-                      state === 'todo' ? 'text-ink-600' : 'font-medium text-ink-900'
-                    }`}
-                  >
-                    {label}
-                  </span>
-                </div>
-              )
-            })}
-          </div>
-          {phase === 'done' && (
-            <div className="mt-7 rounded-xl bg-emerald-50 p-5 text-center">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500 text-white">
-                <Icon.check width={26} height={26} />
-              </div>
-              <h3 className="mt-3 font-bold text-ink-900">{data.name} is live</h3>
-              <p className="mt-1 text-sm text-ink-700/80">Taking you to your issuance…</p>
+          <div className="flex items-center gap-4">
+            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500 text-white">
+              <Icon.check width={26} height={26} />
+            </span>
+            <div>
+              <h3 className="font-bold text-ink-900">Payment received</h3>
+              <p className="text-sm text-ink-700/80">
+                Your signed documents have been submitted and your Próspera LLC is being
+                incorporated.
+              </p>
             </div>
-          )}
+          </div>
+
+          <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4">
+            <div className="flex items-center gap-2 text-sm font-semibold text-amber-800">
+              <Icon.clock width={16} height={16} />
+              Próspera incorporation in progress
+            </div>
+            <p className="mt-1 text-sm text-amber-800/90">
+              Entity registration on the Próspera e-registry typically takes 1–3 business
+              days. Estimated completion:{' '}
+              <span className="font-semibold">
+                {eta?.toLocaleDateString(undefined, {
+                  weekday: 'short',
+                  month: 'short',
+                  day: 'numeric',
+                })}
+              </span>
+              . We’ll then file with the RFSA (where applicable), deploy the AMP asset, and
+              mint the initial supply to the {mintTarget}.
+            </p>
+          </div>
+
+          <DemoNote className="mt-5">
+            In the demo you can fast-forward incorporation and deployment from the
+            issuance page.
+          </DemoNote>
+
+          <button
+            onClick={() => onDeployed(issuanceId)}
+            className="btn-primary mt-6 w-full"
+          >
+            Go to my issuance
+            <Icon.arrowRight width={16} height={16} />
+          </button>
         </div>
       </div>
     )
@@ -723,21 +852,21 @@ export function Step6Checkout({ data, onDeployed }) {
       <StepHeader
         n={6}
         title="Checkout & deployment"
-        sub="Review the final summary, pay the fixed setup fee, and deploy. SeqPal then registers the entity, files with the RFSA where applicable, and deploys the AMP asset."
+        sub="Review the final summary and pay the fixed setup fee. SeqPal then registers the entity on the Próspera e-registry, files with the RFSA where applicable, and deploys the AMP asset."
       />
 
       <div className="grid gap-5 lg:grid-cols-5">
-        {/* Summary */}
         <div className="card p-6 lg:col-span-3">
           <h3 className="font-bold text-ink-900">Summary</h3>
           <dl className="mt-4 divide-y divide-ink-900/10 text-sm">
             {[
-              ['Issuer', 'Acme Holdings Ltd'],
+              ['Principal', data.principal?.name],
               ['Structure', s?.name],
               ['Asset name', data.name || '—'],
               ['Ticker', data.ticker || '—'],
               ['Offering type', data.isPublic ? 'Public offering' : 'Private placement'],
               ['Target raise', data.raise || '—'],
+              ['Initial mint to', mintTarget],
               ['Network', 'Liquid · Blockstream AMP'],
             ].map(([k, v]) => (
               <div key={k} className="flex items-center justify-between py-2.5">
@@ -748,7 +877,6 @@ export function Step6Checkout({ data, onDeployed }) {
           </dl>
         </div>
 
-        {/* Cost */}
         <div className="card p-6 lg:col-span-2">
           <h3 className="font-bold text-ink-900">Cost breakdown</h3>
           <dl className="mt-4 space-y-2.5 text-sm">
@@ -759,9 +887,7 @@ export function Step6Checkout({ data, onDeployed }) {
             {cost.surcharge > 0 && (
               <div className="flex justify-between">
                 <dt className="text-ink-700/80">Public-offering surcharge</dt>
-                <dd className="font-mono font-medium">
-                  ${cost.surcharge.toLocaleString()}
-                </dd>
+                <dd className="font-mono font-medium">${cost.surcharge.toLocaleString()}</dd>
               </div>
             )}
             <div className="flex justify-between border-t border-ink-900/10 pt-2.5 text-base">
@@ -775,12 +901,10 @@ export function Step6Checkout({ data, onDeployed }) {
             <p>+ ${s?.annual.toLocaleString()}/yr support, billed after launch.</p>
             <p>+ Platform Services Fee (3% cap, $10K floor) on capital raised.</p>
           </div>
-          <DemoNote className="mt-5">
-            Payment is mocked — no card or stablecoin is charged.
-          </DemoNote>
-          <button onClick={deploy} className="btn-primary mt-5 w-full">
+          <DemoNote className="mt-5">Payment is mocked — nothing is charged.</DemoNote>
+          <button onClick={pay} className="btn-primary mt-5 w-full">
             <Icon.bolt width={16} height={16} />
-            Pay ${cost.total.toLocaleString()} & deploy
+            Pay ${cost.total.toLocaleString()} & submit
           </button>
           <Link
             to="/pricing"

@@ -1,21 +1,35 @@
 import { Link } from 'react-router-dom'
 import { Icon, StructureIcon } from '../components/icons'
 import { Badge } from '../components/ui'
+import SignInGate from '../components/SignInGate'
 import { useStore } from '../lib/store'
 import { getStructure } from '../data/structures'
+import { STATUS } from '../lib/lifecycle'
 
 function StatusBadge({ status }) {
-  if (status === 'deployed')
-    return (
-      <Badge color="emerald">
-        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Live
-      </Badge>
-    )
-  return <Badge color="amber">Draft</Badge>
+  const s = STATUS[status]
+  if (!s) return <Badge color="amber">Draft</Badge>
+  return (
+    <Badge color={s.color}>
+      {status === 'live' && <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />}
+      {s.label}
+    </Badge>
+  )
 }
 
 export default function Dashboard() {
-  const { id, issuances, reset } = useStore()
+  const { account, isLoggedIn, issuances, reset } = useStore()
+
+  if (!isLoggedIn) {
+    return (
+      <SignInGate
+        title="Sign in to your issuer dashboard"
+        body="The dashboard requires a verified SeqPal ID. It’s your login and your identity passport across the platform."
+      />
+    )
+  }
+
+  const liveCount = issuances.filter((i) => i.status === 'live').length
 
   return (
     <section className="container-x py-12">
@@ -25,15 +39,9 @@ export default function Dashboard() {
             Issuer Dashboard
           </h1>
           <p className="mt-1 text-ink-700/80">
-            {id ? (
-              <>
-                Signed in as{' '}
-                <span className="font-semibold text-ink-900">{id.entity}</span> ·{' '}
-                <span className="font-mono text-sm">{id.idNumber}</span>
-              </>
-            ) : (
-              'Create a SeqPal ID to begin issuing.'
-            )}
+            Signed in as{' '}
+            <span className="font-semibold text-ink-900">{account.individual.name}</span> ·{' '}
+            <span className="font-mono text-sm">{account.individual.idNumber}</span>
           </p>
         </div>
         <div className="flex gap-2">
@@ -49,28 +57,20 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ID status */}
+      {/* Account summary */}
       <div className="mt-8 grid gap-4 sm:grid-cols-3">
-        <div className="card flex items-center gap-4 p-5">
-          <div
-            className={`flex h-11 w-11 items-center justify-center rounded-xl ${
-              id ? 'bg-emerald-50 text-emerald-600' : 'bg-ink-900/[0.05] text-ink-600'
-            }`}
-          >
+        <Link to="/id" className="card flex items-center gap-4 p-5 hover:shadow-glow">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
             <Icon.id width={22} height={22} />
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="text-sm text-ink-700/70">SeqPal ID</div>
-            <div className="font-semibold text-ink-900">
-              {id ? 'Verified' : 'Not created'}
+            <div className="truncate font-semibold text-ink-900">
+              Verified · {account.corporates.length} corporate
             </div>
           </div>
-          {!id && (
-            <Link to="/id" className="btn-outline ml-auto px-3 py-1.5 text-xs">
-              Create
-            </Link>
-          )}
-        </div>
+          <Icon.arrowRight width={16} height={16} className="ml-auto text-ink-500" />
+        </Link>
         <div className="card flex items-center gap-4 p-5">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-btc-50 text-btc-600">
             <Icon.layers width={22} height={22} />
@@ -86,9 +86,7 @@ export default function Dashboard() {
           </div>
           <div>
             <div className="text-sm text-ink-700/70">Live on Liquid</div>
-            <div className="font-semibold text-ink-900">
-              {issuances.filter((i) => i.status === 'deployed').length}
-            </div>
+            <div className="font-semibold text-ink-900">{liveCount}</div>
           </div>
         </div>
       </div>
@@ -104,7 +102,7 @@ export default function Dashboard() {
             <h3 className="mt-5 text-lg font-bold text-ink-900">No issuances yet</h3>
             <p className="mt-2 max-w-sm text-sm text-ink-700/80">
               Start your first issuance and walk through the six-step onboarding flow —
-              from KYB to live deployment on the Liquid Network.
+              from structure choice to live deployment on the Liquid Network.
             </p>
             <Link to="/onboarding" className="btn-primary mt-6">
               Launch an issuance
@@ -133,15 +131,13 @@ export default function Dashboard() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="truncate font-bold text-ink-900">
-                        {iss.name}
-                      </span>
+                      <span className="truncate font-bold text-ink-900">{iss.name}</span>
                       <span className="font-mono text-xs text-ink-700/60">
                         {iss.ticker}
                       </span>
                     </div>
                     <div className="mt-0.5 text-sm text-ink-700/70">
-                      {s?.name} · target {iss.raise || '—'}
+                      {s?.name} · {iss.principal?.name}
                     </div>
                   </div>
                   <div className="hidden text-right sm:block">
