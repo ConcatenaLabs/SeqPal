@@ -318,18 +318,18 @@ export default function IssuanceDetail() {
                 </div>
                 <p className="mt-1.5 text-sm text-ink-700/70">
                   Because eligibility is enforced at the token-contract level, the asset
-                  can trade freely between whitelisted holders — no proprietary trading
-                  system required.
+                  moves freely between whitelisted holders without an intermediary — no
+                  proprietary trading system required.
                 </p>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <div className="rounded-lg border border-ink-900/10 bg-ink-900/[0.02] px-4 py-3">
                     <div className="flex items-center gap-2 text-sm font-semibold text-ink-900">
-                      <span className="h-2 w-2 rounded-full bg-emerald-500" /> Discoverable
-                      on SideSwap
+                      <span className="h-2 w-2 rounded-full bg-emerald-500" /> Protocol-level
+                      transferability
                     </div>
                     <p className="mt-1 text-xs text-ink-700/70">
-                      Liquid-native DEXs index every AMP asset automatically — no paid
-                      listing.
+                      Whitelisted holders can transfer peer-to-peer, and the asset can be
+                      listed on Liquid-native venues such as SideSwap with asset-level KYC.
                     </p>
                   </div>
                   <div className="rounded-lg border border-ink-900/10 bg-ink-900/[0.02] px-4 py-3">
@@ -338,11 +338,15 @@ export default function IssuanceDetail() {
                       Eligibility on every transfer
                     </div>
                     <p className="mt-1 text-xs text-ink-700/70">
-                      AMP queries SeqPal ID to approve or reject each transfer against your
-                      policy.
+                      Before Green co-signs, AMP checks the recipient against your policy via
+                      SeqPal ID — approving or rejecting each transfer.
                     </p>
                   </div>
                 </div>
+                <p className="mt-3 text-[11px] leading-relaxed text-ink-700/55">
+                  Secondary-market depth on Liquid is still thin; this describes
+                  transferability, not guaranteed trading volume.
+                </p>
               </div>
 
               {isRaise && (
