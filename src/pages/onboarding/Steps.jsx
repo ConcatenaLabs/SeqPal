@@ -438,7 +438,11 @@ export function Step3DataRoom({ data, update }) {
   const setField = (k, v) => {
     const fields = { ...data.fields, [k]: v }
     const patch = { fields }
-    if (k === 'raise') patch.raise = v ? `$${v}` : ''
+    if (k === 'raise') {
+      // Keep the raw input in the field; store a comma-formatted display copy.
+      const n = Number(String(v).replace(/[^0-9.]/g, ''))
+      patch.raise = v ? (n ? `$${n.toLocaleString()}` : `$${v}`) : ''
+    }
     update(patch)
   }
 

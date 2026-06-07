@@ -212,7 +212,8 @@ export default function InvestorPortal() {
                     </div>
                     <h3 className="mt-3 font-bold text-ink-900">Subscription received</h3>
                     <p className="mt-1 text-sm text-ink-700/80">
-                      ${amount || p.minInvestment} is held in escrow. On closing, your{' '}
+                      {fmtUSD(parseMoney(amount || p.minInvestment))} is held in escrow. On
+                      closing, your{' '}
                       {iss.ticker} tokens are delivered to your whitelisted wallet
                       {inv?.gaid ? (
                         <>
@@ -304,7 +305,8 @@ export default function InvestorPortal() {
                             <Icon.doc width={16} height={16} /> Subscription Agreement
                           </div>
                           <p className="mt-2 text-xs">
-                            Sign the subscription agreement to commit ${amount || p.minInvestment}.
+                            Sign the subscription agreement to commit{' '}
+                            {fmtUSD(parseMoney(amount || p.minInvestment))}.
                             Executed via integrated e-signature (mocked).
                           </p>
                         </div>
@@ -321,7 +323,8 @@ export default function InvestorPortal() {
                             <Icon.lock width={16} height={16} /> Fund escrow
                           </div>
                           <p className="mt-2 text-xs">
-                            Wire ${amount || p.minInvestment} to the tri-party escrow
+                            Wire {fmtUSD(parseMoney(amount || p.minInvestment))} to the
+                            tri-party escrow
                             account. Released to the issuer on closing; tokens delivered to
                             your whitelisted wallet on settlement.
                           </p>
