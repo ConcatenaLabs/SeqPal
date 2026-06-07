@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { Icon } from '../components/icons'
+import { Icon, StructureIcon } from '../components/icons'
 import { SectionHeading, Badge, DemoNote } from '../components/ui'
 import Passport from '../components/Passport'
 import { useStore, fakeIdNumber } from '../lib/store'
 import { RESIDENCE_OPTIONS } from '../data/jurisdictions'
+import { getStructure } from '../data/structures'
 
 const stored = [
   ['Verified identity', 'Passport scan + selfie liveness'],
@@ -195,8 +196,69 @@ function CorporateForm({ onAdded }) {
   )
 }
 
+function AccessibleOfferings({ individual, issuances }) {
+  const eligible = issuances
+    .filter((i) => i.portal?.published)
+    .filter((i) => {
+      const tier = i.policy?.[individual.residenceCode]
+      return tier === 'standard' || (tier === 'restricted' && individual.accredited)
+    })
+
+  return (
+    <div className="mt-12 border-t border-ink-900/10 pt-10">
+      <h3 className="text-lg font-bold text-ink-900">Offerings you can access</h3>
+      <p className="mt-1 max-w-2xl text-sm text-ink-700/70">
+        Because your SeqPal ID is verified, you’re auto-whitelisted for every SeqPal-issued
+        asset your profile is eligible to hold — the marginal cost of the next one is zero.
+      </p>
+      {eligible.length === 0 ? (
+        <div className="mt-5 rounded-xl border border-dashed border-ink-900/20 p-6 text-center text-sm text-ink-700/70">
+          No live offerings you can access yet. Published offerings you’re eligible for
+          appear here automatically.
+        </div>
+      ) : (
+        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          {eligible.map((i) => {
+            const s = getStructure(i.structureId)
+            const Ic = StructureIcon[s?.icon] || Icon.layers
+            return (
+              <Link
+                key={i.id}
+                to={`/portal/${i.id}`}
+                className="card flex items-center gap-4 p-5 transition-all hover:-translate-y-0.5 hover:shadow-glow"
+              >
+                <div
+                  className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
+                    s?.accent === 'liquid'
+                      ? 'bg-liquid/10 text-liquid-600'
+                      : 'bg-btc-50 text-btc-600'
+                  }`}
+                >
+                  <Ic width={22} height={22} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="truncate font-bold text-ink-900">{i.name}</span>
+                    <span className="font-mono text-xs text-ink-700/60">{i.ticker}</span>
+                  </div>
+                  <div className="text-sm text-ink-700/70">{s?.name}</div>
+                </div>
+                <Icon.arrowRight width={18} height={18} className="text-ink-600" />
+              </Link>
+            )
+          })}
+        </div>
+      )}
+      <DemoNote className="mt-5">
+        In the demo these are offerings created in this browser. On the live platform this
+        is every eligible SeqPal-issued asset across all issuers.
+      </DemoNote>
+    </div>
+  )
+}
+
 export default function SeqPalId() {
-  const { account, isLoggedIn, signOut } = useStore()
+  const { account, isLoggedIn, signOut, issuances } = useStore()
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const next = params.get('next')
@@ -266,6 +328,7 @@ export default function SeqPalId() {
             </div>
           </div>
         ) : (
+          <>
           <div className="grid gap-10 lg:grid-cols-[1fr_1.1fr] lg:items-start">
             {/* Individual passport */}
             <div className="space-y-5">
@@ -334,6 +397,8 @@ export default function SeqPalId() {
               </div>
             </div>
           </div>
+          <AccessibleOfferings individual={account.individual} issuances={issuances} />
+          </>
         )}
       </section>
     </>
