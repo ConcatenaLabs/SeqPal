@@ -188,7 +188,7 @@ export default function IssuanceDetail() {
     updateIssuance(iss.id, patch)
   }
 
-  const openJ = JURISDICTIONS.filter((j) => iss.policy?.[j.code] === 'open')
+  const openJ = JURISDICTIONS.filter((j) => iss.policy?.[j.code] === 'standard')
   const restrictedJ = JURISDICTIONS.filter((j) => iss.policy?.[j.code] === 'restricted')
 
   return (
@@ -338,7 +338,7 @@ export default function IssuanceDetail() {
                   <div className="space-y-4 px-5 py-4 text-sm">
                     <div>
                       <div className="text-xs font-semibold uppercase tracking-wide text-ink-700/60">
-                        Open jurisdictions
+                        Standard jurisdictions
                       </div>
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {openJ.length ? (

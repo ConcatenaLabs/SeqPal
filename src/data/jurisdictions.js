@@ -1,49 +1,60 @@
-// SeqPal ID's templated suggested-minimum restriction set for a private placement.
-// Issuers may tighten any restriction; mandatory floors (sanctions screening,
-// identity verification, OFAC/FATF-aligned blocks) can never be loosened.
+// SeqPal's templated suggested-minimum private-placement default — the
+// Investor Jurisdiction Compliance Matrix (Appendix C of the plan). This is the
+// canonical reference behind SeqPal ID's default whitelist and the portal gate.
 //
 // Tiers:
-//   open       – admitted (subject to identity verification & sanctions screening)
-//   restricted – qualified / accredited investors only, per local regime
-//   blocked    – mandatory floor; cannot be admitted
+//   standard   – admitted; local-law screening at investment time
+//   restricted – qualified / accredited only, per local regime (upload-to-lift)
+//   blocked    – mandatory floor; non-overridable (OFAC / FATF-aligned)
 
 export const TIERS = {
-  open: { label: 'Open', color: 'emerald' },
+  standard: { label: 'Standard', color: 'emerald' },
   restricted: { label: 'Qualified only', color: 'amber' },
   blocked: { label: 'Blocked', color: 'rose' },
 }
 
 export const JURISDICTIONS = [
-  { code: 'US', name: 'United States', tier: 'restricted', basis: 'Reg D Rule 506(c) — verified accredited investor' },
-  { code: 'CA', name: 'Canada', tier: 'restricted', basis: 'Accredited investor exemption' },
-  { code: 'GB', name: 'United Kingdom', tier: 'restricted', basis: 'FSMA s.86 — self-certified high-net-worth / sophisticated' },
-  { code: 'EU', name: 'European Union', tier: 'restricted', basis: 'MiFID II professional / qualified investor (+ per-country tail)' },
-  { code: 'CH', name: 'Switzerland', tier: 'restricted', basis: 'FinSA professional client' },
-  { code: 'SG', name: 'Singapore', tier: 'restricted', basis: 'SFA s.275 accredited investor' },
-  { code: 'HK', name: 'Hong Kong', tier: 'restricted', basis: 'Professional investor' },
-  { code: 'JP', name: 'Japan', tier: 'restricted', basis: 'Tokutei-toushika (specified investor)' },
-  { code: 'AU', name: 'Australia', tier: 'restricted', basis: 'Corporations Act s.708 sophisticated investor' },
-  { code: 'AE', name: 'United Arab Emirates', tier: 'open', basis: null },
-  { code: 'SV', name: 'El Salvador', tier: 'open', basis: null },
-  { code: 'AR', name: 'Argentina', tier: 'open', basis: null },
-  { code: 'HN', name: 'Honduras', tier: 'open', basis: null },
-  { code: 'BR', name: 'Brazil', tier: 'open', basis: null },
-  { code: 'ZA', name: 'South Africa', tier: 'open', basis: null },
-  { code: 'KP', name: 'North Korea', tier: 'blocked', basis: 'OFAC / FATF' },
-  { code: 'IR', name: 'Iran', tier: 'blocked', basis: 'OFAC / FATF' },
-  { code: 'SY', name: 'Syria', tier: 'blocked', basis: 'OFAC / FATF' },
-  { code: 'CU', name: 'Cuba', tier: 'blocked', basis: 'OFAC / FATF' },
+  { code: 'US', name: 'United States', tier: 'restricted', basis: 'Reg D Rule 501 accredited investor (506(c); Reg S for non-US)', cap: 'No cap on accredited; non-accredited excluded' },
+  { code: 'CA', name: 'Canada', tier: 'restricted', basis: 'NI 45-106 accredited investor', cap: 'No cap on accredited; non-accredited excluded' },
+  { code: 'EU', name: 'European Union', tier: 'restricted', basis: 'MiFID II professional / qualified investor', cap: 'Up to 149 non-qualified per country' },
+  { code: 'GB', name: 'United Kingdom', tier: 'restricted', basis: 'FSMA s.86 sophisticated / high-net-worth', cap: 'Up to 149 non-qualified' },
+  { code: 'CH', name: 'Switzerland', tier: 'restricted', basis: 'FinSA Art. 4 professional / institutional client', cap: 'No retail' },
+  { code: 'SG', name: 'Singapore', tier: 'restricted', basis: 'SFA s.275 accredited / institutional investor', cap: 'No non-accredited' },
+  { code: 'HK', name: 'Hong Kong (SAR)', tier: 'restricted', basis: 'SFO Schedule 1 professional investor', cap: 'Up to 50 non-professional' },
+  { code: 'JP', name: 'Japan', tier: 'restricted', basis: 'FIEA QII / specified investor (tokutei-toushika)', cap: 'Up to 49 non-accredited' },
+  { code: 'KR', name: 'South Korea', tier: 'restricted', basis: 'Capital Markets Act qualified professional investor', cap: 'Up to 49 non-accredited' },
+  { code: 'AU', name: 'Australia', tier: 'restricted', basis: 'Corporations Act s.708 sophisticated / professional', cap: 'Up to 20 non-sophisticated; AUD$2M agg.' },
+  { code: 'AE', name: 'UAE (ADGM / DIFC)', tier: 'restricted', basis: 'DFSA / FSRA professional client', cap: 'Professional only' },
+  { code: 'IL', name: 'Israel', tier: 'restricted', basis: 'Securities Law First Addendum qualified investor', cap: 'No retail' },
+  { code: 'SA', name: 'Saudi Arabia', tier: 'restricted', basis: 'CMA qualified client', cap: 'No retail' },
+  { code: 'BR', name: 'Brazil', tier: 'restricted', basis: 'CVM professional / qualified investor (Res. 30/2021)', cap: 'No retail' },
+  { code: 'MX', name: 'Mexico', tier: 'restricted', basis: 'CNBV institutional / qualified investor', cap: 'No retail' },
+  { code: 'IN', name: 'India', tier: 'restricted', basis: 'Documented RBI / SEBI eligibility', cap: 'Subject to FEMA constraints' },
+  { code: 'SV', name: 'El Salvador', tier: 'standard', basis: 'Local accredited / sophisticated (Digital Assets Law)', cap: 'Local-law caps apply' },
+  { code: 'PA', name: 'Panama', tier: 'standard', basis: 'Local qualified investor (Law 67 of 2020)', cap: 'Local-law caps apply' },
+  { code: 'AR', name: 'Argentina', tier: 'standard', basis: 'CNV inversor calificado', cap: 'Local-law caps apply' },
+  { code: 'HN', name: 'Honduras', tier: 'standard', basis: 'Local accredited / sophisticated investor', cap: 'Local-law caps apply' },
+  { code: 'CN', name: 'Mainland China', tier: 'blocked', basis: 'PRC prohibition on cross-border retail securities', cap: 'n/a' },
+  { code: 'RU', name: 'Russia', tier: 'blocked', basis: 'OFAC / EU sanctions', cap: 'n/a' },
+  { code: 'KP', name: 'North Korea (DPRK)', tier: 'blocked', basis: 'OFAC / FATF comprehensive sanctions', cap: 'n/a' },
+  { code: 'IR', name: 'Iran', tier: 'blocked', basis: 'OFAC / FATF comprehensive sanctions', cap: 'n/a' },
+  { code: 'SY', name: 'Syria', tier: 'blocked', basis: 'OFAC / FATF comprehensive sanctions', cap: 'n/a' },
+  { code: 'CU', name: 'Cuba', tier: 'blocked', basis: 'OFAC comprehensive sanctions', cap: 'n/a' },
+  { code: 'BY', name: 'Belarus', tier: 'blocked', basis: 'OFAC / FATF-aligned restrictions', cap: 'n/a' },
+  { code: 'VE', name: 'Venezuela', tier: 'blocked', basis: 'OFAC / FATF-aligned restrictions', cap: 'n/a' },
+  { code: 'MM', name: 'Myanmar', tier: 'blocked', basis: 'OFAC / FATF-aligned restrictions', cap: 'n/a' },
 ]
 
 // Jurisdiction options offered at SeqPal ID registration, with the qualified-
 // investor basis SeqPal applies for that residence.
 export const RESIDENCE_OPTIONS = [
   { code: 'US', name: 'United States', accreditationLabel: 'Accredited investor — Reg D Rule 501' },
-  { code: 'GB', name: 'United Kingdom', accreditationLabel: 'High-net-worth / sophisticated — FSMA s.86' },
+  { code: 'GB', name: 'United Kingdom', accreditationLabel: 'Sophisticated / high-net-worth — FSMA s.86' },
   { code: 'EU', name: 'European Union', accreditationLabel: 'Professional / qualified investor — MiFID II' },
-  { code: 'CH', name: 'Switzerland', accreditationLabel: 'Professional client — FinSA' },
-  { code: 'SG', name: 'Singapore', accreditationLabel: 'Accredited investor — SFA' },
-  { code: 'AE', name: 'United Arab Emirates', accreditationLabel: 'Self-certified qualified investor' },
-  { code: 'SV', name: 'El Salvador', accreditationLabel: 'Self-certified qualified investor' },
-  { code: 'BR', name: 'Brazil', accreditationLabel: 'Self-certified qualified investor' },
+  { code: 'CH', name: 'Switzerland', accreditationLabel: 'Professional client — FinSA Art. 4' },
+  { code: 'SG', name: 'Singapore', accreditationLabel: 'Accredited investor — SFA s.275' },
+  { code: 'AE', name: 'UAE (ADGM / DIFC)', accreditationLabel: 'Professional client — DFSA / FSRA' },
+  { code: 'BR', name: 'Brazil', accreditationLabel: 'Professional / qualified investor — CVM' },
+  { code: 'SV', name: 'El Salvador', accreditationLabel: 'Accredited / sophisticated — Digital Assets Law' },
+  { code: 'AR', name: 'Argentina', accreditationLabel: 'Inversor calificado — CNV' },
 ]
