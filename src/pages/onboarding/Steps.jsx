@@ -465,6 +465,22 @@ export function Step3DataRoom({ data, update }) {
       </div>
 
       <div className="card p-7">
+        <div className="mb-5 border-b border-ink-900/10 pb-5">
+          <label className="label">Entity name (the new Próspera LLC)</label>
+          <input
+            className="input"
+            placeholder="Aurora Ventures Fund I"
+            value={data.entityName}
+            onChange={(e) => update({ entityName: e.target.value })}
+          />
+          <p className="mt-1.5 text-xs text-ink-700/60">
+            Registered as{' '}
+            <span className="font-medium text-ink-800">
+              {data.entityName ? `${data.entityName} LLC` : '‹name› LLC'}
+            </span>{' '}
+            in Próspera. This names the issuer of record on your formation documents.
+          </p>
+        </div>
         <div className="grid gap-5 sm:grid-cols-2">
           {config.map((cfg) => (
             <div key={cfg.k} className={cfg.type === 'textarea' ? 'sm:col-span-2' : ''}>
@@ -516,7 +532,11 @@ function DocPreview({ docName, data }) {
       label: c.label,
       value: c.type === 'money' ? `$${data.fields[c.k]}` : data.fields[c.k],
     }))
-  const llc = data.name ? `${data.name} LLC` : 'New Próspera LLC'
+  const llc = data.entityName
+    ? `${data.entityName} LLC`
+    : data.name
+      ? `${data.name} LLC`
+      : 'New Próspera LLC'
   return (
     <div>
       <div className="rounded-lg border border-ink-900/10">
@@ -734,6 +754,12 @@ export function Step5Compliance({ data, update }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.isPublic])
 
+  // The token is usually named after the entity — prefill, leave editable.
+  useEffect(() => {
+    if (!data.name && data.entityName) update({ name: data.entityName })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const policy = data.policy || defaultPolicy(data.isPublic)
   const setTier = (code, tier) => update({ policy: { ...policy, [code]: tier } })
 
@@ -909,6 +935,7 @@ export function Step6Checkout({ data, onDeployed }) {
         id: 'iss_' + Math.random().toString(36).slice(2, 9),
         name: data.name,
         ticker: data.ticker,
+        entityName: data.entityName,
         structureId: data.structureId,
         principal: data.principal,
         isPublic: data.isPublic,
@@ -1011,7 +1038,14 @@ export function Step6Checkout({ data, onDeployed }) {
           <dl className="mt-4 divide-y divide-ink-900/10 text-sm">
             {[
               ['Applicant / owner', data.principal?.name],
-              ['Issuer of record', data.name ? `${data.name} LLC` : 'New Próspera LLC'],
+              [
+                'Issuer of record',
+                data.entityName
+                  ? `${data.entityName} LLC`
+                  : data.name
+                    ? `${data.name} LLC`
+                    : 'New Próspera LLC',
+              ],
               ['Structure', s?.name],
               ['Asset name', data.name || '—'],
               ['Ticker', data.ticker || '—'],
