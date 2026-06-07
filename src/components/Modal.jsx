@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { Icon } from './icons'
 
-export default function Modal({ open, onClose, title, children, footer }) {
+export default function Modal({ open, onClose, title, children, footer, wide }) {
   useEffect(() => {
     if (!open) return
     const onKey = (e) => e.key === 'Escape' && onClose()
@@ -21,7 +21,11 @@ export default function Modal({ open, onClose, title, children, footer }) {
         className="absolute inset-0 bg-ink-950/50 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="relative z-10 max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl">
+      <div
+        className={`relative z-10 max-h-[90vh] w-full overflow-y-auto rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl ${
+          wide ? 'max-w-2xl' : 'max-w-md'
+        }`}
+      >
         <div className="flex items-center justify-between border-b border-ink-900/10 px-5 py-4">
           <h3 className="font-bold text-ink-900">{title}</h3>
           <button onClick={onClose} className="text-ink-600 hover:text-ink-900">

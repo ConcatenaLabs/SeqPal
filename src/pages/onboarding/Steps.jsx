@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Icon, StructureIcon } from '../../components/icons'
 import { Badge, DemoNote } from '../../components/ui'
+import Modal from '../../components/Modal'
 import {
   useStore,
   fakeAssetId,
@@ -497,10 +498,103 @@ const DOC_PACKAGE = (structureId, isPublic) => {
   return docs
 }
 
+// A rendered, prefilled preview of a generated template — "the Magic Moment".
+function DocPreview({ docName, data }) {
+  const s = getStructure(data.structureId)
+  const cfg = FIELD_CONFIG[data.structureId] || []
+  const terms = cfg
+    .filter((c) => data.fields?.[c.k])
+    .map((c) => ({
+      label: c.label,
+      value: c.type === 'money' ? `$${data.fields[c.k]}` : data.fields[c.k],
+    }))
+  const llc = data.name ? `${data.name} LLC` : 'New Próspera LLC'
+  return (
+    <div>
+      <div className="rounded-lg border border-ink-900/10">
+        <div className="border-b border-ink-900/10 bg-ink-900/[0.02] px-5 py-4 text-center">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-ink-700/50">
+            Próspera ZEDE · Draft
+          </div>
+          <div className="mt-1 font-bold text-ink-900">{docName}</div>
+          <div className="text-xs text-ink-700/60">
+            {llc}
+            {data.ticker ? ` · ${data.ticker}` : ''}
+          </div>
+        </div>
+        <div className="space-y-4 px-5 py-5 text-sm text-ink-800">
+          <section>
+            <div className="text-xs font-semibold uppercase tracking-wide text-ink-700/50">
+              Parties
+            </div>
+            <ul className="mt-1.5 space-y-0.5">
+              <li>
+                <span className="text-ink-700/70">Issuer of record:</span> {llc}
+              </li>
+              <li>
+                <span className="text-ink-700/70">Applicant / owner:</span>{' '}
+                {data.principal?.name}
+              </li>
+              <li>
+                <span className="text-ink-700/70">Agent:</span> SeqPal — {s?.seqpalRole}
+              </li>
+            </ul>
+          </section>
+          {terms.length > 0 && (
+            <section>
+              <div className="text-xs font-semibold uppercase tracking-wide text-ink-700/50">
+                Deal terms (from your data room)
+              </div>
+              <dl className="mt-1.5 divide-y divide-ink-900/5">
+                {terms.map((t) => (
+                  <div key={t.label} className="flex justify-between gap-4 py-1">
+                    <dt className="text-ink-700/70">{t.label}</dt>
+                    <dd className="text-right font-medium text-ink-900">{t.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          )}
+          <section className="space-y-2 text-xs leading-relaxed text-ink-700/80">
+            <p>
+              <span className="font-semibold text-ink-900">1. Registry of Members.</span>{' '}
+              The blockchain is hereby declared the official Registry of Members for the{' '}
+              {data.ticker || 'token'} class; the on-chain record is dispositive.
+            </p>
+            <p>
+              <span className="font-semibold text-ink-900">2. Agent.</span> {llc} appoints
+              SeqPal as {s?.seqpalRole}, to enforce the transfer policy exactly as
+              configured and signed off by the issuer.
+            </p>
+            <p>
+              <span className="font-semibold text-ink-900">3. Eligibility.</span> Transfers
+              are permitted only between holders whose SeqPal ID satisfies this offering’s
+              jurisdiction and accreditation policy; mandatory floors (sanctions,
+              OFAC/FATF) always apply.
+            </p>
+            {data.isPublic && (
+              <p>
+                <span className="font-semibold text-ink-900">4. Public offering.</span>{' '}
+                Filed with the RFSA; admitted jurisdictions limited to those with a
+                confirmed registration or exemption.
+              </p>
+            )}
+          </section>
+        </div>
+      </div>
+      <p className="mt-3 text-xs leading-relaxed text-ink-700/60">
+        Prefilled template — infrastructure, not legal advice. SeqPal is not a law firm.
+        You may accept, modify, or reject any clause, with or without your own counsel.
+      </p>
+    </div>
+  )
+}
+
 export function Step4Documents({ data, update }) {
   const [phase, setPhase] = useState(data.docsSigned ? 'signed' : 'idle')
   const docs = DOC_PACKAGE(data.structureId, data.isPublic)
 
+  const [previewDoc, setPreviewDoc] = useState(null)
   const generate = () => {
     setPhase('generating')
     setTimeout(() => setPhase('ready'), 1600)
@@ -555,26 +649,41 @@ export function Step4Documents({ data, update }) {
             </div>
             <div className="divide-y divide-ink-900/10">
               {docs.map((d) => (
-                <div key={d} className="flex items-center gap-3 px-6 py-3.5">
+                <button
+                  key={d}
+                  onClick={() => setPreviewDoc(d)}
+                  className="flex w-full items-center gap-3 px-6 py-3.5 text-left transition-colors hover:bg-ink-900/[0.02]"
+                >
                   <Icon.doc width={18} height={18} className="text-ink-600" />
                   <span className="flex-1 text-sm font-medium text-ink-900">{d}</span>
-                  {phase === 'signed' ? (
+                  <span className="inline-flex items-center gap-1 text-xs font-medium text-btc-600">
+                    <Icon.external width={13} height={13} /> Preview
+                  </span>
+                  {phase === 'signed' && (
                     <Badge color="emerald">
                       <Icon.check width={12} height={12} /> signed
                     </Badge>
-                  ) : (
-                    <span className="text-xs text-ink-700/60">PDF · ready</span>
                   )}
-                </div>
+                </button>
               ))}
             </div>
           </div>
 
           <DemoNote className="mt-5">
-            E-signature runs through an integrated provider in the live platform. Here,
-            “sign” is simulated — no documents are actually executed. SeqPal is not a law
-            firm and these templates are infrastructure, not legal advice.
+            Click any document to preview the prefilled template. E-signature runs through
+            an integrated provider in the live platform; here “sign” is simulated — no
+            documents are actually executed. SeqPal is not a law firm and these templates
+            are infrastructure, not legal advice.
           </DemoNote>
+
+          <Modal
+            open={!!previewDoc}
+            onClose={() => setPreviewDoc(null)}
+            title={previewDoc || ''}
+            wide
+          >
+            <DocPreview docName={previewDoc} data={data} />
+          </Modal>
 
           {phase === 'ready' && (
             <button onClick={sign} className="btn-primary mt-5 w-full">
