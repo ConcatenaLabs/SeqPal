@@ -770,7 +770,10 @@ export function Step5Compliance({ data, update }) {
 export function Step6Checkout({ data, onDeployed }) {
   const { addIssuance } = useStore()
   const s = getStructure(data.structureId)
-  const cost = computeSetupCost(data.structureId, data.isPublic)
+  const cost = computeSetupCost(data.structureId, data.isPublic, {
+    raise: data.raise,
+    collateral: data.fields?.collateral,
+  })
   const [phase, setPhase] = useState('summary') // summary | processing | submitted
   const [eta, setEta] = useState(null)
   const [issuanceId, setIssuanceId] = useState(null)
@@ -911,9 +914,17 @@ export function Step6Checkout({ data, onDeployed }) {
           <h3 className="font-bold text-ink-900">Cost breakdown</h3>
           <dl className="mt-4 space-y-2.5 text-sm">
             <div className="flex justify-between">
-              <dt className="text-ink-700/80">Setup — {s?.short}</dt>
+              <dt className="text-ink-700/80">
+                {cost.simple ? 'Setup — Simple Native Equity' : `Setup — ${s?.short}`}
+              </dt>
               <dd className="font-mono font-medium">${cost.base.toLocaleString()}</dd>
             </div>
+            {cost.secured > 0 && (
+              <div className="flex justify-between">
+                <dt className="text-ink-700/80">Secured collateral add-on</dt>
+                <dd className="font-mono font-medium">${cost.secured.toLocaleString()}</dd>
+              </div>
+            )}
             {cost.surcharge > 0 && (
               <div className="flex justify-between">
                 <dt className="text-ink-700/80">Public-offering surcharge</dt>
