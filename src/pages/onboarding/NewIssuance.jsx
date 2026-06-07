@@ -37,6 +37,7 @@ export default function NewIssuance() {
     name: '',
     ticker: '',
     policy: null,
+    lifted: {},
     docsSigned: false,
   })
 

@@ -796,9 +796,15 @@ export function Step5Compliance({ data, update }) {
   const policy = data.policy || defaultPolicy(data.isPublic)
   const setTier = (code, tier) => update({ policy: { ...policy, [code]: tier } })
 
+  // upload-to-lift: an uploaded authorization unlocks admitting retail (Standard)
+  // in a normally-restricted jurisdiction. Mandatory floors can never be lifted.
+  const lifted = data.lifted || {}
+  const lift = (code) => update({ lifted: { ...lifted, [code]: true } })
+
   const optionsFor = (j) => {
     if (j.tier === 'blocked') return ['blocked']
-    if (j.tier === 'restricted') return ['restricted', 'excluded']
+    if (j.tier === 'restricted')
+      return lifted[j.code] ? ['standard', 'restricted', 'excluded'] : ['restricted', 'excluded']
     return ['standard', 'restricted', 'excluded']
   }
 
@@ -895,20 +901,39 @@ export function Step5Compliance({ data, update }) {
                     <Icon.lock width={12} height={12} /> Blocked
                   </span>
                 ) : (
-                  <div className="flex gap-1">
-                    {opts.map((o) => (
-                      <button
-                        key={o}
-                        onClick={() => setTier(j.code, o)}
-                        className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors ${
-                          current === o
-                            ? tierStyle[o]
-                            : 'border-transparent text-ink-600 hover:bg-ink-900/[0.04]'
-                        }`}
-                      >
-                        {tierLabel[o]}
-                      </button>
-                    ))}
+                  <div className="flex items-center gap-1.5">
+                    {j.tier === 'restricted' &&
+                      (lifted[j.code] ? (
+                        <span
+                          className="inline-flex items-center gap-1 rounded-md bg-btc-50 px-1.5 py-1 text-[10px] font-semibold text-btc-700"
+                          title="Authorization uploaded — retail may be admitted"
+                        >
+                          <Icon.check width={10} height={10} /> lifted
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => lift(j.code)}
+                          title="Upload a regulatory authorization to admit retail (demo)"
+                          className="inline-flex items-center gap-1 rounded-md border border-ink-900/15 px-1.5 py-1 text-[10px] font-medium text-ink-600 hover:bg-ink-900/[0.04]"
+                        >
+                          <Icon.upload width={10} height={10} /> lift
+                        </button>
+                      ))}
+                    <div className="flex gap-1">
+                      {opts.map((o) => (
+                        <button
+                          key={o}
+                          onClick={() => setTier(j.code, o)}
+                          className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                            current === o
+                              ? tierStyle[o]
+                              : 'border-transparent text-ink-600 hover:bg-ink-900/[0.04]'
+                          }`}
+                        >
+                          {tierLabel[o]}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
@@ -923,8 +948,10 @@ export function Step5Compliance({ data, update }) {
             <Icon.upload width={16} height={16} className="text-btc-600" /> Upload-to-lift
           </div>
           <p className="mt-1.5 text-xs leading-relaxed text-ink-700/70">
-            Obtained an approved prospectus or local registration? Upload it to lift a
-            default restriction for this issuance. (Skipped in the demo.)
+            Obtained an approved prospectus or local registration? Use{' '}
+            <span className="font-medium text-ink-800">lift</span> next to a restricted
+            jurisdiction to admit retail there for this issuance. Upload is mocked in the
+            demo; SeqPal checks only facial validity and never lifts a mandatory floor.
           </p>
         </div>
         <div className="rounded-xl border border-ink-900/10 bg-ink-900/[0.03] p-5">
