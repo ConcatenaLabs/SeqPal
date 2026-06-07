@@ -143,7 +143,13 @@ export default function Dashboard() {
                   <div className="hidden text-right sm:block">
                     <StatusBadge status={iss.status} />
                     <div className="mt-1 text-xs text-ink-700/50">
-                      {new Date(iss.createdAt).toLocaleDateString()}
+                      {iss.status === 'awaiting_incorporation' && iss.incorporationEta
+                        ? `est. ${new Date(iss.incorporationEta).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+                        : iss.status === 'live' && iss.structureId !== 'depository-receipt'
+                          ? iss.portal?.published
+                            ? 'Portal live'
+                            : 'Portal not set up'
+                          : new Date(iss.createdAt).toLocaleDateString()}
                     </div>
                   </div>
                   <Icon.arrowRight width={18} height={18} className="text-ink-600" />

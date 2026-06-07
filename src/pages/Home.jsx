@@ -31,7 +31,7 @@ const products = [
   {
     icon: Icon.id,
     name: 'SeqPal ID',
-    body: 'A consolidated KYC/KYB and accreditation passport. Established once, it whitelists the holder for every SeqPal-issued asset their profile is eligible to hold.',
+    body: 'A consolidated KYC/KYB and accreditation passport — and your login. Established once, it whitelists the holder for every SeqPal-issued asset their profile is eligible to hold.',
   },
   {
     icon: Icon.exchange,
@@ -46,12 +46,12 @@ const products = [
 ]
 
 const steps = [
-  ['Identity & KYB', 'Verify your entity and UBOs with SeqPal ID.'],
+  ['Identity & principal', 'Sign in with your SeqPal ID and choose who is issuing.'],
   ['Choose a structure', 'Pick one of four issuance structures.'],
   ['Data room', 'Enter your deal terms in dynamic forms.'],
   ['Document automation', 'Templated paperwork generated for review & e-signature.'],
   ['Tokenomics & compliance', 'Bake jurisdiction and accreditation rules into the token.'],
-  ['Checkout & deploy', 'Pay a fixed fee and deploy on Liquid.'],
+  ['Checkout & deploy', 'Pay a fixed fee; your Próspera LLC is incorporated and the asset deploys.'],
 ]
 
 export default function Home() {
