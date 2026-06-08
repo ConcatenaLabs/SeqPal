@@ -8,7 +8,7 @@ const pillars = [
   {
     icon: Icon.shield,
     title: 'Smart Compliance',
-    body: 'Investor eligibility is enforced at the token-contract level — jurisdiction, accreditation, and sanctions screening baked in. Verify once with SeqPal ID, hold every asset you qualify for.',
+    body: 'Investor eligibility is enforced at the protocol level on every transfer — jurisdiction, accreditation, and sanctions screening baked into the asset. Verify once with SeqPal ID, hold every asset you qualify for.',
   },
   {
     icon: Icon.users,
@@ -26,7 +26,7 @@ const products = [
   {
     icon: Icon.layers,
     name: 'Issuer Dashboard',
-    body: 'A six-step, self-service flow: entity formation, structure choice, automated document drafting, smart-contract configuration, and on-chain deployment.',
+    body: 'A six-step, self-service flow: entity formation, structure choice, automated document drafting, transfer-restriction configuration, and on-chain deployment.',
   },
   {
     icon: Icon.id,
@@ -294,7 +294,7 @@ export default function Home() {
           <div>
             <SectionHeading
               eyebrow="Open liquidity"
-              title="Compliance at the contract level — liquidity in the open market"
+              title="Compliance at the protocol level — liquidity in the open market"
               sub="SeqPal embeds investor eligibility checks directly into each token, so SeqPal-issued assets can trade freely on any vetted public DEX rather than being locked inside a proprietary trading system."
             />
             <ul className="mt-8 space-y-4">

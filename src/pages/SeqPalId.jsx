@@ -14,7 +14,7 @@ const stored = [
   ['Sanctions, PEP & adverse-media', 'Screened continuously (every 24 hours)'],
   ['Accreditation status', 'Jurisdiction-aware, self-certified or documented'],
   ['Linked wallets', 'Liquid GAIDs (EVM / Solana on the roadmap)'],
-  ['Cryptographic claim envelope', 'Signed claims that token contracts verify'],
+  ['Cryptographic claim envelope', 'Signed claims verified on every token transfer'],
 ]
 
 function UploadBox({ title, hint }) {
