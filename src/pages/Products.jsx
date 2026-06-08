@@ -7,7 +7,7 @@ const products = [
     icon: Icon.layers,
     name: 'Issuer Dashboard',
     tagline: 'Self-service issuance, end to end.',
-    body: 'A web application that walks an issuer through entity formation in Próspera, choice of issuance structure, automated drafting of formation and offering documents, smart-contract configuration of jurisdictional and accreditation restrictions, and on-chain deployment.',
+    body: 'A web application that walks an issuer through entity formation in Próspera, choice of issuance structure, automated drafting of formation and offering documents, configuration of jurisdictional and accreditation transfer restrictions, and on-chain deployment.',
     points: [
       'Six-step onboarding flow',
       'Automated document drafting from your inputs',
@@ -20,7 +20,7 @@ const products = [
     icon: Icon.id,
     name: 'SeqPal ID',
     tagline: 'A universal compliance passport.',
-    body: 'A consolidated KYC/KYB and accreditation passport that, once established, automatically whitelists the holder for every SeqPal-issued asset for which their profile is compliant. The passport is read directly by the issued tokens’ smart contracts.',
+    body: 'A consolidated KYC/KYB and accreditation passport that, once established, automatically whitelists the holder for every SeqPal-issued asset for which their profile is compliant. The passport’s claims are enforced on every transfer of the issued tokens via Blockstream AMP.',
     points: [
       'KYC / KYB and accreditation in one profile',
       'Sanctions, PEP and adverse-media screening on a continuous (daily) basis',

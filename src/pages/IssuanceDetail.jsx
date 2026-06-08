@@ -317,7 +317,7 @@ export default function IssuanceDetail() {
                   <h2 className="font-bold text-ink-900">Secondary market</h2>
                 </div>
                 <p className="mt-1.5 text-sm text-ink-700/70">
-                  Because eligibility is enforced at the token-contract level, the asset
+                  Because eligibility is enforced at the protocol level, the asset
                   moves freely between whitelisted holders without an intermediary — no
                   proprietary trading system required.
                 </p>
