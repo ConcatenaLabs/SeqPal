@@ -40,7 +40,12 @@ export default function ServicingPanel({ iss }) {
   const isDR = iss.structureId === 'depository-receipt'
 
   // forms
-  const [dist, setDist] = useState({ amount: '', asset: 'USDt', recordDate: '' })
+  // BTC-denominated issuances pair naturally with BTC distributions (plan 1.3).
+  const [dist, setDist] = useState({
+    amount: '',
+    asset: iss.unit === 'BTC' ? 'BTC (L-BTC)' : 'USDt',
+    recordDate: '',
+  })
   const [corp, setCorp] = useState({ type: corpActions[0], note: '' })
   const [mint, setMint] = useState({ qty: '', mandate: 'Direct deposit of securities' })
   const [redeem, setRedeem] = useState({ qty: '' })
@@ -216,6 +221,19 @@ export default function ServicingPanel({ iss }) {
               />
             </div>
           </div>
+          {iss.structureId === 'debt-yield' && (
+            <div className="rounded-lg bg-ink-900/[0.03] px-3 py-2 text-xs text-ink-700/70">
+              Coupons run automatically per the Note’s agreed schedule
+              {iss.fields?.schedule ? ` (${iss.fields.schedule.toLowerCase()}` : ''}
+              {iss.fields?.schedule && iss.fields?.rate
+                ? `, ${iss.fields.rate}% p.a.)`
+                : iss.fields?.schedule
+                  ? ')'
+                  : ''}{' '}
+              — SeqPal acts as Calculation &amp; Paying Agent. Use this for an ad-hoc or
+              catch-up distribution.
+            </div>
+          )}
           <p className="text-xs text-ink-700/60">
             Paid pro-rata across the whitelisted holder set as of the record-date snapshot.
             Mocked in the demo.
