@@ -49,7 +49,7 @@ src/
   components/                  Navbar, Footer, Logo, Modal, Passport, SignInGate,
                                ServicingPanel (post-issuance Transfer Agent), icons, ui.
   pages/
-    Home, Products, Structures, Pricing, SeqPalId, Dashboard, IssuanceDetail, NotFound
+    Home, Products, Structures, Pricing, SeqPalId, Dashboard, Holdings, IssuanceDetail, NotFound
     onboarding/NewIssuance.jsx + Steps.jsx   The six-step issuer wizard.
     portal/PortalSetup.jsx                   Issuer configures the whitelabel portal.
     portal/InvestorPortal.jsx                Public investor-facing portal.
@@ -175,6 +175,6 @@ the (internal) business plan.
   amended by **Law 67 of 2011** (created the SMV). Worth fixing in the plan.
 - Single-tenant demo: signing out doesn't clear issuances; "Reset demo" is the
   full clear. Acceptable for a single-user localStorage demo.
-- The investor "my holdings" portfolio view (the network-effect end state) is
-  represented on the SeqPal ID page as "offerings you can access" but there is no
-  dedicated holdings dashboard yet — a natural next feature.
+- The investor surfaces are split: **"offerings you can access"** (eligible
+  published offerings) on the SeqPal ID page, and the **`/holdings`** portfolio
+  (positions you've subscribed to). Both are matched to the signed-in SeqPal ID.
