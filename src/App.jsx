@@ -8,6 +8,7 @@ import Structures from './pages/Structures'
 import Pricing from './pages/Pricing'
 import SeqPalId from './pages/SeqPalId'
 import Dashboard from './pages/Dashboard'
+import Holdings from './pages/Holdings'
 import IssuanceDetail from './pages/IssuanceDetail'
 import NewIssuance from './pages/onboarding/NewIssuance'
 import PortalSetup from './pages/portal/PortalSetup'
@@ -62,6 +63,7 @@ export default function App() {
           <Route path="/pricing" element={<Pricing />} />
           <Route path="/id" element={<SeqPalId />} />
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/holdings" element={<Holdings />} />
           <Route path="/issuance/:id" element={<IssuanceDetail />} />
           <Route path="/issuance/:id/portal" element={<PortalSetup />} />
           <Route path="/portal/:id" element={<InvestorPortal />} />
