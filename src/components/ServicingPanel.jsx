@@ -105,6 +105,13 @@ export default function ServicingPanel({ iss }) {
         </button>
       </div>
 
+      {isDR && (
+        <p className="mt-3 rounded-lg bg-ink-900/[0.03] px-3 py-2 text-xs text-ink-700/70">
+          Programme fees: mint 0.25% (in-kind) / 0.30% (cash-settled) · redeem 0.50% ·
+          management 0.75%/yr of AUM, deducted from NAV or yield.
+        </p>
+      )}
+
       {/* activity log */}
       {activity.length > 0 && (
         <div className="mt-5">
@@ -299,6 +306,14 @@ export default function ServicingPanel({ iss }) {
               <option>Cash-for-purchase by SeqPal</option>
             </select>
           </div>
+          <div className="flex items-center justify-between rounded-lg bg-ink-900/[0.03] px-3 py-2 text-xs">
+            <span className="text-ink-700/70">Minting fee</span>
+            <span className="font-mono font-semibold text-ink-900">
+              {mint.mandate === 'Cash-for-purchase by SeqPal'
+                ? '0.30% of value (cash-settled)'
+                : '0.25% of value (in-kind)'}
+            </span>
+          </div>
           <p className="text-xs text-ink-700/60">
             Underlying held in a segregated custody sub-account; on-chain supply
             reconciled against custody balance. Mocked in the demo.
@@ -334,6 +349,10 @@ export default function ServicingPanel({ iss }) {
               value={redeem.qty}
               onChange={(e) => setRedeem({ ...redeem, qty: e.target.value })}
             />
+          </div>
+          <div className="flex items-center justify-between rounded-lg bg-ink-900/[0.03] px-3 py-2 text-xs">
+            <span className="text-ink-700/70">Redemption fee</span>
+            <span className="font-mono font-semibold text-ink-900">0.50% of payout value</span>
           </div>
           <p className="text-xs text-ink-700/60">
             Tokens are burned and the underlying released per the Depository Agreement.

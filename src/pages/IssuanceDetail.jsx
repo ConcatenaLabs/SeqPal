@@ -298,6 +298,12 @@ export default function IssuanceDetail() {
                 ['Initial mint to', iss.mintTarget],
                 ['Target raise', iss.raise || '—'],
                 ['Offering type', iss.isPublic ? 'Public offering' : 'Private placement'],
+                ...(iss.structureId === 'depository-receipt'
+                  ? [
+                      ['Underlying', iss.fields?.asset || '—'],
+                      ['NAV reporting', iss.fields?.nav || 'Daily'],
+                    ]
+                  : []),
               ].map(([k, v]) => (
                 <div key={k} className="flex items-center justify-between py-3">
                   <dt className="text-ink-700/70">{k}</dt>
