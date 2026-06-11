@@ -230,7 +230,12 @@ function AccessibleOfferings({ individual, issuances }) {
 
   return (
     <div className="mt-12 border-t border-ink-900/10 pt-10">
-      <h3 className="text-lg font-bold text-ink-900">Offerings you can access</h3>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h3 className="text-lg font-bold text-ink-900">Offerings you can access</h3>
+        <Link to="/holdings" className="btn-outline px-3 py-1.5 text-xs">
+          <Icon.wallet width={14} height={14} /> My holdings
+        </Link>
+      </div>
       <p className="mt-1 max-w-2xl text-sm text-ink-700/70">
         Because your SeqPal ID is verified, you’re auto-whitelisted for every SeqPal-issued
         asset your profile is eligible to hold — the marginal cost of the next one is zero.
