@@ -63,7 +63,7 @@ export default function Passport({ profile, type = 'individual' }) {
             clear
           </span>
           <span className="text-white/20">·</span>
-          <span>Screening active · daily</span>
+          <span>Sanctions screened every 24h</span>
           {!isCorp && profile.accredited && profile.accreditationBasis && (
             <>
               <span className="text-white/20">·</span>

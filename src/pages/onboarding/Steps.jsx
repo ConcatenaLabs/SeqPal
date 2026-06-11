@@ -389,7 +389,7 @@ const ATTESTATIONS = {
     'I understand a contracted brokerage-custody relationship must be operational before this Depository Receipt programme can deploy.',
 }
 
-function DynamicField({ cfg, value, onChange }) {
+function DynamicField({ cfg, value, onChange, symbol = '$' }) {
   const id = `f-${cfg.k}`
   if (cfg.type === 'select') {
     return (
@@ -418,7 +418,7 @@ function DynamicField({ cfg, value, onChange }) {
     return (
       <div className="relative">
         <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-ink-700/60">
-          $
+          {symbol}
         </span>
         <input
           id={id}
@@ -445,16 +445,24 @@ export function Step3DataRoom({ data, update }) {
   const s = getStructure(data.structureId)
   const config = FIELD_CONFIG[data.structureId] || []
   const lockedPublic = data.structureId === 'depository-receipt'
+  const symbol = data.unit === 'BTC' ? '₿' : '$'
 
-  const setField = (k, v) => {
+  const setField = (k, v, sym = symbol) => {
     const fields = { ...data.fields, [k]: v }
     const patch = { fields }
     if (k === 'raise') {
       // Keep the raw input in the field; store a comma-formatted display copy.
       const n = Number(String(v).replace(/[^0-9.]/g, ''))
-      patch.raise = v ? (n ? `$${n.toLocaleString()}` : `$${v}`) : ''
+      patch.raise = v ? (n ? `${sym}${n.toLocaleString()}` : `${sym}${v}`) : ''
     }
     update(patch)
+  }
+
+  const setUnit = (unit) => {
+    // Re-derive the stored raise display with the new symbol.
+    update({ unit })
+    const v = data.fields?.raise
+    if (v) setField('raise', v, unit === 'BTC' ? '₿' : '$')
   }
 
   return (
@@ -494,24 +502,45 @@ export function Step3DataRoom({ data, update }) {
       </div>
 
       <div className="card p-7">
-        <div className="mb-5 border-b border-ink-900/10 pb-5">
-          <label className="label" htmlFor="f-entityName">
-            Entity name (the new Próspera LLC)
-          </label>
-          <input
-            id="f-entityName"
-            className="input"
-            placeholder="Aurora Ventures Fund I"
-            value={data.entityName}
-            onChange={(e) => update({ entityName: e.target.value })}
-          />
-          <p className="mt-1.5 text-xs text-ink-700/60">
-            Registered as{' '}
-            <span className="font-medium text-ink-800">
-              {data.entityName ? `${data.entityName} LLC` : '‹name› LLC'}
-            </span>{' '}
-            in Próspera. This names the issuer of record on your formation documents.
-          </p>
+        <div className="mb-5 grid gap-5 border-b border-ink-900/10 pb-5 sm:grid-cols-[1.4fr_1fr]">
+          <div>
+            <label className="label" htmlFor="f-entityName">
+              Entity name (the new Próspera LLC)
+            </label>
+            <input
+              id="f-entityName"
+              className="input"
+              placeholder="Aurora Ventures Fund I"
+              value={data.entityName}
+              onChange={(e) => update({ entityName: e.target.value })}
+            />
+            <p className="mt-1.5 text-xs text-ink-700/60">
+              Registered as{' '}
+              <span className="font-medium text-ink-800">
+                {data.entityName ? `${data.entityName} LLC` : '‹name› LLC'}
+              </span>{' '}
+              in Próspera. This names the issuer of record on your formation documents.
+            </p>
+          </div>
+          <div>
+            <label className="label" htmlFor="f-unit">
+              Unit of account
+            </label>
+            <select
+              id="f-unit"
+              className="select"
+              value={data.unit || 'USD'}
+              onChange={(e) => setUnit(e.target.value)}
+            >
+              <option value="USD">USD (default)</option>
+              <option value="BTC">BTC — Bitcoin-denominated</option>
+            </select>
+            <p className="mt-1.5 text-xs text-ink-700/60">
+              {data.unit === 'BTC'
+                ? 'Books, raise, and distributions kept in BTC; subscriptions are escrowed in kind.'
+                : 'A Próspera entity may instead adopt BTC as its unit of account.'}
+            </p>
+          </div>
         </div>
         <div className="grid gap-5 sm:grid-cols-2">
           {config.map((cfg) => (
@@ -523,6 +552,7 @@ export function Step3DataRoom({ data, update }) {
                 cfg={cfg}
                 value={data.fields[cfg.k]}
                 onChange={(v) => setField(cfg.k, v)}
+                symbol={symbol}
               />
             </div>
           ))}
@@ -582,12 +612,16 @@ const DOC_PACKAGE = (structureId, isPublic) => {
 function DocPreview({ docName, data }) {
   const s = getStructure(data.structureId)
   const cfg = FIELD_CONFIG[data.structureId] || []
+  const sym = data.unit === 'BTC' ? '₿' : '$'
   const terms = cfg
     .filter((c) => data.fields?.[c.k])
     .map((c) => ({
       label: c.label,
-      value: c.type === 'money' ? `$${data.fields[c.k]}` : data.fields[c.k],
+      value: c.type === 'money' ? `${sym}${data.fields[c.k]}` : data.fields[c.k],
     }))
+  if (data.unit === 'BTC') {
+    terms.push({ label: 'Unit of account', value: 'BTC (books, raise & distributions)' })
+  }
   const llc = data.entityName
     ? `${data.entityName} LLC`
     : data.name
@@ -924,7 +958,7 @@ export function Step5Compliance({ data, update }) {
           <p className="leading-relaxed">
             <span className="font-semibold">DR — US persons excluded at launch.</span>{' '}
             Depository Receipts mirroring US-listed securities carry SEC unregistered-ADR
-            enforcement risk, so US persons are not admitted at launch. Admitting them
+            and synthetic-equity enforcement risk, so US persons are not admitted at launch. Admitting them
             requires your own US counsel (e.g. a Reg S structure) — confirm US here only on
             that basis.
           </p>
@@ -1072,6 +1106,7 @@ export function Step6Checkout({ data, onDeployed }) {
         name: data.name,
         ticker: data.ticker,
         entityName: data.entityName,
+        unit: data.unit || 'USD',
         structureId: data.structureId,
         principal: data.principal,
         isPublic: data.isPublic,
@@ -1186,6 +1221,7 @@ export function Step6Checkout({ data, onDeployed }) {
               ['Asset name', data.name || '—'],
               ['Ticker', data.ticker || '—'],
               ['Offering type', data.isPublic ? 'Public offering' : 'Private placement'],
+              ['Unit of account', data.unit === 'BTC' ? 'BTC (₿)' : 'USD ($)'],
               ['Target raise', data.raise || '—'],
               ['Initial mint to', mintTarget],
               ['Network', 'Liquid · Blockstream AMP'],
@@ -1234,7 +1270,10 @@ export function Step6Checkout({ data, onDeployed }) {
                 : ''}
               , billed after launch.
             </p>
-            <p>+ Platform Services Fee (3% cap, $10K floor) on capital raised.</p>
+            <p>
+              + Escrow &amp; Settlement Fee: 0.25%/mo on subscription funds held in
+              escrow ($5K min, 3% cap — typically ≈1% of the raise).
+            </p>
             {cost.secured > 0 && (
               <p>Secured add-on is quoted $5K–$15K by collateral complexity.</p>
             )}

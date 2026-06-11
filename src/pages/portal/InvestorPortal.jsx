@@ -4,7 +4,7 @@ import { Icon } from '../../components/icons'
 import { Badge, DemoNote } from '../../components/ui'
 import { useStore } from '../../lib/store'
 import { isEligible, tierFor } from '../../lib/policy'
-import { parseMoney, fmtUSD } from '../../lib/economics'
+import { parseMoney, fmtAmount, unitSymbol } from '../../lib/economics'
 import { getStructure } from '../../data/structures'
 import { JURISDICTIONS } from '../../data/jurisdictions'
 
@@ -23,6 +23,7 @@ export default function InvestorPortal() {
   const iss = issuances.find((i) => i.id === id)
   const [phase, setPhase] = useState('offering') // offering | signing | wiring | done
   const [amount, setAmount] = useState('')
+  const [rail, setRail] = useState('') // funding rail: wire | BTC | L-USDT
 
   if (!iss || !iss.portal?.published) {
     return (
@@ -38,6 +39,14 @@ export default function InvestorPortal() {
   const p = iss.portal
   const accent = ACCENT_HEX[p.accent] || ACCENT_HEX.btc
   const s = getStructure(iss.structureId)
+
+  // Unit of account & funding rails. A BTC-denominated raise is escrowed in
+  // kind; for USD-denominated raises BTC subscriptions are converted to L-USDT
+  // on receipt, fixing each subscription's value at the moment it enters escrow.
+  const isBTC = iss.unit === 'BTC'
+  const fmt = (n) => fmtAmount(n, iss.unit)
+  const rails = isBTC ? ['BTC'] : ['USD wire', 'BTC', 'L-USDT']
+  const railChosen = rail || rails[0]
 
   // Eligibility: evaluate the visiting SeqPal ID against the token's policy.
   const inv = account.individual
@@ -116,7 +125,7 @@ export default function InvestorPortal() {
             <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
               {[
                 ['Target raise', iss.raise || '—'],
-                ['Min. investment', `$${p.minInvestment}`],
+                ['Min. investment', `${unitSymbol(iss.unit)}${p.minInvestment}`],
                 ['Offering', iss.isPublic ? 'Public' : 'Private placement'],
               ].map(([k, v]) => (
                 <div key={k} className="rounded-xl border border-ink-900/10 bg-white p-4">
@@ -210,7 +219,7 @@ export default function InvestorPortal() {
                     </div>
                     <h3 className="mt-3 font-bold text-ink-900">Subscription received</h3>
                     <p className="mt-1 text-sm text-ink-700/80">
-                      {fmtUSD(parseMoney(amount || p.minInvestment))} is held in escrow. On
+                      {fmt(parseMoney(amount || p.minInvestment))} is held in escrow. On
                       closing, your{' '}
                       {iss.ticker} tokens are delivered to your whitelisted wallet
                       {inv?.gaid ? (
@@ -252,7 +261,7 @@ export default function InvestorPortal() {
                       <div className="mt-4">
                         {remaining !== null && (
                           <p className="mb-2 text-xs text-ink-700/60">
-                            {fmtUSD(remaining)} remaining of {iss.raise}
+                            {fmt(remaining)} remaining of {iss.raise}
                           </p>
                         )}
                         <label className="label" htmlFor="inv-amount">
@@ -260,7 +269,7 @@ export default function InvestorPortal() {
                         </label>
                         <div className="relative">
                           <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-ink-700/60">
-                            $
+                            {unitSymbol(iss.unit)}
                           </span>
                           <input
                             id="inv-amount"
@@ -271,23 +280,30 @@ export default function InvestorPortal() {
                           />
                         </div>
                         {(() => {
+                          const amt = parseMoney(amount)
                           const belowMin =
-                            parseMoney(amount) > 0 &&
-                            parseMoney(amount) < parseMoney(p.minInvestment)
+                            amt > 0 && amt < parseMoney(p.minInvestment)
+                          const overCap =
+                            remaining !== null &&
+                            parseMoney(amount || p.minInvestment) > remaining
                           return (
                             <>
                               <p
                                 className={`mt-1.5 text-xs ${
-                                  belowMin ? 'font-medium text-rose-600' : 'text-ink-700/60'
+                                  belowMin || overCap
+                                    ? 'font-medium text-rose-600'
+                                    : 'text-ink-700/60'
                                 }`}
                               >
                                 {belowMin
-                                  ? `Below the $${p.minInvestment} minimum for this offering`
-                                  : `Minimum $${p.minInvestment}`}
+                                  ? `Below the ${unitSymbol(iss.unit)}${p.minInvestment} minimum for this offering`
+                                  : overCap
+                                    ? `Exceeds the round's remaining capacity (${fmt(remaining)} left)`
+                                    : `Minimum ${unitSymbol(iss.unit)}${p.minInvestment}`}
                               </p>
                               <button
                                 onClick={subscribe}
-                                disabled={belowMin}
+                                disabled={belowMin || overCap}
                                 className="btn-primary mt-4 w-full"
                               >
                                 Subscribe
@@ -307,7 +323,7 @@ export default function InvestorPortal() {
                           </div>
                           <p className="mt-2 text-xs">
                             Sign the subscription agreement to commit{' '}
-                            {fmtUSD(parseMoney(amount || p.minInvestment))}.
+                            {fmt(parseMoney(amount || p.minInvestment))}.
                             Executed via integrated e-signature (mocked).
                           </p>
                         </div>
@@ -323,15 +339,37 @@ export default function InvestorPortal() {
                           <div className="flex items-center gap-2 font-semibold text-ink-900">
                             <Icon.lock width={16} height={16} /> Fund escrow
                           </div>
+                          <div className="mt-3">
+                            <label className="label" htmlFor="inv-rail">
+                              Fund with
+                            </label>
+                            <select
+                              id="inv-rail"
+                              className="select"
+                              value={railChosen}
+                              onChange={(e) => setRail(e.target.value)}
+                            >
+                              {rails.map((r) => (
+                                <option key={r}>{r}</option>
+                              ))}
+                            </select>
+                          </div>
                           <p className="mt-2 text-xs">
-                            Wire {fmtUSD(parseMoney(amount || p.minInvestment))} to the
-                            tri-party escrow
-                            account. Released to the issuer on closing; tokens delivered to
-                            your whitelisted wallet on settlement.
+                            {railChosen === 'USD wire'
+                              ? `Wire ${fmt(parseMoney(amount || p.minInvestment))} to the segregated escrow account at the escrow bank (tri-party agreement among issuer, bank, and SeqPal).`
+                              : `Send ${fmt(parseMoney(amount || p.minInvestment))} to this issuance's segregated escrow wallet, held by SeqPal as licensed escrow agent.`}{' '}
+                            {!isBTC && railChosen === 'BTC'
+                              ? 'BTC is converted to L-USDT on receipt — your subscription’s value is fixed the moment it enters escrow. '
+                              : isBTC
+                                ? 'This raise is BTC-denominated: your subscription is escrowed in kind. '
+                                : ''}
+                            Released to the issuer on closing; tokens delivered to your
+                            whitelisted wallet on settlement.
                           </p>
                         </div>
                         <button onClick={wire} className="btn-primary mt-4 w-full">
-                          <Icon.wallet width={16} height={16} /> Confirm wire (mock)
+                          <Icon.wallet width={16} height={16} />{' '}
+                          {railChosen === 'USD wire' ? 'Confirm wire (mock)' : 'Confirm transfer (mock)'}
                         </button>
                       </div>
                     )}

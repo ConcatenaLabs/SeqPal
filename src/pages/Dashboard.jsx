@@ -15,6 +15,7 @@ function buildSample(individual) {
     name: 'Aurora Ventures Fund I',
     ticker: 'AURA',
     entityName: 'Aurora Ventures Fund I',
+    unit: 'USD',
     structureId: 'native-equity',
     principal: { type: 'individual', name: individual.name, idNumber: individual.idNumber },
     isPublic: false,

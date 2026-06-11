@@ -52,10 +52,10 @@ export const ANNUAL_FEES = [
 
 export const TRANSACTION_FEES = [
   {
-    item: 'Platform Services Fee',
+    item: 'Escrow & Settlement Fee',
     detail:
-      'Technology, escrow, document automation, transfer-agent setup & SeqPal ID gate. Invoiced regardless of amount raised.',
-    amount: 'Capped at 3% of capital raised · $10K floor',
+      'Custody and on-chain settlement of subscription funds held in escrow. Accrued daily, payable whether or not the offering closes — typically ≈1% of the raise over a multi-month window.',
+    amount: '0.25% / month on escrowed funds · $5K min · 3% cap',
   },
   {
     item: 'Equity SPV waterfall event',

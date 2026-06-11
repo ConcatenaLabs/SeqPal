@@ -31,6 +31,7 @@ export default function NewIssuance() {
     structureId: null,
     isPublic: false,
     entityName: '', // the new Próspera LLC's name (set before formation docs)
+    unit: 'USD', // elected unit of account (USD default; BTC available)
     attested: false, // structure-specific mandatory attestation
     fields: {},
     raise: '',

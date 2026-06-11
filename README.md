@@ -50,7 +50,7 @@ Anything that belongs in the backend or requires a third-party subscription is
 intended product:
 
 - KYC/KYB identity verification (no real vendor call, no document upload)
-- Payments — setup fees, ID fees, and the Platform Services Fee are never charged
+- Payments — setup fees, ID fees, and the Escrow & Settlement Fee are never charged
 - E-signature of documents and subscription agreements
 - Próspera incorporation, RFSA filing, and on-chain deployment via Blockstream
   AMP (a demo "fast-forward" advances the lifecycle; nothing is broadcast)

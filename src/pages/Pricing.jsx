@@ -70,14 +70,17 @@ export default function Pricing() {
                 <Icon.tag width={22} height={22} />
               </div>
               <h3 className="mt-4 font-bold text-ink-900">
-                The Platform Services Fee, explained
+                The Escrow & Settlement Fee, explained
               </h3>
               <p className="mt-2 text-sm leading-relaxed text-ink-700/90">
-                The Platform Services Fee is invoiced for the bundle of technology,
-                escrow, document automation, transfer-agent setup, and the SeqPal ID
-                gate supplied through your raise — a usage-scaled platform fee within
-                the cap, not a placement commission. It is payable regardless of how
-                much capital is raised.
+                A charge for the escrow custody, compliance-conditioned release, and
+                on-chain settlement of the subscription funds SeqPal holds for your
+                raise — 0.25% per month on the funds in escrow, accrued daily, with a
+                $5,000 minimum and a cap of 3% of the funds held. It compensates a
+                custody-and-settlement service performed, payable for the holding
+                period whether or not the offering closes — not a placement
+                commission. Over a typical multi-month raise it works out to roughly
+                1% of the amount raised.
               </p>
             </div>
           </div>

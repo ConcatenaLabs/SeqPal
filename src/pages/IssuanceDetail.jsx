@@ -9,10 +9,10 @@ import { JURISDICTIONS } from '../data/jurisdictions'
 import { STATUS, milestonesFor, completedCount, nextStatus } from '../lib/lifecycle'
 import {
   parseMoney,
-  fmtUSD,
+  fmtAmount,
   ownershipPct,
   ownershipDenominator,
-  platformServicesFee,
+  escrowSettlementFee,
 } from '../lib/economics'
 
 
@@ -381,13 +381,13 @@ export default function IssuanceDetail() {
                         <div className="rounded-lg bg-ink-900/[0.03] px-3 py-2.5">
                           <div className="text-xs text-ink-700/60">In escrow</div>
                           <div className="mt-0.5 font-bold text-ink-900">
-                            {fmtUSD(escrowTotal)}
+                            {fmtAmount(escrowTotal, iss.unit)}
                           </div>
                         </div>
                         <div className="rounded-lg bg-ink-900/[0.03] px-3 py-2.5">
                           <div className="text-xs text-ink-700/60">Settled</div>
                           <div className="mt-0.5 font-bold text-ink-900">
-                            {fmtUSD(settledTotal)}
+                            {fmtAmount(settledTotal, iss.unit)}
                           </div>
                         </div>
                         <div className="rounded-lg bg-ink-900/[0.03] px-3 py-2.5">
@@ -406,21 +406,32 @@ export default function IssuanceDetail() {
                             />
                           </div>
                           <div className="mt-1 text-xs text-ink-700/60">
-                            {fmtUSD(escrowTotal + settledTotal)} of {iss.raise} target
+                            {fmtAmount(escrowTotal + settledTotal, iss.unit)} of {iss.raise} target
                           </div>
                         </div>
                       )}
                       <div className="mt-3 flex items-center justify-between rounded-lg bg-ink-900/[0.03] px-3 py-2 text-xs">
                         <span className="text-ink-700/70">
-                          Platform Services Fee · 3% cap, $10K floor
+                          Escrow &amp; Settlement Fee · 0.25%/mo ·{' '}
+                          {iss.unit === 'BTC' ? 'US$5K-equiv. min' : '$5K min'} · 3% cap
                         </span>
                         <span className="font-mono font-semibold text-ink-900">
-                          ~{fmtUSD(platformServicesFee(escrowTotal + settledTotal))}
+                          ~
+                          {fmtAmount(
+                            escrowSettlementFee(
+                              escrowTotal + settledTotal,
+                              undefined,
+                              iss.unit
+                            ),
+                            iss.unit
+                          )}
                         </span>
                       </div>
                       <p className="mt-1 text-[11px] text-ink-700/55">
-                        Invoiced for the technology, escrow, document automation, and
-                        SeqPal ID bundle — not a placement commission.
+                        Accrues daily on funds held in escrow (est. shown at a typical
+                        4-month window, ≈1% of the raise). Charged for custody and
+                        on-chain settlement, payable whether or not the offering closes —
+                        not a placement commission.
                       </p>
                       {escrowSubs.length > 0 && (
                         <button onClick={closeRound} className="btn-primary mt-4 w-full">
@@ -461,7 +472,7 @@ export default function IssuanceDetail() {
                           <Badge color="slate">{s.jur}</Badge>
                         </div>
                         <span className="font-mono text-sm text-ink-800">
-                          {denom ? `${ownerPct(s.amount).toFixed(2)}%` : fmtUSD(s.amount)}
+                          {denom ? `${ownerPct(s.amount).toFixed(2)}%` : fmtAmount(s.amount, iss.unit)}
                         </span>
                       </div>
                     ))}

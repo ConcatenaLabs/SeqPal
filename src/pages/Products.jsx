@@ -23,7 +23,7 @@ const products = [
     body: 'A consolidated KYC/KYB and accreditation passport that, once established, automatically whitelists the holder for every SeqPal-issued asset for which their profile is compliant. The passport’s claims are enforced on every transfer of the issued tokens via Blockstream AMP.',
     points: [
       'KYC / KYB and accreditation in one profile',
-      'Sanctions, PEP and adverse-media screening on a continuous (daily) basis',
+      'Sanctions screening every 24 hours; PEP & adverse-media at least monthly',
       'Jurisdiction-aware accreditation logic',
       'Cryptographic eligibility claims consumed on-chain',
     ],
