@@ -41,8 +41,8 @@ function buildSample(individual) {
       tosAccepted: true,
     },
     subscriptions: [
-      { id: 'sub_a', name: 'Imani Okafor', jur: 'SV', amount: 250000, status: 'settled', at: now },
-      { id: 'sub_b', name: 'Lukas Meyer', jur: 'CH', amount: 500000, status: 'in_escrow', at: now },
+      { id: 'sub_a', name: 'Imani Okafor', jur: 'SV', amount: 250000, rail: 'USD', status: 'settled', at: now },
+      { id: 'sub_b', name: 'Lukas Meyer', jur: 'CH', amount: 500000, rail: 'BTC → L-USDT', status: 'in_escrow', at: now },
     ],
   }
 }

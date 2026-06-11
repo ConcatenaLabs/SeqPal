@@ -66,6 +66,10 @@ export default function InvestorPortal() {
     // Record the subscription against the issuance: funds into escrow, pending
     // settlement on the issuer closing the round.
     const amt = parseMoney(amount || p.minInvestment)
+    // For USD-denominated raises, BTC subscriptions convert to L-USDT on
+    // receipt (value fixed at escrow entry) — record the rail as it lands.
+    const escrowedAs =
+      railChosen === 'USD wire' ? 'USD' : railChosen === 'BTC' && !isBTC ? 'BTC → L-USDT' : railChosen
     updateIssuance(iss.id, (i) => ({
       subscriptions: [
         {
@@ -73,6 +77,7 @@ export default function InvestorPortal() {
           name: inv.name,
           jur: inv.residenceCode,
           amount: amt,
+          rail: escrowedAs,
           status: 'in_escrow',
           at: new Date().toISOString(),
         },

@@ -434,10 +434,33 @@ export default function IssuanceDetail() {
                         not a placement commission.
                       </p>
                       {escrowSubs.length > 0 && (
-                        <button onClick={closeRound} className="btn-primary mt-4 w-full">
-                          <Icon.check width={16} height={16} />
-                          Close round · release escrow & deliver tokens
-                        </button>
+                        <>
+                          <div className="mt-3 divide-y divide-ink-900/5 rounded-lg border border-ink-900/10">
+                            {escrowSubs.map((su) => (
+                              <div
+                                key={su.id}
+                                className="flex items-center justify-between px-3 py-2 text-sm"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium text-ink-900">{su.name}</span>
+                                  <Badge color="slate">{su.jur}</Badge>
+                                  {su.rail && <Badge color="liquid">{su.rail}</Badge>}
+                                </div>
+                                <span className="font-mono text-ink-800">
+                                  {fmtAmount(su.amount, iss.unit)}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                          <button onClick={closeRound} className="btn-primary mt-4 w-full">
+                            <Icon.check width={16} height={16} />
+                            Closing conditions met · release escrow & deliver tokens
+                          </button>
+                          <p className="mt-1.5 text-center text-[11px] text-ink-700/55">
+                            Escrow is released only against the offering’s closing
+                            conditions; tokens settle to whitelisted wallets.
+                          </p>
+                        </>
                       )}
                     </>
                   )}
