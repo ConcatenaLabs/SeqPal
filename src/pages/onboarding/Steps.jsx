@@ -11,7 +11,7 @@ import {
   addBusinessDays,
 } from '../../lib/store'
 import { STRUCTURES, getStructure } from '../../data/structures'
-import { JURISDICTIONS } from '../../data/jurisdictions'
+import { JURISDICTIONS, CATCH_ALL_ROW } from '../../data/jurisdictions'
 import { computeSetupCost } from '../../data/pricing'
 
 // Target time-to-live in business days, [private, public]. Public offerings take
@@ -1050,6 +1050,20 @@ export function Step5Compliance({ data, update }) {
               </div>
             )
           })}
+          <div className="flex items-center gap-4 bg-ink-900/[0.02] px-6 py-3">
+            <div className="w-9 shrink-0 font-mono text-xs font-semibold text-ink-700/70">
+              ···
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-medium text-ink-900">
+                {CATCH_ALL_ROW.name}
+              </div>
+              <div className="truncate text-xs text-ink-700/60">{CATCH_ALL_ROW.basis}</div>
+            </div>
+            <span className="rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700">
+              Standard
+            </span>
+          </div>
         </div>
       </div>
 
@@ -1071,7 +1085,8 @@ export function Step5Compliance({ data, update }) {
           </div>
           <p className="mt-1.5 text-xs leading-relaxed text-ink-700/70">
             SeqPal ID verification, continuous sanctions screening, and OFAC/FATF-aligned
-            blocks are always enforced and cannot be loosened.
+            blocks — including OFAC/EU territorial sanctions for the occupied Ukrainian
+            territories — are always enforced and cannot be loosened.
           </p>
         </div>
       </div>
