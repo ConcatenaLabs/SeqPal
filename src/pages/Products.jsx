@@ -51,7 +51,7 @@ const products = [
       'Offering memorandum & version-controlled data room',
       'SeqPal ID identity and eligibility gate',
       'Subscription-agreement workflow and e-signature',
-      'Escrow held under a tri-party agreement, released on closing',
+      'Escrow in fiat (segregated bank account, tri-party agreement) or BTC / L-USDT (segregated wallets), released on closing',
     ],
     cta: { to: '/onboarding', label: 'Configure a portal' },
   },
