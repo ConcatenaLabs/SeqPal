@@ -603,7 +603,8 @@ const DOC_PACKAGE = (structureId, isPublic) => {
   // Capital-raise structures use a tri-party placement escrow; DRs use the
   // brokerage custody mandate (added above) instead.
   if (structureId !== 'depository-receipt') docs.push('Tri-party escrow agreement')
-  if (isPublic || structureId === 'depository-receipt') docs.push('RFSA Offering Memorandum filing package')
+  if (isPublic || structureId === 'depository-receipt')
+    docs.push('RFSA registration & Offering Memorandum package (Financial Products Registry)')
   if (isPublic) docs.push('Board & governance attestations')
   return docs
 }
