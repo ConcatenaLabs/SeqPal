@@ -31,7 +31,7 @@ export const MILESTONES = [
   {
     key: 'filing',
     label: 'Documents executed & RFSA filing',
-    detail: 'Offering documents filed where applicable',
+    detail: 'Exempt notice (private placement) or RFSA registration (public offering)',
   },
   {
     key: 'deployment',

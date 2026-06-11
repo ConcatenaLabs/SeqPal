@@ -100,7 +100,7 @@ export default function Home() {
               </span>
               <span className="inline-flex items-center gap-2">
                 <Icon.check width={16} height={16} className="text-btc" /> Open
-                secondary liquidity
+                secondary transferability
               </span>
             </div>
           </div>
@@ -293,15 +293,15 @@ export default function Home() {
         <div className="grid gap-12 lg:grid-cols-2 lg:items-center">
           <div>
             <SectionHeading
-              eyebrow="Open liquidity"
-              title="Compliance at the protocol level — liquidity in the open market"
-              sub="SeqPal embeds investor eligibility checks directly into each token, so SeqPal-issued assets can trade freely on any vetted public DEX rather than being locked inside a proprietary trading system."
+              eyebrow="Open transferability"
+              title="Compliance at the protocol level — open, permissionless transferability"
+              sub="SeqPal embeds investor eligibility checks directly into each token, so SeqPal-issued assets move freely between whitelisted holders and can be listed on any vetted public DEX — rather than being locked inside a proprietary trading system."
             />
             <ul className="mt-8 space-y-4">
               {[
                 'Transfer-Restricted assets issued via Blockstream AMP',
                 'Whitelist enforced by SeqPal ID at the protocol level',
-                'Discoverable and tradable on Liquid-native venues such as SideSwap, with asset-level KYC',
+                'Listable on Liquid-native venues such as SideSwap (venue-curated), with asset-level KYC',
                 'Distributions paid pro-rata in BTC or stablecoins',
               ].map((t) => (
                 <li key={t} className="flex items-start gap-3">

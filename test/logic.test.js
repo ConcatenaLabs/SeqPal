@@ -6,9 +6,10 @@ import { completedCount, milestonesFor, nextStatus, MILESTONES } from '../src/li
 import { isEligible, tierFor } from '../src/lib/policy.js'
 import {
   parseMoney,
+  fmtAmount,
   ownershipDenominator,
   ownershipPct,
-  platformServicesFee,
+  escrowSettlementFee,
 } from '../src/lib/economics.js'
 import {
   slugify,
@@ -95,10 +96,24 @@ test('economics — money, post-money ownership, platform fee', () => {
   assert.equal(ownershipDenominator('debt-yield', {}, 5000000), 5000000)
   assert.equal(ownershipPct('debt-yield', {}, 5000000, 250000).toFixed(2), '5.00')
 
-  // Platform Services Fee: 3% with a $10K floor
-  assert.equal(platformServicesFee(750000), 22500)
-  assert.equal(platformServicesFee(100000), 10000) // floor
-  assert.equal(platformServicesFee(0), 10000)
+  // Escrow & Settlement Fee (plan v0.72): 0.25%/mo on escrowed funds, accrued
+  // over the holding period; $5K minimum; capped at 3% of funds held.
+  // Plan's worked example: $5M raise over the typical ~4 months ≈ $50K (~1%).
+  assert.equal(escrowSettlementFee(5000000), 50000)
+  assert.equal(escrowSettlementFee(750000), 7500) // ≈1% typical window
+  assert.equal(escrowSettlementFee(100000), 5000) // $5K minimum binds
+  assert.equal(escrowSettlementFee(0), 5000)
+  // long holding periods hit the 3% cap: 20 months on $1M accrues $50K → capped $30K
+  assert.equal(escrowSettlementFee(1000000, 20), 30000)
+  // BTC-denominated raises: the US$5,000 minimum is a dollar-equivalent and is
+  // not netted against the ₿ amount — fee is the raw accrual within the cap.
+  assert.equal(escrowSettlementFee(100, 4, 'BTC'), 1) // ₿1 ≈ 1% of ₿100
+  assert.equal(escrowSettlementFee(100, 20, 'BTC'), 3) // capped at 3% = ₿3
+
+  // unit-of-account formatting (USD default; BTC election)
+  assert.equal(fmtAmount(7500), '$7,500')
+  assert.equal(fmtAmount(7500, 'USD'), '$7,500')
+  assert.equal(fmtAmount(12, 'BTC'), '₿12')
 })
 
 test('util — slugify, addBusinessDays, id/hash formats', () => {

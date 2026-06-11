@@ -327,12 +327,14 @@ export default function PortalSetup() {
               <span className="flex-1">
                 <span className="block text-sm font-semibold text-ink-900">
                   {cfg.escrowRequested
-                    ? 'Escrow account active'
-                    : 'Request a tri-party escrow account'}
+                    ? 'Escrow rails active'
+                    : 'Request escrow for this raise'}
                 </span>
                 <span className="mt-0.5 block text-xs text-ink-700/70">
-                  Subscription funds held under a tri-party agreement between you, the
-                  investor, and SeqPal’s banking partner; released to you on closing.
+                  Fiat subscriptions are held in a segregated account at SeqPal’s escrow
+                  bank under a tri-party agreement (you, the bank, SeqPal); BTC and
+                  L-USDT in per-issuance segregated escrow wallets held by SeqPal as
+                  licensed escrow agent. Released to you on closing conditions being met.
                 </span>
               </span>
             </button>
