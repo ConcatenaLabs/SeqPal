@@ -11,6 +11,14 @@ const DIST_LABEL = {
   'depository-receipt': 'Yield pass-through',
 }
 
+// Structure-specific event fees (plan 4.3.3 / 4.4.3), shown when the issuer
+// initiates the corresponding corporate action.
+const FEE_BY_ACTION = {
+  'Waterfall distribution': '0.50% of distribution value · $5K min',
+  'Early redemption / call': '1% of outstanding principal',
+  'Default workflow': 'Out-of-pocket pass-through + $10K–$50K work fee',
+}
+
 const CORP_ACTIONS = {
   'native-equity': ['Reissuance', 'Lockup release', 'Voting proxy', 'Redemption'],
   'equity-spv': ['Waterfall distribution', 'Proof-of-position update', 'Redemption'],
@@ -257,6 +265,14 @@ export default function ServicingPanel({ iss }) {
               onChange={(e) => setCorp({ ...corp, note: e.target.value })}
             />
           </div>
+          {FEE_BY_ACTION[corp.type] && (
+            <div className="flex items-center justify-between rounded-lg bg-ink-900/[0.03] px-3 py-2 text-xs">
+              <span className="text-ink-700/70">Event fee</span>
+              <span className="font-mono font-semibold text-ink-900">
+                {FEE_BY_ACTION[corp.type]}
+              </span>
+            </div>
+          )}
           <p className="text-xs text-ink-700/60">
             Logged immutably with AMP authorization context. Mocked in the demo.
           </p>
