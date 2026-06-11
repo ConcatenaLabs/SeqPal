@@ -107,14 +107,11 @@ export default function ServicingPanel({ iss }) {
           </>
         )}
         <button
-          onClick={() =>
-            (setToast('Holder statements exported (demo)'),
-            setTimeout(() => setToast(null), 3200))
-          }
+          onClick={() => setModal('reports')}
           className="flex items-center gap-2.5 rounded-lg border border-ink-900/10 px-3 py-2.5 text-left text-sm font-medium text-ink-800 hover:bg-ink-900/[0.02]"
         >
           <Icon.doc width={18} height={18} className="text-ink-600" />
-          Holder statements
+          Reporting & tax
         </button>
       </div>
 
@@ -391,6 +388,46 @@ export default function ServicingPanel({ iss }) {
           <p className="text-xs text-ink-700/60">
             Tokens are burned and the underlying released per the Depository Agreement.
             Mocked in the demo.
+          </p>
+        </div>
+      </Modal>
+
+      {/* ── Reporting & tax modal (3.6.3 / 5.8) ── */}
+      <Modal
+        open={modal === 'reports'}
+        onClose={() => setModal(null)}
+        title="Reporting & tax"
+      >
+        <div className="space-y-2">
+          {[
+            [
+              'Year-end holder statements',
+              'Gross income, redemption proceeds, and cost basis where SeqPal has visibility — for holders’ domestic filings.',
+            ],
+            [
+              'W-8 / W-9 holder reporting',
+              'Produced for holders whose jurisdiction requires it.',
+            ],
+            [
+              'Próspera tax filing',
+              'Próspera 1% corporate gross-income tax filing for the issuer LLC.',
+            ],
+          ].map(([label, detail]) => (
+            <button
+              key={label}
+              onClick={() => pushActivity({ summary: `${label} generated` })}
+              className="flex w-full items-start gap-3 rounded-lg border border-ink-900/10 px-3 py-2.5 text-left hover:bg-ink-900/[0.02]"
+            >
+              <Icon.doc width={18} height={18} className="mt-0.5 shrink-0 text-ink-600" />
+              <span>
+                <span className="block text-sm font-medium text-ink-900">{label}</span>
+                <span className="mt-0.5 block text-xs text-ink-700/70">{detail}</span>
+              </span>
+            </button>
+          ))}
+          <p className="pt-1 text-xs text-ink-700/60">
+            SeqPal does not provide tax advice. Generated for the issuer and holders to use
+            in their own filings. Mocked in the demo.
           </p>
         </div>
       </Modal>
