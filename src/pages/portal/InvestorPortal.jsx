@@ -28,9 +28,9 @@ export default function InvestorPortal() {
   if (!iss || !iss.portal?.published) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-ink-900/[0.03] px-6 text-center">
-        <p className="text-ink-700">This portal isn’t published.</p>
-        <Link to="/dashboard" className="btn-outline mt-6">
-          Back to dashboard
+        <p className="text-ink-700">This offering isn’t available.</p>
+        <Link to="/id" className="btn-outline mt-6">
+          Go to SeqPal ID
         </Link>
       </div>
     )
@@ -39,6 +39,11 @@ export default function InvestorPortal() {
   const p = iss.portal
   const accent = ACCENT_HEX[p.accent] || ACCENT_HEX.btc
   const s = getStructure(iss.structureId)
+
+  // General-solicitation gate. A private placement (Reg D 506(b)-style) may not
+  // be generally solicited: its terms, documents and target raise are shown only
+  // to a verified investor who clears the offering's eligibility policy. A public
+  // offering (506(c)-style) may be displayed openly. `eligible` is computed below.
 
   // Unit of account & funding rails. A BTC-denominated raise is escrowed in
   // kind; for USD-denominated raises BTC subscriptions are converted to L-USDT
@@ -53,6 +58,9 @@ export default function InvestorPortal() {
   const tier = inv ? tierFor(iss.policy, inv.residenceCode) : undefined
   const eligible = inv ? isEligible(iss.policy, inv.residenceCode, inv.accredited) : false
   const jName = inv && JURISDICTIONS.find((j) => j.code === inv.residenceCode)?.name
+
+  // Private placements reveal terms only to an eligible, verified investor.
+  const revealTerms = iss.isPublic || (isLoggedIn && eligible)
 
   // Round capacity: the target raise is treated as the hard cap.
   const raiseNum = parseMoney(iss.raise)
@@ -118,56 +126,80 @@ export default function InvestorPortal() {
         <div className="grid gap-8 lg:grid-cols-[1.5fr_1fr]">
           {/* Offering */}
           <div>
-            <Badge color="slate">{s?.name}</Badge>
-            <h1 className="mt-3 text-3xl font-extrabold tracking-tight text-ink-900">
-              {p.headline}
-            </h1>
-            <p className="mt-2 text-ink-700/80">
-              {iss.name} · <span className="font-mono text-sm">{iss.ticker}</span> · issued
-              on the Liquid Network
-            </p>
+            <Badge color="slate">
+              {s?.name}
+              {!iss.isPublic ? ' · Private placement' : ''}
+            </Badge>
+            {revealTerms ? (
+              <>
+                <h1 className="mt-3 text-3xl font-extrabold tracking-tight text-ink-900">
+                  {p.headline}
+                </h1>
+                <p className="mt-2 text-ink-700/80">
+                  {iss.name} · <span className="font-mono text-sm">{iss.ticker}</span> ·
+                  issued on the Liquid Network
+                </p>
 
-            <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {[
-                ['Target raise', iss.raise || '—'],
-                ['Min. investment', `${unitSymbol(iss.unit)}${p.minInvestment}`],
-                ['Offering', iss.isPublic ? 'Public' : 'Private placement'],
-              ].map(([k, v]) => (
-                <div key={k} className="rounded-xl border border-ink-900/10 bg-white p-4">
-                  <div className="text-xs text-ink-700/60">{k}</div>
-                  <div className="mt-0.5 font-bold text-ink-900">{v}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Data room — only after eligibility */}
-            <div className="mt-8">
-              <h2 className="flex items-center gap-2 font-bold text-ink-900">
-                <Icon.lock width={16} height={16} className="text-ink-600" /> Data room
-              </h2>
-              {eligible ? (
-                <div className="mt-3 space-y-2">
-                  {p.docs.map((d) => (
-                    <div
-                      key={d}
-                      className="flex items-center gap-3 rounded-lg border border-ink-900/10 bg-white px-4 py-3"
-                    >
-                      <Icon.doc width={18} height={18} className="text-ink-600" />
-                      <span className="flex-1 text-sm font-medium text-ink-900">{d}</span>
-                      <span className="text-xs text-ink-700/50">PDF</span>
+                <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  {[
+                    ['Target raise', iss.raise || '—'],
+                    ['Min. investment', `${unitSymbol(iss.unit)}${p.minInvestment}`],
+                    ['Offering', iss.isPublic ? 'Public' : 'Private placement'],
+                  ].map(([k, v]) => (
+                    <div key={k} className="rounded-xl border border-ink-900/10 bg-white p-4">
+                      <div className="text-xs text-ink-700/60">{k}</div>
+                      <div className="mt-0.5 font-bold text-ink-900">{v}</div>
                     </div>
                   ))}
                 </div>
-              ) : (
-                <div className="mt-3 rounded-xl border border-dashed border-ink-900/20 bg-white p-6 text-center text-sm text-ink-700/70">
-                  <Icon.lock width={22} height={22} className="mx-auto text-ink-500" />
-                  <p className="mt-2">
-                    Offering documents unlock once your SeqPal ID clears the eligibility
-                    gate.
+
+                {/* Data room — only after eligibility */}
+                <div className="mt-8">
+                  <h2 className="flex items-center gap-2 font-bold text-ink-900">
+                    <Icon.lock width={16} height={16} className="text-ink-600" /> Data room
+                  </h2>
+                  {eligible ? (
+                    <div className="mt-3 space-y-2">
+                      {p.docs.map((d) => (
+                        <div
+                          key={d}
+                          className="flex items-center gap-3 rounded-lg border border-ink-900/10 bg-white px-4 py-3"
+                        >
+                          <Icon.doc width={18} height={18} className="text-ink-600" />
+                          <span className="flex-1 text-sm font-medium text-ink-900">{d}</span>
+                          <span className="text-xs text-ink-700/50">PDF</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="mt-3 rounded-xl border border-dashed border-ink-900/20 bg-white p-6 text-center text-sm text-ink-700/70">
+                      <Icon.lock width={22} height={22} className="mx-auto text-ink-500" />
+                      <p className="mt-2">
+                        Offering documents unlock once your SeqPal ID clears the eligibility
+                        gate.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              /* Private placement, anonymous visitor: no general solicitation. */
+              <>
+                <h1 className="mt-3 text-3xl font-extrabold tracking-tight text-ink-900">
+                  {p.brandName}
+                </h1>
+                <p className="mt-2 text-ink-700/80">A private offering on the Liquid Network.</p>
+                <div className="mt-8 rounded-2xl border border-dashed border-ink-900/20 bg-white p-8 text-center">
+                  <Icon.lock width={26} height={26} className="mx-auto text-ink-500" />
+                  <p className="mx-auto mt-3 max-w-md text-sm text-ink-700/75">
+                    This is a private placement. Its terms, offering documents and target
+                    raise are shown only to investors who clear this offering’s eligibility
+                    policy with a verified SeqPal ID. SeqPal-issued private offerings are
+                    never generally solicited.
                   </p>
                 </div>
-              )}
-            </div>
+              </>
+            )}
           </div>
 
           {/* Eligibility / subscription panel */}
@@ -186,8 +218,8 @@ export default function InvestorPortal() {
                   <>
                     <p className="text-sm text-ink-700/80">
                       Every investor must hold a verified SeqPal ID that satisfies this
-                      offering’s jurisdiction and accreditation policy before viewing terms
-                      or subscribing.
+                      offering’s jurisdiction and accreditation policy
+                      {iss.isPublic ? ' before subscribing.' : ' before viewing terms or subscribing.'}
                     </p>
                     <Link
                       to={`/id?next=/portal/${iss.id}`}
