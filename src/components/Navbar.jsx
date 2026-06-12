@@ -42,17 +42,12 @@ export default function Navbar() {
 
         <div className="hidden items-center gap-2 lg:flex">
           {isLoggedIn ? (
-            <>
-              <Link to="/holdings" className="btn-ghost">
-                Holdings
-              </Link>
-              <Link to="/dashboard" className="btn-ghost gap-2">
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-btc-50 text-xs font-bold text-btc-700">
-                  {account.individual.name.slice(0, 1).toUpperCase()}
-                </span>
-                Dashboard
-              </Link>
-            </>
+            <Link to="/dashboard" className="btn-ghost gap-2">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-btc-50 text-xs font-bold text-btc-700">
+                {account.individual.name.slice(0, 1).toUpperCase()}
+              </span>
+              Dashboard
+            </Link>
           ) : (
             <Link to="/id" className="btn-ghost">
               Sign in
@@ -87,11 +82,6 @@ export default function Navbar() {
               </Link>
             ))}
             <div className="mt-2 flex flex-col gap-2">
-              {isLoggedIn && (
-                <Link to="/holdings" onClick={() => setOpen(false)} className="btn-outline w-full">
-                  My holdings
-                </Link>
-              )}
               <Link
                 to={isLoggedIn ? '/dashboard' : '/id'}
                 onClick={() => setOpen(false)}

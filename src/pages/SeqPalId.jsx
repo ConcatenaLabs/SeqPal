@@ -306,8 +306,8 @@ export default function SeqPalId() {
             title={isLoggedIn ? 'Your SeqPal ID' : 'One passport. Every asset you qualify for.'}
             sub={
               isLoggedIn
-                ? 'Your identity profile and any linked corporate entities. Sign in is your SeqPal ID — it gates the issuer dashboard and every SeqPal-issued asset.'
-                : 'Create your SeqPal ID once. From then on you’re automatically whitelisted for every SeqPal-issued asset your profile is eligible to hold — and it’s how you sign in to issue.'
+                ? 'Your verified identity passport and any linked corporate entities — the eligibility that whitelists you for every SeqPal-issued asset your profile qualifies for.'
+                : 'Create your SeqPal ID once. From then on you’re automatically whitelisted for every SeqPal-issued asset your profile is eligible to hold — verify here, then invest wherever a SeqPal-issued offering is presented to you.'
             }
           />
           {next && !isLoggedIn && (
@@ -363,13 +363,17 @@ export default function SeqPalId() {
             <div className="space-y-5">
               <Passport profile={account.individual} type="individual" />
               <div className="flex flex-wrap gap-3">
-                <Link to="/onboarding" className="btn-primary">
-                  Start an issuance
-                  <Icon.arrowRight width={16} height={16} />
-                </Link>
-                <Link to="/dashboard" className="btn-outline">
-                  Dashboard
-                </Link>
+                {next ? (
+                  <button onClick={() => navigate(next)} className="btn-primary">
+                    Continue
+                    <Icon.arrowRight width={16} height={16} />
+                  </button>
+                ) : (
+                  <Link to="/holdings" className="btn-primary">
+                    My holdings
+                    <Icon.arrowRight width={16} height={16} />
+                  </Link>
+                )}
                 <button onClick={signOut} className="btn-ghost text-ink-700/70">
                   Sign out
                 </button>
@@ -392,9 +396,9 @@ export default function SeqPalId() {
                 )}
               </div>
               <p className="mt-1 text-sm text-ink-700/70">
-                Required to issue Equity SPV, Debt / Yield, and Depository Receipt tokens —
-                where an existing entity is the principal of the offering. Native Equity
-                needs only your individual ID.
+                Verify an entity you represent (KYB) to hold or transact SeqPal-issued
+                assets as that company. Your individual ID alone is enough for personal
+                eligibility.
               </p>
 
               <div className="mt-5 space-y-4">

@@ -2,6 +2,8 @@ import { useEffect } from 'react'
 import { Routes, Route, useLocation } from 'react-router-dom'
 import Navbar from './components/Navbar'
 import Footer from './components/Footer'
+import IdNav from './components/IdNav'
+import IdFooter from './components/IdFooter'
 import Home from './pages/Home'
 import Products from './pages/Products'
 import Structures from './pages/Structures'
@@ -21,6 +23,7 @@ const TITLES = {
   '/structures': 'Issuance Structures — SeqPal',
   '/pricing': 'Pricing — SeqPal',
   '/id': 'SeqPal ID',
+  '/holdings': 'My holdings — SeqPal ID',
   '/dashboard': 'Issuer Dashboard — SeqPal',
   '/onboarding': 'New issuance — SeqPal',
 }
@@ -44,17 +47,22 @@ function ScrollToTop() {
 
 export default function App() {
   const { pathname } = useLocation()
-  // The onboarding wizard and portal surfaces are focused, full-screen flows
-  // without the marketing chrome.
+  // Three site chromes:
+  //  - "focused": full-screen flows (issuer onboarding wizard, portal setup, and
+  //    the investor-facing placement portal on the issuer's own domain).
+  //  - "id": the standalone SeqPal ID subsite (conceptually id.seqpal.io) — the
+  //    investor + login surface, with NO issuance-business navigation.
+  //  - default: the issuer-facing issuance platform (marketing + dashboard).
   const isFocused =
     pathname.startsWith('/onboarding') ||
     pathname.startsWith('/portal/') ||
     /^\/issuance\/[^/]+\/portal$/.test(pathname)
+  const isIdSite = pathname === '/id' || pathname === '/holdings'
 
   return (
     <div className="flex min-h-screen flex-col">
       <ScrollToTop />
-      {!isFocused && <Navbar />}
+      {!isFocused && (isIdSite ? <IdNav /> : <Navbar />)}
       <main className="flex-1">
         <Routes>
           <Route path="/" element={<Home />} />
@@ -71,7 +79,7 @@ export default function App() {
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
-      {!isFocused && <Footer />}
+      {!isFocused && (isIdSite ? <IdFooter /> : <Footer />)}
     </div>
   )
 }
