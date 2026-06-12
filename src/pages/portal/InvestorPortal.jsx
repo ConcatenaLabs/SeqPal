@@ -269,6 +269,10 @@ export default function InvestorPortal() {
                       ) : null}
                       .
                     </p>
+                    <Link to="/holdings" className="btn-primary mt-5 w-full">
+                      View my holdings
+                      <Icon.arrowRight width={16} height={16} />
+                    </Link>
                   </div>
                 ) : full && phase === 'offering' ? (
                   <div className="text-center">
