@@ -299,7 +299,7 @@ export default function IssuanceDetail() {
                 ['Issuance layer', 'Blockstream AMP · Transfer-Restricted'],
                 ['Asset id', live ? <Truncate key="a" value={iss.assetId} /> : 'pending'],
                 ['Issuance txid', live ? <Truncate key="t" value={iss.txid} /> : 'pending'],
-                ['Initial mint to', iss.mintTarget],
+                ['Initial mint', iss.mintTarget],
                 ['Target raise', iss.raise || '—'],
                 ['Offering type', iss.isPublic ? 'Public offering' : 'Private placement'],
                 ...(iss.structureId === 'depository-receipt'

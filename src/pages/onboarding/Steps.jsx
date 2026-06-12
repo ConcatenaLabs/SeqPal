@@ -1109,9 +1109,12 @@ export function Step6Checkout({ data, onDeployed }) {
   const [issuanceId, setIssuanceId] = useState(null)
 
   const isRaise = data.structureId !== 'depository-receipt'
-  // Private placements mint to the escrow address; DRs / public equity to the issuer wallet.
-  const mintTarget =
-    isRaise && !data.isPublic ? 'placement-portal escrow address' : 'issuer wallet'
+  // Every capital raise (private or public) settles delivery-versus-payment out
+  // of the placement portal's escrow. DR tokens aren't pre-minted to anyone —
+  // they are minted on demand as investors deposit against brokerage custody.
+  const mintTarget = isRaise
+    ? 'placement-portal escrow address'
+    : 'on demand against custody'
 
   const pay = () => {
     setPhase('processing')
@@ -1190,8 +1193,11 @@ export function Step6Checkout({ data, onDeployed }) {
                   day: 'numeric',
                 })}
               </span>
-              . We’ll then file with the RFSA (where applicable), deploy the AMP asset, and
-              mint the initial supply to the {mintTarget}.
+              . We’ll then file with the RFSA (where applicable), deploy the AMP asset, and{' '}
+              {isRaise
+                ? `mint the initial supply to the ${mintTarget}`
+                : 'mint DR tokens on demand as investor deposits clear brokerage custody'}
+              .
             </p>
           </div>
 
@@ -1240,7 +1246,7 @@ export function Step6Checkout({ data, onDeployed }) {
               ['Offering type', data.isPublic ? 'Public offering' : 'Private placement'],
               ['Unit of account', data.unit === 'BTC' ? 'BTC (₿)' : 'USD ($)'],
               ['Target raise', data.raise || '—'],
-              ['Initial mint to', mintTarget],
+              ['Initial mint', mintTarget],
               ['Network', 'Liquid · Blockstream AMP'],
             ].map(([k, v]) => (
               <div key={k} className="flex items-center justify-between py-2.5">
