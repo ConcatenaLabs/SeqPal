@@ -5,6 +5,7 @@ import { Icon } from '../../components/icons'
 import { Badge, DemoNote } from '../../components/ui'
 import SignInGate from '../../components/SignInGate'
 import { useStore, slugify } from '../../lib/store'
+import { unitSymbol } from '../../lib/economics'
 import { getStructure } from '../../data/structures'
 
 const ACCENTS = [
@@ -96,7 +97,9 @@ export default function PortalSetup() {
     accent: existing.accent || 'btc',
     slug: existing.slug || slugify(iss?.entityName || iss?.name || ''),
     docs: existing.docs || dataRoomDocs(iss?.structureId),
-    minInvestment: existing.minInvestment || '25,000',
+    // The minimum is in the raise's unit of account — a sensible BTC default,
+    // not a USD figure shown with a ₿ symbol.
+    minInvestment: existing.minInvestment || (iss?.unit === 'BTC' ? '0.5' : '25,000'),
     escrowRequested: existing.escrowRequested || false,
     tosAccepted: existing.tosAccepted || false,
   }))
@@ -283,7 +286,7 @@ export default function PortalSetup() {
               </label>
               <div className="relative">
                 <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-ink-700/60">
-                  $
+                  {unitSymbol(iss.unit)}
                 </span>
                 <input
                   id="pf-min"
