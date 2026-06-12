@@ -50,19 +50,24 @@ export function Step1Identity({ data, update }) {
   const [form, setForm] = useState({ entity: '', jurisdiction: 'United Arab Emirates' })
   const [verifying, setVerifying] = useState(false)
 
+  // The principal is named throughout the generated documents — changing it
+  // after e-signing voids the signature.
+  const setPrincipal = (principal) =>
+    update(
+      data.principal?.idNumber === principal.idNumber
+        ? { principal }
+        : { principal, docsSigned: false }
+    )
+
   const selectIndividual = () =>
-    update({
-      principal: {
-        type: 'individual',
-        name: account.individual.name,
-        idNumber: account.individual.idNumber,
-      },
+    setPrincipal({
+      type: 'individual',
+      name: account.individual.name,
+      idNumber: account.individual.idNumber,
     })
 
   const selectCorporate = (c) =>
-    update({
-      principal: { type: 'corporate', name: c.entity, idNumber: c.idNumber, corpId: c.id },
-    })
+    setPrincipal({ type: 'corporate', name: c.entity, idNumber: c.idNumber, corpId: c.id })
 
   const addEntity = (e) => {
     e.preventDefault()
@@ -277,12 +282,18 @@ export function Step2Structure({ data, update }) {
               key={s.id}
               disabled={locked}
               onClick={() =>
-                update({
-                  structureId: s.id,
-                  isPublic: s.id === 'depository-receipt',
-                  // keep the attestation only if re-selecting the same structure
-                  attested: s.id === data.structureId ? data.attested : false,
-                })
+                update(
+                  s.id === data.structureId
+                    ? {} // re-selecting changes nothing
+                    : {
+                        structureId: s.id,
+                        isPublic: s.id === 'depository-receipt',
+                        // a new structure means new attestation and a new
+                        // document package — any prior e-signature is void
+                        attested: false,
+                        docsSigned: false,
+                      }
+                )
               }
               className={`card relative p-6 text-left transition-all ${
                 locked
@@ -449,7 +460,9 @@ export function Step3DataRoom({ data, update }) {
 
   const setField = (k, v, sym = symbol) => {
     const fields = { ...data.fields, [k]: v }
-    const patch = { fields }
+    // The document package is generated from these inputs (plan §3.3 step 4) —
+    // editing any deal term after e-signing voids the signature.
+    const patch = { fields, docsSigned: false }
     if (k === 'raise') {
       // Keep the raw input in the field; store a comma-formatted display copy.
       const n = Number(String(v).replace(/[^0-9.]/g, ''))
@@ -459,8 +472,9 @@ export function Step3DataRoom({ data, update }) {
   }
 
   const setUnit = (unit) => {
-    // Re-derive the stored raise display with the new symbol.
-    update({ unit })
+    // Re-derive the stored raise display with the new symbol. The elected unit
+    // of account appears in the documents, so changing it voids a signature.
+    update({ unit, docsSigned: false })
     const v = data.fields?.raise
     if (v) setField('raise', v, unit === 'BTC' ? '₿' : '$')
   }
@@ -488,7 +502,9 @@ export function Step3DataRoom({ data, update }) {
             <button
               key={String(o.v)}
               disabled={lockedPublic}
-              onClick={() => update({ isPublic: o.v })}
+              onClick={() =>
+                o.v !== data.isPublic && update({ isPublic: o.v, docsSigned: false })
+              }
               className={`flex-1 rounded-lg border px-4 py-2.5 text-sm font-semibold transition-colors ${
                 data.isPublic === o.v
                   ? 'border-btc bg-btc-50 text-btc-700'
@@ -512,7 +528,7 @@ export function Step3DataRoom({ data, update }) {
               className="input"
               placeholder="Aurora Ventures Fund I"
               value={data.entityName}
-              onChange={(e) => update({ entityName: e.target.value })}
+              onChange={(e) => update({ entityName: e.target.value, docsSigned: false })}
             />
             <p className="mt-1.5 text-xs text-ink-700/60">
               Registered as{' '}
@@ -1109,12 +1125,11 @@ export function Step6Checkout({ data, onDeployed }) {
   const [issuanceId, setIssuanceId] = useState(null)
 
   const isRaise = data.structureId !== 'depository-receipt'
-  // Every capital raise (private or public) settles delivery-versus-payment out
-  // of the placement portal's escrow. DR tokens aren't pre-minted to anyone —
-  // they are minted on demand as investors deposit against brokerage custody.
-  const mintTarget = isRaise
-    ? 'placement-portal escrow address'
-    : 'on demand against custody'
+  // Plan §3.3 Step 6: the initial supply mints to the issuer's wallet for DRs
+  // and public offerings, or to the placement-portal escrow address for
+  // private placements that haven't yet collected investor subscriptions.
+  const mintTarget =
+    isRaise && !data.isPublic ? 'placement-portal escrow address' : 'issuer wallet'
 
   const pay = () => {
     setPhase('processing')
@@ -1193,11 +1208,8 @@ export function Step6Checkout({ data, onDeployed }) {
                   day: 'numeric',
                 })}
               </span>
-              . We’ll then file with the RFSA (where applicable), deploy the AMP asset, and{' '}
-              {isRaise
-                ? `mint the initial supply to the ${mintTarget}`
-                : 'mint DR tokens on demand as investor deposits clear brokerage custody'}
-              .
+              . We’ll then file with the RFSA (where applicable), deploy the AMP asset, and
+              mint the initial supply to the {mintTarget}.
             </p>
           </div>
 
@@ -1246,7 +1258,7 @@ export function Step6Checkout({ data, onDeployed }) {
               ['Offering type', data.isPublic ? 'Public offering' : 'Private placement'],
               ['Unit of account', data.unit === 'BTC' ? 'BTC (₿)' : 'USD ($)'],
               ['Target raise', data.raise || '—'],
-              ['Initial mint', mintTarget],
+              ['Initial mint to', mintTarget],
               ['Network', 'Liquid · Blockstream AMP'],
             ].map(([k, v]) => (
               <div key={k} className="flex items-center justify-between py-2.5">
