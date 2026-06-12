@@ -109,10 +109,10 @@ export default function InvestorPortal() {
 
       <div className="mx-auto max-w-5xl px-5 py-10">
         <Link
-          to={`/issuance/${iss.id}`}
+          to="/id"
           className="mb-6 inline-flex items-center gap-1.5 text-sm text-ink-700/70 hover:text-ink-900"
         >
-          <Icon.arrowLeft width={15} height={15} /> Back to issuance (demo)
+          <Icon.arrowLeft width={15} height={15} /> SeqPal ID
         </Link>
 
         <div className="grid gap-8 lg:grid-cols-[1.5fr_1fr]">
