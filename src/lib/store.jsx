@@ -4,11 +4,15 @@ const KEY = 'seqpal.demo.v2'
 
 // account.individual === the logged-in natural person (their SeqPal ID).
 // account.corporates === verified corporate (KYB) SeqPal IDs linked to that person.
+// personas === previously verified accounts in this browser, keyed by the
+// individual's SeqPal ID number, so a returning user can sign back in (the live
+// platform authenticates against the SeqPal ID record; the demo has no backend).
 const blank = {
   account: {
     individual: null,
     corporates: [],
   },
+  personas: {},
   issuances: [],
 }
 
@@ -19,6 +23,7 @@ function load() {
     const parsed = JSON.parse(raw)
     return {
       account: { ...blank.account, ...(parsed.account || {}) },
+      personas: parsed.personas || {},
       issuances: parsed.issuances || [],
     }
   } catch {
@@ -36,17 +41,41 @@ export function StoreProvider({ children }) {
   }, [state])
 
   // ── account / identity ──────────────────────────────────────────────
+  // Keep the personas roster current with whatever account is signed in, so a
+  // sign-out (or browser close) never orphans a verified SeqPal ID.
+  const saveAccount = (s, account) =>
+    account.individual
+      ? { ...s.personas, [account.individual.idNumber]: account }
+      : s.personas
+
   const registerIndividual = (individual) =>
-    setState((s) => ({ ...s, account: { ...s.account, individual } }))
+    setState((s) => {
+      const account = { individual, corporates: [] }
+      return { ...s, account, personas: saveAccount(s, account) }
+    })
 
   const addCorporate = (corporate) =>
-    setState((s) => ({
-      ...s,
-      account: { ...s.account, corporates: [...s.account.corporates, corporate] },
-    }))
+    setState((s) => {
+      const account = {
+        ...s.account,
+        corporates: [...s.account.corporates, corporate],
+      }
+      return { ...s, account, personas: saveAccount(s, account) }
+    })
+
+  // "Logging in" in the demo = restoring a previously verified persona; the
+  // live platform authenticates against the SeqPal ID record.
+  const signInAs = (idNumber) =>
+    setState((s) =>
+      s.personas[idNumber] ? { ...s, account: s.personas[idNumber] } : s
+    )
 
   const signOut = () =>
-    setState((s) => ({ ...s, account: { individual: null, corporates: [] } }))
+    setState((s) => ({
+      ...s,
+      personas: saveAccount(s, s.account),
+      account: { individual: null, corporates: [] },
+    }))
 
   // ── issuances ───────────────────────────────────────────────────────
   const addIssuance = (issuance) =>
@@ -70,6 +99,7 @@ export function StoreProvider({ children }) {
     isLoggedIn: !!state.account.individual,
     registerIndividual,
     addCorporate,
+    signInAs,
     signOut,
     addIssuance,
     updateIssuance,
