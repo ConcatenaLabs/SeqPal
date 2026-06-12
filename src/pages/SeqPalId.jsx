@@ -288,7 +288,7 @@ function AccessibleOfferings({ individual, issuances }) {
 }
 
 export default function SeqPalId() {
-  const { account, isLoggedIn, signOut, issuances } = useStore()
+  const { account, isLoggedIn, signOut, signInAs, personas, issuances } = useStore()
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const next = params.get('next')
@@ -346,16 +346,55 @@ export default function SeqPalId() {
                 applicable data-protection regime (GDPR / UK GDPR and equivalents).
               </p>
             </div>
-            <div className="card p-7">
-              <div className="flex items-center gap-2 text-sm font-semibold text-ink-800">
-                <Icon.id width={18} height={18} className="text-btc-600" />
-                Create your individual SeqPal ID
-              </div>
-              <p className="mt-1 text-sm text-ink-700/70">
-                This is your login. You can add corporate entities (KYB) afterwards.
-              </p>
-              <div className="mt-5">
-                <IndividualForm onDone={afterLogin} />
+            <div className="space-y-5">
+              {Object.keys(personas).length > 0 && (
+                <div className="card p-7">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-ink-800">
+                    <Icon.users width={18} height={18} className="text-liquid-600" />
+                    Sign in
+                  </div>
+                  <p className="mt-1 text-sm text-ink-700/70">
+                    SeqPal IDs verified in this browser. On the live platform you’d sign
+                    in with your credentials and a second factor.
+                  </p>
+                  <div className="mt-4 space-y-2">
+                    {Object.values(personas).map((p) => (
+                      <button
+                        key={p.individual.idNumber}
+                        onClick={() => {
+                          signInAs(p.individual.idNumber)
+                          afterLogin()
+                        }}
+                        className="flex w-full items-center gap-3 rounded-xl border border-ink-900/15 px-4 py-3 text-left transition-colors hover:bg-ink-900/[0.03]"
+                      >
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-btc-50 text-sm font-bold text-btc-700">
+                          {p.individual.name.slice(0, 1).toUpperCase()}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-semibold text-ink-900">
+                            {p.individual.name}
+                          </span>
+                          <span className="block font-mono text-xs text-ink-700/60">
+                            {p.individual.idNumber}
+                          </span>
+                        </span>
+                        <Icon.arrowRight width={16} height={16} className="text-ink-600" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="card p-7">
+                <div className="flex items-center gap-2 text-sm font-semibold text-ink-800">
+                  <Icon.id width={18} height={18} className="text-btc-600" />
+                  Create your individual SeqPal ID
+                </div>
+                <p className="mt-1 text-sm text-ink-700/70">
+                  This is your login. You can add corporate entities (KYB) afterwards.
+                </p>
+                <div className="mt-5">
+                  <IndividualForm onDone={afterLogin} />
+                </div>
               </div>
             </div>
           </div>
