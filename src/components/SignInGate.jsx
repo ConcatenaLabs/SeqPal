@@ -2,7 +2,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { Icon } from './icons'
 
 // Renders a friendly sign-in prompt for routes that require a SeqPal ID.
-export default function SignInGate({ title, body }) {
+export default function SignInGate({ title, body, backTo = '/', backLabel = 'Back home' }) {
   const loc = useLocation()
   const next = encodeURIComponent(loc.pathname + loc.search)
   return (
@@ -22,8 +22,8 @@ export default function SignInGate({ title, body }) {
           Create / sign in with SeqPal ID
           <Icon.arrowRight width={18} height={18} />
         </Link>
-        <Link to="/" className="btn-outline px-5 py-3 text-base">
-          Back home
+        <Link to={backTo} className="btn-outline px-5 py-3 text-base">
+          {backLabel}
         </Link>
       </div>
     </section>

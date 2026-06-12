@@ -26,6 +26,8 @@ export default function Holdings() {
       <SignInGate
         title="Sign in to see your holdings"
         body="Your holdings are tied to your SeqPal ID — it’s your login and your identity passport across every SeqPal-issued asset."
+        backTo="/id"
+        backLabel="SeqPal ID home"
       />
     )
   }

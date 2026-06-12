@@ -404,8 +404,8 @@ export default function SeqPalId() {
               <div className="mt-5 space-y-4">
                 {account.corporates.length === 0 && !addingCorp && (
                   <div className="rounded-xl border border-dashed border-ink-900/20 p-6 text-center text-sm text-ink-700/70">
-                    No corporate IDs yet. Add one when you’re ready to issue on behalf of
-                    an entity.
+                    No corporate IDs yet. Add one to hold or transact SeqPal-issued assets
+                    on behalf of an entity you represent.
                   </div>
                 )}
                 {account.corporates.map((c) => (
