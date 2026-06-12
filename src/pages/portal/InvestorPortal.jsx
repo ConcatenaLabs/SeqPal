@@ -83,6 +83,7 @@ export default function InvestorPortal() {
         {
           id: 'sub_' + Math.random().toString(36).slice(2, 9),
           name: inv.name,
+          idNumber: inv.idNumber,
           jur: inv.residenceCode,
           amount: amt,
           rail: escrowedAs,

@@ -4,6 +4,7 @@ import { Icon, StructureIcon } from '../components/icons'
 import { SectionHeading, Badge, DemoNote } from '../components/ui'
 import Passport from '../components/Passport'
 import { useStore, fakeIdNumber, fakeGaid } from '../lib/store'
+import { ownedIssuances } from '../lib/account'
 import { isEligible } from '../lib/policy'
 import { RESIDENCE_OPTIONS } from '../data/jurisdictions'
 import { getStructure } from '../data/structures'
@@ -292,6 +293,8 @@ export default function SeqPalId() {
   const [params] = useSearchParams()
   const next = params.get('next')
   const [addingCorp, setAddingCorp] = useState(false)
+  // Issuer cross-link only for accounts that are principals of an issuance.
+  const isIssuer = isLoggedIn && ownedIssuances(account, issuances).length > 0
 
   const afterLogin = () => {
     if (next) navigate(next)
@@ -372,6 +375,11 @@ export default function SeqPalId() {
                   <Link to="/holdings" className="btn-primary">
                     My holdings
                     <Icon.arrowRight width={16} height={16} />
+                  </Link>
+                )}
+                {isIssuer && (
+                  <Link to="/dashboard" className="btn-outline">
+                    Issuer dashboard
                   </Link>
                 )}
                 <button onClick={signOut} className="btn-ghost text-ink-700/70">

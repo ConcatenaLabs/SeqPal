@@ -5,6 +5,7 @@ import { Icon } from '../../components/icons'
 import { Badge, DemoNote } from '../../components/ui'
 import SignInGate from '../../components/SignInGate'
 import { useStore, slugify } from '../../lib/store'
+import { ownsIssuance } from '../../lib/account'
 import { unitSymbol } from '../../lib/economics'
 import { getStructure } from '../../data/structures'
 
@@ -85,7 +86,7 @@ function Notice({ title, body }) {
 export default function PortalSetup() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { isLoggedIn, issuances, updateIssuance } = useStore()
+  const { account, isLoggedIn, issuances, updateIssuance } = useStore()
   const iss = issuances.find((i) => i.id === id)
 
   // Hooks must run before any early return (Rules of Hooks). Initialise the
@@ -105,7 +106,9 @@ export default function PortalSetup() {
   }))
 
   if (!isLoggedIn) return <SignInGate />
-  if (!iss) return <Notice title="Issuance not found." />
+  // A non-owned issuance is indistinguishable from a missing one — portal
+  // setup is the owner's surface only.
+  if (!iss || !ownsIssuance(account, iss)) return <Notice title="Issuance not found." />
   // A placement portal is a capital-raise surface; DRs are minted/redeemed directly.
   if (iss.structureId === 'depository-receipt')
     return (
