@@ -58,7 +58,7 @@ test/logic.test.js             Unit tests for pricing, lifecycle, policy, econom
 
 ## State model
 
-One account per browser (`localStorage`):
+One signed-in account per browser, plus a personas roster (`localStorage`):
 
 ```
 account: {
@@ -66,18 +66,26 @@ account: {
                 idNumber, gaid } | null,   // null = signed out; this is the "login"
   corporates: [ { id, entity, jurisdiction, idNumber } ]   // KYB entities
 }
+personas: { [idNumber]: account }   // every account verified in this browser;
+                                    // "sign in" = restoring one (no real auth)
 issuances: [ {
   id, name, ticker, entityName, unit ('USD'|'BTC'),
   structureId, principal:{type,name,idNumber,corpId?}, isPublic,
   raise, fields:{…data room…}, policy:{ [jurCode]: tier }, mintTarget,
   assetId, txid, status, createdAt, incorporationEta,
   portal:{ configured, published, brandName, headline, accent, slug, docs[], minInvestment, … },
-  subscriptions:[ { id, name, jur, amount, rail, status:'in_escrow'|'settled', at } ]
+  subscriptions:[ { id, name, idNumber, jur, amount, rail, status:'in_escrow'|'settled', at } ]
 } ]
 ```
 
-Helpers: `registerIndividual`, `addCorporate`, `signOut`, `addIssuance`,
-`updateIssuance(id, patch|fn)`, `reset`.
+Helpers: `registerIndividual`, `addCorporate`, `signInAs(idNumber)`, `signOut`,
+`addIssuance`, `updateIssuance(id, patch|fn)`, `reset`.
+
+**Ownership** (`lib/account.js`): an issuance belongs to the account whose
+individual or linked-corporate ID number matches `principal.idNumber`. The
+dashboard lists only owned issuances; `IssuanceDetail`/`PortalSetup` treat
+non-owned ones as not found; the SeqPal ID subsite shows an "Issuer dashboard"
+cross-link only to accounts that own at least one issuance.
 
 ## Core flows & the rules that govern them
 
@@ -173,8 +181,12 @@ the (internal) business plan.
 - **Plan erratum**: Appendix C cites "Panama Law 67 of 2020" as the qualified-
   investor basis; the correct citation (used on the site) is Decree Law 1/1999 as
   amended by **Law 67 of 2011** (created the SMV). Worth fixing in the plan.
-- Single-tenant demo: signing out doesn't clear issuances; "Reset demo" is the
-  full clear. Acceptable for a single-user localStorage demo.
+- Multi-persona demo: signing out keeps issuances and saves the account into
+  `personas` (sign back in from the SeqPal ID page); "Reset demo" is the full
+  clear. Issuer surfaces are scoped to the owning SeqPal ID.
 - The investor surfaces are split: **"offerings you can access"** (eligible
   published offerings) on the SeqPal ID page, and the **`/holdings`** portfolio
-  (positions you've subscribed to). Both are matched to the signed-in SeqPal ID.
+  (positions matched by the subscriber's SeqPal ID number).
+- No "final close / take portal offline" control yet: a raise keeps accepting
+  subscriptions (rolling closings) until it hits its cap. Realistic for rolling
+  closes, but a real issuer console would also offer a terminal close.
