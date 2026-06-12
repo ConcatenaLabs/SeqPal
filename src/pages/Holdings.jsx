@@ -6,14 +6,17 @@ import { useStore } from '../lib/store'
 import { getStructure } from '../data/structures'
 import { fmtAmount } from '../lib/economics'
 
-// A position = a subscription the signed-in investor made, in the context of its
-// issuance. The demo's logged-in SeqPal ID acts as the visiting investor, so we
-// match subscriptions by the individual's name (how the portal records them).
+// A position = a subscription the signed-in investor made, in the context of
+// its issuance. Subscriptions are keyed to the subscriber's SeqPal ID number;
+// older demo records that predate the idNumber field fall back to name.
 function positionsFor(individual, issuances) {
   const out = []
   for (const iss of issuances) {
     for (const sub of iss.subscriptions || []) {
-      if (sub.name === individual.name) out.push({ iss, sub })
+      const mine = sub.idNumber
+        ? sub.idNumber === individual.idNumber
+        : sub.name === individual.name
+      if (mine) out.push({ iss, sub })
     }
   }
   return out.sort((a, b) => (a.sub.at < b.sub.at ? 1 : -1))

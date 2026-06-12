@@ -18,6 +18,7 @@ import {
   fakeHex,
   fakeIdNumber,
 } from '../src/lib/util.js'
+import { ownsIssuance, ownedIssuances } from '../src/lib/account.js'
 
 test('computeSetupCost — Native Equity tiers, surcharge, secured, DR', () => {
   // standard private placement
@@ -124,6 +125,29 @@ test('economics — money, post-money ownership, platform fee', () => {
   assert.equal(fmtAmount(7500), '$7,500')
   assert.equal(fmtAmount(7500, 'USD'), '$7,500')
   assert.equal(fmtAmount(12, 'BTC'), '₿12')
+})
+
+test('account — issuance ownership by SeqPal ID number', () => {
+  const acct = {
+    individual: { name: 'Issuer Ida', idNumber: 'SQID-I-AAA' },
+    corporates: [{ entity: 'Acme Holdings Ltd', idNumber: 'SQID-C-XYZ' }],
+  }
+  const asIndividual = { principal: { type: 'individual', idNumber: 'SQID-I-AAA' } }
+  const asCorporate = { principal: { type: 'corporate', idNumber: 'SQID-C-XYZ' } }
+  const someoneElse = { principal: { type: 'individual', idNumber: 'SQID-I-BBB' } }
+
+  assert.equal(ownsIssuance(acct, asIndividual), true)
+  assert.equal(ownsIssuance(acct, asCorporate), true)
+  assert.equal(ownsIssuance(acct, someoneElse), false)
+  assert.equal(ownsIssuance(acct, { principal: {} }), false)
+  assert.equal(ownsIssuance({ individual: null, corporates: [] }, asIndividual), false)
+  assert.equal(ownsIssuance(null, asIndividual), false)
+
+  assert.deepEqual(ownedIssuances(acct, [asIndividual, someoneElse, asCorporate]), [
+    asIndividual,
+    asCorporate,
+  ])
+  assert.deepEqual(ownedIssuances(acct, undefined), [])
 })
 
 test('util — slugify, addBusinessDays, id/hash formats', () => {

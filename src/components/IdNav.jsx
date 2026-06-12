@@ -1,10 +1,11 @@
 import { Link, NavLink } from 'react-router-dom'
 import { Icon } from './icons'
 import { useStore } from '../lib/store'
+import { ownedIssuances } from '../lib/account'
 
 // Header for the standalone SeqPal ID subsite (conceptually id.seqpal.io).
-// Deliberately carries NO issuance-business navigation — an investor lands here
-// to verify and manage their identity passport without seeing the issuer product.
+// Carries no issuance-business navigation for investors — the only issuer
+// cross-link appears for accounts that are themselves principals of issuances.
 function IdWordmark() {
   return (
     <span className="inline-flex items-center gap-2.5">
@@ -26,7 +27,11 @@ function IdWordmark() {
 }
 
 export default function IdNav() {
-  const { isLoggedIn, account, signOut } = useStore()
+  const { isLoggedIn, account, signOut, issuances } = useStore()
+  // Cross-link to the issuance platform only when this SeqPal ID is the
+  // principal of at least one issuance — a pure investor never sees a path
+  // to the issuer business from here.
+  const isIssuer = isLoggedIn && ownedIssuances(account, issuances).length > 0
   return (
     <header className="sticky top-0 z-40 border-b border-ink-900/10 bg-white/80 backdrop-blur-lg">
       <div className="container-x flex h-16 items-center justify-between gap-4">
@@ -57,6 +62,15 @@ export default function IdNav() {
               >
                 Holdings
               </NavLink>
+              {isIssuer && (
+                <Link
+                  to="/dashboard"
+                  className="hidden rounded-lg px-3 py-2 text-sm font-medium text-ink-700 transition-colors hover:bg-ink-900/5 sm:flex sm:items-center sm:gap-1.5"
+                >
+                  Issuer dashboard
+                  <Icon.arrowRight width={13} height={13} className="text-ink-500" />
+                </Link>
+              )}
               <button onClick={signOut} className="btn-ghost gap-2 px-2 text-ink-700 sm:ml-1 sm:px-4">
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-btc-50 text-xs font-bold text-btc-700">
                   {account.individual.name.slice(0, 1).toUpperCase()}

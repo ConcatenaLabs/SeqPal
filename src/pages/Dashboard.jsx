@@ -3,6 +3,7 @@ import { Icon, StructureIcon } from '../components/icons'
 import { Badge } from '../components/ui'
 import SignInGate from '../components/SignInGate'
 import { useStore, fakeAssetId, fakeTxid } from '../lib/store'
+import { ownedIssuances } from '../lib/account'
 import { getStructure } from '../data/structures'
 import { JURISDICTIONS } from '../data/jurisdictions'
 import { STATUS } from '../lib/lifecycle'
@@ -70,7 +71,10 @@ export default function Dashboard() {
     )
   }
 
-  const liveCount = issuances.filter((i) => i.status === 'live').length
+  // Only the signed-in principal's issuances — other personas' deals in this
+  // browser's demo store are not theirs to see or manage.
+  const mine = ownedIssuances(account, issuances)
+  const liveCount = mine.filter((i) => i.status === 'live').length
   const loadSample = () => addIssuance(buildSample(account.individual))
 
   return (
@@ -122,7 +126,7 @@ export default function Dashboard() {
           </div>
           <div>
             <div className="text-sm text-ink-700/70">Issuances</div>
-            <div className="font-semibold text-ink-900">{issuances.length}</div>
+            <div className="font-semibold text-ink-900">{mine.length}</div>
           </div>
         </div>
         <div className="card flex items-center gap-4 p-5">
@@ -139,7 +143,7 @@ export default function Dashboard() {
       {/* Issuance list */}
       <div className="mt-10">
         <h2 className="text-lg font-bold text-ink-900">Your issuances</h2>
-        {issuances.length === 0 ? (
+        {mine.length === 0 ? (
           <div className="card mt-4 flex flex-col items-center justify-center px-6 py-16 text-center">
             <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-ink-900/[0.04] text-ink-600">
               <Icon.layers width={28} height={28} />
@@ -161,7 +165,7 @@ export default function Dashboard() {
           </div>
         ) : (
           <div className="mt-4 space-y-3">
-            {issuances.map((iss) => {
+            {mine.map((iss) => {
               const s = getStructure(iss.structureId)
               const Ic = StructureIcon[s?.icon] || Icon.layers
               return (

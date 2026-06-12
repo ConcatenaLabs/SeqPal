@@ -4,6 +4,7 @@ import { Badge, DemoNote } from '../components/ui'
 import SignInGate from '../components/SignInGate'
 import ServicingPanel from '../components/ServicingPanel'
 import { useStore } from '../lib/store'
+import { ownsIssuance } from '../lib/account'
 import { getStructure } from '../data/structures'
 import { JURISDICTIONS } from '../data/jurisdictions'
 import { STATUS, milestonesFor, completedCount, nextStatus } from '../lib/lifecycle'
@@ -173,11 +174,14 @@ function PortalCard({ iss }) {
 
 export default function IssuanceDetail() {
   const { id } = useParams()
-  const { isLoggedIn, issuances, updateIssuance } = useStore()
+  const { account, isLoggedIn, issuances, updateIssuance } = useStore()
 
   if (!isLoggedIn) return <SignInGate />
 
-  const iss = issuances.find((i) => i.id === id)
+  // Treat another principal's issuance as not found — the management console
+  // must not reveal or expose control of a deal this SeqPal ID doesn't own.
+  const found = issuances.find((i) => i.id === id)
+  const iss = found && ownsIssuance(account, found) ? found : null
   if (!iss) {
     return (
       <section className="container-x py-24 text-center">
