@@ -324,7 +324,7 @@ export default function SeqPalId() {
 
       <section className="container-x py-16">
         {!isLoggedIn ? (
-          <div className="grid gap-12 lg:grid-cols-2 lg:items-start">
+          <div className="grid grid-cols-1 gap-12 lg:grid-cols-2 lg:items-start">
             <div>
               <h3 className="text-lg font-bold text-ink-900">What your profile stores</h3>
               <div className="mt-5 space-y-3">
