@@ -91,8 +91,13 @@ export const ID_FEES = [
   },
 ]
 
+// BTC/USD reference used only to evaluate USD-denominated thresholds (e.g. the
+// Simple Native Equity tier) for BTC-denominated raises. Matches the plan v0.72
+// reference price (~US$63,500); fees themselves are quoted in USD.
+export const BTC_USD_REF = 63500
+
 // Computed checkout breakdown for the onboarding demo. `opts` carries data-room
-// inputs (raise, collateral) that affect the fixed price.
+// inputs (raise, collateral, unit) that affect the fixed price.
 export function computeSetupCost(structureId, isPublic, opts = {}) {
   let base = {
     'native-equity': 12500,
@@ -104,9 +109,12 @@ export function computeSetupCost(structureId, isPublic, opts = {}) {
   let simple = false
 
   const raiseNum = Number(String(opts.raise || '').replace(/[^0-9.]/g, '')) || 0
+  // The $500K Simple-tier threshold is a USD figure; convert a BTC-denominated
+  // raise to its USD-equivalent before comparing (a 100-BTC raise is ~$6M, not $100).
+  const raiseUsd = opts.unit === 'BTC' ? raiseNum * BTC_USD_REF : raiseNum
 
-  // Simple Native Equity tier for raises up to $500K.
-  if (structureId === 'native-equity' && raiseNum > 0 && raiseNum <= 500000) {
+  // Simple Native Equity tier for raises up to US$500K.
+  if (structureId === 'native-equity' && raiseUsd > 0 && raiseUsd <= 500000) {
     base = 7500
     simple = true
     baseLabel = 'Setup — Simple Native Equity'
