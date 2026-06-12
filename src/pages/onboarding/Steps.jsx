@@ -1102,6 +1102,7 @@ export function Step6Checkout({ data, onDeployed }) {
   const cost = computeSetupCost(data.structureId, data.isPublic, {
     raise: data.raise,
     collateral: data.fields?.collateral,
+    unit: data.unit,
   })
   const [phase, setPhase] = useState('summary') // summary | processing | submitted
   const [eta, setEta] = useState(null)

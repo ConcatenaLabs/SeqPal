@@ -31,6 +31,16 @@ test('computeSetupCost — Native Equity tiers, surcharge, secured, DR', () => {
   assert.equal(c.base, 7500)
   assert.equal(c.simple, true)
 
+  // BTC-denominated raise: the $500K threshold is USD — a 100-BTC raise (~$6M)
+  // must NOT trigger the Simple tier just because 100 < 500000.
+  c = computeSetupCost('native-equity', false, { raise: '₿100', unit: 'BTC' })
+  assert.equal(c.simple, false)
+  assert.equal(c.base, 12500)
+  // a genuinely small BTC raise (~$317K) does qualify
+  c = computeSetupCost('native-equity', false, { raise: '5', unit: 'BTC' })
+  assert.equal(c.simple, true)
+  assert.equal(c.base, 7500)
+
   // public offering surcharge
   c = computeSetupCost('native-equity', true, { raise: '5,000,000' })
   assert.equal(c.surcharge, 12500)
