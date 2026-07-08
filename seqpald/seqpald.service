@@ -1,0 +1,16 @@
+[Unit]
+Description=SeqPal deployment backend (OpenAMP issuer proxy)
+After=network.target openampd.service
+Wants=openampd.service
+
+[Service]
+Type=simple
+# Secrets (issuer token) live here, box-only, chmod 600, never in git.
+EnvironmentFile=/root/sequentia/seqpald.env
+ExecStart=/root/sequentia/SeqPal/seqpald/seqpald
+Restart=on-failure
+RestartSec=3
+User=root
+
+[Install]
+WantedBy=multi-user.target

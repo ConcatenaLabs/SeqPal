@@ -15,7 +15,7 @@ export function SectionHeading({ eyebrow, title, sub, center, className = '' }) 
 export function Badge({ children, color = 'btc', className = '' }) {
   const map = {
     btc: 'bg-btc/10 text-btc-700',
-    liquid: 'bg-liquid/10 text-liquid-600',
+    seq: 'bg-seq/10 text-seq-600',
     emerald: 'bg-emerald-50 text-emerald-700',
     amber: 'bg-amber-50 text-amber-700',
     rose: 'bg-rose-50 text-rose-700',

@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Icon, StructureIcon } from '../components/icons'
 import { Badge, DemoNote } from '../components/ui'
@@ -8,6 +9,7 @@ import { ownsIssuance } from '../lib/account'
 import { getStructure } from '../data/structures'
 import { JURISDICTIONS } from '../data/jurisdictions'
 import { STATUS, milestonesFor, completedCount, nextStatus } from '../lib/lifecycle'
+import { deployIssuance, termsHash } from '../lib/openamp'
 import {
   parseMoney,
   fmtAmount,
@@ -26,7 +28,7 @@ function Truncate({ value }) {
   )
 }
 
-function Timeline({ iss, onAdvance }) {
+function Timeline({ iss, onAdvance, busy, error }) {
   const milestones = milestonesFor(iss.structureId)
   const done = completedCount(iss.status, iss.structureId)
   const eta = iss.incorporationEta ? new Date(iss.incorporationEta) : null
@@ -100,20 +102,36 @@ function Timeline({ iss, onAdvance }) {
             <Icon.spark width={16} height={16} /> Demo fast-forward
           </div>
           <p className="mt-1 text-xs text-btc-700/80">
-            In production these steps complete over 1–3 business days. Advance them here to
-            preview the live state.
+            In production the incorporation and filing steps complete over 1–3 business
+            days. The deploy step is real: it mints the OpenAMP restricted asset on the
+            Sequentia testnet through the live policy server.
           </p>
           <button
             onClick={() => onAdvance(nextStatus(iss.status))}
-            className="btn-primary mt-3 w-full py-2"
+            disabled={busy}
+            className="btn-primary mt-3 w-full py-2 disabled:opacity-60"
           >
-            {iss.status === 'awaiting_incorporation'
-              ? 'Complete incorporation'
-              : iss.structureId === 'depository-receipt'
-                ? 'Contract custody & deploy'
-                : 'Deploy on Liquid'}
-            <Icon.arrowRight width={15} height={15} />
+            {busy ? (
+              <>
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                Minting on Sequentia…
+              </>
+            ) : (
+              <>
+                {iss.status === 'awaiting_incorporation'
+                  ? 'Complete incorporation'
+                  : iss.structureId === 'depository-receipt'
+                    ? 'Contract custody & deploy'
+                    : 'Deploy on Sequentia'}
+                <Icon.arrowRight width={15} height={15} />
+              </>
+            )}
           </button>
+          {error && (
+            <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              Deployment failed: {error}
+            </p>
+          )}
         </div>
       )}
     </div>
@@ -128,7 +146,7 @@ function PortalCard({ iss }) {
   return (
     <div className="card p-6">
       <div className="flex items-center gap-2">
-        <Icon.globe width={18} height={18} className="text-liquid-600" />
+        <Icon.globe width={18} height={18} className="text-seq-600" />
         <h2 className="font-bold text-ink-900">Placement Portal</h2>
         {published && <Badge color="emerald" className="ml-auto">Published</Badge>}
       </div>
@@ -150,7 +168,7 @@ function PortalCard({ iss }) {
         <div className="mt-4 space-y-3">
           <div className="flex items-center justify-between rounded-lg bg-ink-900/[0.03] px-4 py-2.5 text-sm">
             <span className="text-ink-700">Live at</span>
-            <span className="font-mono text-xs text-liquid-600">
+            <span className="font-mono text-xs text-seq-600">
               invest.{iss.portal.slug}.com
             </span>
           </div>
@@ -175,6 +193,8 @@ function PortalCard({ iss }) {
 export default function IssuanceDetail() {
   const { id } = useParams()
   const { account, isLoggedIn, issuances, updateIssuance } = useStore()
+  const [deploying, setDeploying] = useState(false)
+  const [deployErr, setDeployErr] = useState(null)
 
   if (!isLoggedIn) return <SignInGate />
 
@@ -197,7 +217,55 @@ export default function IssuanceDetail() {
   const Ic = StructureIcon[s?.icon] || Icon.layers
   const live = iss.status === 'live'
 
-  const advance = (status) => {
+  const advance = async (status) => {
+    // Deploying to live is the real moment: mint the OpenAMP restricted asset
+    // on Sequentia through the policy server. Everything before it is the
+    // simulated incorporation/filing timeline.
+    if (status === 'live' && !iss.assetId) {
+      const key = account.individual?.enclaveKey
+      if (!key) {
+        setDeployErr('This SeqPal ID has no enclave key; re-register your SeqPal ID.')
+        return
+      }
+      setDeployErr(null)
+      setDeploying(true)
+      try {
+        // Bind SeqPal's compliance configuration to the on-chain asset.
+        const terms = await termsHash({
+          structureId: iss.structureId,
+          isPublic: iss.isPublic,
+          policy: iss.policy || {},
+          raise: iss.raise || '',
+          unit: iss.unit || 'USD',
+          fields: iss.fields || {},
+        })
+        const res = await deployIssuance({
+          name: iss.name,
+          ticker: iss.ticker,
+          issuer_pubkey: key.xonly,
+          supply: iss.supply || 1_000_000,
+          precision: iss.precision || 8,
+          clawback: true,
+          confidential: !!iss.confidential,
+          fee_convert_atoms: 100,
+          terms_hash: terms,
+        })
+        updateIssuance(iss.id, {
+          status: 'live',
+          liveAt: new Date().toISOString(),
+          assetId: res.asset,
+          txid: res.txid,
+          contractHash: res.contract_hash,
+          holderAid: res.aid,
+          enclaveAddress: res.address,
+        })
+      } catch (e) {
+        setDeployErr(e.message || String(e))
+      } finally {
+        setDeploying(false)
+      }
+      return
+    }
     const patch = { status }
     if (status === 'live') patch.liveAt = new Date().toISOString()
     updateIssuance(iss.id, patch)
@@ -249,8 +317,8 @@ export default function IssuanceDetail() {
         <div className="flex items-center gap-4">
           <div
             className={`flex h-14 w-14 items-center justify-center rounded-2xl ${
-              s?.accent === 'liquid'
-                ? 'bg-liquid/10 text-liquid-600'
+              s?.accent === 'seq'
+                ? 'bg-seq/10 text-seq-600'
                 : 'bg-btc-50 text-btc-600'
             }`}
           >
@@ -277,7 +345,7 @@ export default function IssuanceDetail() {
       <div className="mt-8 grid gap-6 lg:grid-cols-3">
         {/* left: lifecycle + portal */}
         <div className="space-y-6">
-          <Timeline iss={iss} onAdvance={advance} />
+          <Timeline iss={iss} onAdvance={advance} busy={deploying} error={deployErr} />
           <PortalCard iss={iss} />
         </div>
 
@@ -287,7 +355,7 @@ export default function IssuanceDetail() {
             <h2 className="font-bold text-ink-900">Asset</h2>
             {!live && (
               <DemoNote className="mt-3">
-                The AMP asset is deployed once incorporation and RFSA filing complete.
+                The OpenAMP asset is minted once incorporation and RFSA filing complete.
                 Asset identifiers appear here when the issuance goes live.
               </DemoNote>
             )}
@@ -295,10 +363,14 @@ export default function IssuanceDetail() {
               {[
                 ['Issuer of record', `${iss.entityName || iss.name} LLC · Próspera`],
                 ['Applicant / owner', iss.principal?.name],
-                ['Network', 'Bitcoin · Liquid Network'],
-                ['Issuance layer', 'Blockstream AMP · Transfer-Restricted'],
+                ['Network', 'Sequentia (Bitcoin sidechain)'],
+                ['Issuance layer', 'OpenAMP · transfer-restricted enclave'],
+                ['Confidentiality', iss.confidential ? 'Confidential (opt-in)' : 'Transparent'],
                 ['Asset id', live ? <Truncate key="a" value={iss.assetId} /> : 'pending'],
                 ['Issuance txid', live ? <Truncate key="t" value={iss.txid} /> : 'pending'],
+                ['Contract hash', live ? <Truncate key="c" value={iss.contractHash} /> : 'pending'],
+                ['Issuer AID', live && iss.holderAid ? <Truncate key="h" value={iss.holderAid} /> : 'pending'],
+                ['Initial supply', iss.supply ? `${iss.supply.toLocaleString()} ${iss.ticker || ''}` : '—'],
                 ['Initial mint to', iss.mintTarget],
                 ['Target raise', iss.raise || '—'],
                 ['Offering type', iss.isPublic ? 'Public offering' : 'Private placement'],
@@ -323,13 +395,13 @@ export default function IssuanceDetail() {
 
               <div className="card p-6">
                 <div className="flex items-center gap-2">
-                  <Icon.exchange width={18} height={18} className="text-liquid-600" />
+                  <Icon.exchange width={18} height={18} className="text-seq-600" />
                   <h2 className="font-bold text-ink-900">Secondary market</h2>
                 </div>
                 <p className="mt-1.5 text-sm text-ink-700/70">
-                  Because eligibility is enforced at the protocol level, the asset
-                  moves freely between whitelisted holders without an intermediary — no
-                  proprietary trading system required.
+                  Because eligibility is enforced by the OpenAMP policy server on
+                  every transfer, the asset moves between whitelisted holders without a
+                  proprietary trading system.
                 </p>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <div className="rounded-lg border border-ink-900/10 bg-ink-900/[0.02] px-4 py-3">
@@ -339,22 +411,23 @@ export default function IssuanceDetail() {
                     </div>
                     <p className="mt-1 text-xs text-ink-700/70">
                       Whitelisted holders can transfer peer-to-peer, and the asset can be
-                      listed on Liquid-native venues such as SideSwap with asset-level KYC.
+                      listed on Sequentia-native venues such as SeqDEX with asset-level KYC.
                     </p>
                   </div>
                   <div className="rounded-lg border border-ink-900/10 bg-ink-900/[0.02] px-4 py-3">
                     <div className="flex items-center gap-2 text-sm font-semibold text-ink-900">
-                      <Icon.shield width={15} height={15} className="text-liquid-600" />{' '}
+                      <Icon.shield width={15} height={15} className="text-seq-600" />{' '}
                       Eligibility on every transfer
                     </div>
                     <p className="mt-1 text-xs text-ink-700/70">
-                      Before Green co-signs, AMP checks the recipient against your policy via
-                      SeqPal ID — approving or rejecting each transfer.
+                      Before the policy server co-signs, OpenAMP checks the recipient
+                      against your policy via SeqPal ID, approving or rejecting each
+                      transfer.
                     </p>
                   </div>
                 </div>
                 <p className="mt-3 text-[11px] leading-relaxed text-ink-700/55">
-                  Secondary-market depth on Liquid is still thin; this describes
+                  Secondary-market depth on Sequentia is still building; this describes
                   transferability, not guaranteed trading volume.
                 </p>
               </div>
@@ -454,7 +527,7 @@ export default function IssuanceDetail() {
                                 <div className="flex items-center gap-2">
                                   <span className="font-medium text-ink-900">{su.name}</span>
                                   <Badge color="slate">{su.jur}</Badge>
-                                  {su.rail && <Badge color="liquid">{su.rail}</Badge>}
+                                  {su.rail && <Badge color="seq">{su.rail}</Badge>}
                                 </div>
                                 <span className="font-mono text-ink-800">
                                   {fmtAmount(su.amount, iss.unit)}

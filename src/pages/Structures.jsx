@@ -34,7 +34,7 @@ export default function Structures() {
             const accent =
               s.accent === 'btc'
                 ? 'bg-btc-50 text-btc-600'
-                : 'bg-liquid/10 text-liquid-600'
+                : 'bg-seq/10 text-seq-600'
             return (
               <div key={s.id} id={s.id} className="card overflow-hidden">
                 <div className="grid gap-0 lg:grid-cols-[1.4fr_1fr]">

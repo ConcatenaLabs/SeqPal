@@ -3,7 +3,8 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Icon, StructureIcon } from '../components/icons'
 import { SectionHeading, Badge, DemoNote } from '../components/ui'
 import Passport from '../components/Passport'
-import { useStore, fakeIdNumber, fakeGaid } from '../lib/store'
+import { useStore, fakeIdNumber } from '../lib/store'
+import { generateEnclaveKey, computeAID } from '../lib/keys'
 import { ownedIssuances } from '../lib/account'
 import { isEligible } from '../lib/policy'
 import { RESIDENCE_OPTIONS } from '../data/jurisdictions'
@@ -14,7 +15,7 @@ const stored = [
   ['Residence & tax residency', 'Verified address and jurisdiction'],
   ['Sanctions, PEP & adverse-media', 'Sanctions every 24h; PEP & adverse-media at least monthly'],
   ['Accreditation status', 'Jurisdiction-aware, self-certified or documented'],
-  ['Linked wallets', 'Liquid GAIDs (EVM / Solana on the roadmap)'],
+  ['Sequentia enclave key', 'The x-only key OpenAMP registers as your account; assets you hold live in its 2-of-2 enclave'],
   ['Cryptographic claim envelope', 'Signed claims verified on every token transfer'],
 ]
 
@@ -42,6 +43,11 @@ function IndividualForm({ onDone }) {
     e.preventDefault()
     setVerifying(true)
     setTimeout(() => {
+      // Generate a real Sequentia enclave keypair for this SeqPal ID. Only the
+      // x-only public key is ever sent to the policy server; the private key
+      // stays in this browser (see lib/keys.js).
+      const enclaveKey = generateEnclaveKey()
+      const aid = computeAID([enclaveKey.xonly])
       registerIndividual({
         name: form.name || 'Jordan Avery',
         jurisdiction: res.name,
@@ -50,7 +56,9 @@ function IndividualForm({ onDone }) {
         accreditationBasis: form.accredited ? res.accreditationLabel : null,
         accreditationMethod: form.accredited ? (docVerify ? 'document' : 'self') : null,
         idNumber: fakeIdNumber('SQID-I'),
-        gaid: fakeGaid(),
+        enclaveKey,
+        enclavePub: enclaveKey.xonly,
+        aid,
         verifiedAt: new Date().toISOString(),
       })
       setVerifying(false)
@@ -259,8 +267,8 @@ function AccessibleOfferings({ individual, issuances }) {
               >
                 <div
                   className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
-                    s?.accent === 'liquid'
-                      ? 'bg-liquid/10 text-liquid-600'
+                    s?.accent === 'seq'
+                      ? 'bg-seq/10 text-seq-600'
                       : 'bg-btc-50 text-btc-600'
                   }`}
                 >
@@ -350,7 +358,7 @@ export default function SeqPalId() {
               {Object.keys(personas).length > 0 && (
                 <div className="card p-7">
                   <div className="flex items-center gap-2 text-sm font-semibold text-ink-800">
-                    <Icon.users width={18} height={18} className="text-liquid-600" />
+                    <Icon.users width={18} height={18} className="text-seq-600" />
                     Sign in
                   </div>
                   <p className="mt-1 text-sm text-ink-700/70">

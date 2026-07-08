@@ -10,7 +10,7 @@ import { JURISDICTIONS } from '../../data/jurisdictions'
 
 const ACCENT_HEX = {
   btc: '#F7931A',
-  liquid: '#27c2c9',
+  seq: '#27c2c9',
   indigo: '#4f46e5',
   emerald: '#059669',
   slate: '#334155',
@@ -23,7 +23,7 @@ export default function InvestorPortal() {
   const iss = issuances.find((i) => i.id === id)
   const [phase, setPhase] = useState('offering') // offering | signing | wiring | done
   const [amount, setAmount] = useState('')
-  const [rail, setRail] = useState('') // funding rail: wire | BTC | L-USDT
+  const [rail, setRail] = useState('') // funding rail: wire | BTC | USDX
 
   if (!iss || !iss.portal?.published) {
     return (
@@ -46,11 +46,11 @@ export default function InvestorPortal() {
   // offering (506(c)-style) may be displayed openly. `eligible` is computed below.
 
   // Unit of account & funding rails. A BTC-denominated raise is escrowed in
-  // kind; for USD-denominated raises BTC subscriptions are converted to L-USDT
+  // kind; for USD-denominated raises BTC subscriptions are converted to USDX
   // on receipt, fixing each subscription's value at the moment it enters escrow.
   const isBTC = iss.unit === 'BTC'
   const fmt = (n) => fmtAmount(n, iss.unit)
-  const rails = isBTC ? ['BTC'] : ['USD wire', 'BTC', 'L-USDT']
+  const rails = isBTC ? ['BTC'] : ['USD wire', 'BTC', 'USDX']
   const railChosen = rail || rails[0]
 
   // Eligibility: evaluate the visiting SeqPal ID against the token's policy.
@@ -74,10 +74,10 @@ export default function InvestorPortal() {
     // Record the subscription against the issuance: funds into escrow, pending
     // settlement on the issuer closing the round.
     const amt = parseMoney(amount || p.minInvestment)
-    // For USD-denominated raises, BTC subscriptions convert to L-USDT on
+    // For USD-denominated raises, BTC subscriptions convert to USDX on
     // receipt (value fixed at escrow entry) — record the rail as it lands.
     const escrowedAs =
-      railChosen === 'USD wire' ? 'USD' : railChosen === 'BTC' && !isBTC ? 'BTC → L-USDT' : railChosen
+      railChosen === 'USD wire' ? 'USD' : railChosen === 'BTC' && !isBTC ? 'BTC → USDX' : railChosen
     updateIssuance(iss.id, (i) => ({
       subscriptions: [
         {
@@ -138,7 +138,7 @@ export default function InvestorPortal() {
                 </h1>
                 <p className="mt-2 text-ink-700/80">
                   {iss.name} · <span className="font-mono text-sm">{iss.ticker}</span> ·
-                  issued on the Liquid Network
+                  issued on the Sequentia
                 </p>
 
                 <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -189,7 +189,7 @@ export default function InvestorPortal() {
                 <h1 className="mt-3 text-3xl font-extrabold tracking-tight text-ink-900">
                   {p.brandName}
                 </h1>
-                <p className="mt-2 text-ink-700/80">A private offering on the Liquid Network.</p>
+                <p className="mt-2 text-ink-700/80">A private offering on the Sequentia.</p>
                 <div className="mt-8 rounded-2xl border border-dashed border-ink-900/20 bg-white p-8 text-center">
                   <Icon.lock width={26} height={26} className="mx-auto text-ink-500" />
                   <p className="mx-auto mt-3 max-w-md text-sm text-ink-700/75">
@@ -259,12 +259,12 @@ export default function InvestorPortal() {
                     <p className="mt-1 text-sm text-ink-700/80">
                       {fmt(parseMoney(amount || p.minInvestment))} is held in escrow. On
                       closing, your{' '}
-                      {iss.ticker} tokens are delivered to your whitelisted wallet
-                      {inv?.gaid ? (
+                      {iss.ticker} tokens are delivered to your enclave
+                      {inv?.aid ? (
                         <>
                           {' '}
                           <span className="font-mono text-xs text-ink-700">
-                            (GAID {inv.gaid.slice(0, 6)}…{inv.gaid.slice(-4)})
+                            (AID {inv.aid.slice(0, 6)}…{inv.aid.slice(-4)})
                           </span>
                         </>
                       ) : null}
@@ -401,7 +401,7 @@ export default function InvestorPortal() {
                               ? `Wire ${fmt(parseMoney(amount || p.minInvestment))} to the segregated escrow account at the escrow bank (tri-party agreement among issuer, bank, and SeqPal).`
                               : `Send ${fmt(parseMoney(amount || p.minInvestment))} to this issuance's segregated escrow wallet, held by SeqPal as licensed escrow agent.`}{' '}
                             {!isBTC && railChosen === 'BTC'
-                              ? 'BTC is converted to L-USDT on receipt — your subscription’s value is fixed the moment it enters escrow. '
+                              ? 'BTC is converted to USDX on receipt — your subscription’s value is fixed the moment it enters escrow. '
                               : isBTC
                                 ? 'This raise is BTC-denominated: your subscription is escrowed in kind. '
                                 : ''}

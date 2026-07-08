@@ -10,8 +10,8 @@ export const STATUS = {
   },
   deploying: {
     label: 'Deploying',
-    color: 'liquid',
-    blurb: 'Filing with the RFSA and deploying on Liquid',
+    color: 'seq',
+    blurb: 'Filing with the RFSA and deploying the OpenAMP asset on Sequentia',
   },
   live: {
     label: 'Live',
@@ -35,8 +35,8 @@ export const MILESTONES = [
   },
   {
     key: 'deployment',
-    label: 'AMP asset deployed',
-    detail: 'Transfer-Restricted asset minted; Transfer Agent active',
+    label: 'OpenAMP asset deployed',
+    detail: 'Transfer-restricted asset minted on Sequentia; Transfer Agent active',
   },
   { key: 'live', label: 'Live', detail: 'Ready for the placement portal' },
 ]

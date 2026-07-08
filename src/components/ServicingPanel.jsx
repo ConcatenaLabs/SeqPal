@@ -43,7 +43,7 @@ export default function ServicingPanel({ iss }) {
   // BTC-denominated issuances pair naturally with BTC distributions (plan 1.3).
   const [dist, setDist] = useState({
     amount: '',
-    asset: iss.unit === 'BTC' ? 'BTC (L-BTC)' : 'USDt',
+    asset: iss.unit === 'BTC' ? 'BTC' : 'USDX',
     recordDate: '',
   })
   const [corp, setCorp] = useState({ type: corpActions[0], note: '' })
@@ -201,8 +201,8 @@ export default function ServicingPanel({ iss }) {
                 value={dist.asset}
                 onChange={(e) => setDist({ ...dist, asset: e.target.value })}
               >
-                <option>USDt</option>
-                <option>BTC (L-BTC)</option>
+                <option>USDX</option>
+                <option>BTC</option>
               </select>
             </div>
             <div>
@@ -289,7 +289,7 @@ export default function ServicingPanel({ iss }) {
             </div>
           )}
           <p className="text-xs text-ink-700/60">
-            Logged immutably with AMP authorization context. Mocked in the demo.
+            Logged immutably with OpenAMP authorization context. Mocked in the demo.
           </p>
         </div>
       </Modal>

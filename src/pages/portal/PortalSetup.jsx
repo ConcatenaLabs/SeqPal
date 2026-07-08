@@ -11,7 +11,7 @@ import { getStructure } from '../../data/structures'
 
 const ACCENTS = [
   { id: 'btc', label: 'Bitcoin', hex: '#F7931A' },
-  { id: 'liquid', label: 'Liquid', hex: '#27c2c9' },
+  { id: 'seq', label: 'Sequentia', hex: '#27c2c9' },
   { id: 'indigo', label: 'Indigo', hex: '#4f46e5' },
   { id: 'emerald', label: 'Emerald', hex: '#059669' },
   { id: 'slate', label: 'Slate', hex: '#334155' },
@@ -339,7 +339,7 @@ export default function PortalSetup() {
                 <span className="mt-0.5 block text-xs text-ink-700/70">
                   Fiat subscriptions are held in a segregated account at SeqPal’s escrow
                   bank under a tri-party agreement (you, the bank, SeqPal); BTC and
-                  L-USDT in per-issuance segregated escrow wallets held by SeqPal as
+                  USDX in per-issuance segregated escrow wallets held by SeqPal as
                   licensed escrow agent. Released to you on closing conditions being met.
                 </span>
               </span>
