@@ -1,12 +1,10 @@
 # Deploying SeqPal to the Sequentia testnet box
 
-SeqPal has two deployable parts:
-
-1. the static SPA (Vite build) served by Caddy at `https://<host>/seqpal/`;
-2. `seqpald`, a tiny Go backend that holds the OpenAMP issuer token and proxies
-   asset issuance, reachable at `/seqpal/api/*`.
-
-It depends on a running OpenAMP policy server (`openampd`) on the same box.
+`seqpald` serves both the built SPA and the deploy API. Caddy simply reverse
+proxies `/seqpal/*` to it. seqpald runs as root, so it can read the build under
+`/root` (the box's `/root` is mode 700, which the `caddy` user cannot traverse,
+so Caddy file_server can't serve it directly). It depends on a running OpenAMP
+policy server (`openampd`) on the same box.
 
 ## 1. Pull and build (on the box)
 
@@ -30,6 +28,7 @@ OPENAMPD_URL=http://127.0.0.1:8722
 OPENAMPD_ISSUER_TOKEN=<same token as openampd.env>
 SEQPALD_LISTEN=127.0.0.1:8730
 SEQPALD_NETWORK=sequentia-testnet
+SEQPALD_WEBROOT=/root/sequentia/SeqPal/dist
 # Set to 1 only on a confidentiality-enabled node (blindedaddresses=1). The
 # public testnet node runs transparent, so leave this unset there.
 SEQPALD_CONFIDENTIAL=
@@ -46,16 +45,13 @@ systemctl status seqpald
 
 ## 4. Caddy
 
-Serve the built SPA and proxy the API. The `/api` handle must come first:
+One block: strip the `/seqpal` prefix and proxy everything to seqpald (which
+serves both the SPA and `/api/*`).
 
 ```
-handle_path /seqpal/api/* {
+handle /seqpal/* {
+    uri strip_prefix /seqpal
     reverse_proxy 127.0.0.1:8730
-}
-handle_path /seqpal/* {
-    root * /root/sequentia/SeqPal/dist
-    try_files {path} /index.html
-    file_server
 }
 ```
 
