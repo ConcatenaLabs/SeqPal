@@ -22,6 +22,8 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"path"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -30,8 +32,9 @@ type config struct {
 	listen       string
 	openampURL   string // e.g. http://127.0.0.1:8722 (no trailing slash, no /v1)
 	issuerToken  string
-	confidential bool // does this deployment's node support confidential issuance?
+	confidential bool   // does this deployment's node support confidential issuance?
 	network      string
+	webroot      string // built SPA to serve at / (empty = API only)
 }
 
 func env(key, def string) string {
@@ -49,6 +52,7 @@ func main() {
 	flag.StringVar(&cfg.network, "network", env("SEQPALD_NETWORK", "sequentia-testnet"), "network label reported to the UI")
 	confDefault := env("SEQPALD_CONFIDENTIAL", "") == "1" || env("SEQPALD_CONFIDENTIAL", "") == "true"
 	flag.BoolVar(&cfg.confidential, "confidential", confDefault, "node supports confidential issuance")
+	flag.StringVar(&cfg.webroot, "webroot", env("SEQPALD_WEBROOT", ""), "built SPA directory to serve at / (empty = API only)")
 	flag.Parse()
 
 	cfg.openampURL = strings.TrimRight(cfg.openampURL, "/")
@@ -62,8 +66,16 @@ func main() {
 	mux.HandleFunc("GET /api/health", s.handleHealth)
 	mux.HandleFunc("POST /api/deploy", s.handleDeploy)
 	mux.HandleFunc("OPTIONS /api/deploy", func(w http.ResponseWriter, r *http.Request) { cors(w); w.WriteHeader(204) })
+	// Serve the built SPA (and its client-side routes) when a webroot is set.
+	// Caddy strips the /seqpal prefix before proxying, so the browser's absolute
+	// asset paths (/seqpal/assets/...) arrive here as /assets/...; SPA routes
+	// that aren't real files fall back to index.html. seqpald runs as root, so
+	// this avoids Caddy's inability to read files under /root (mode 700).
+	if cfg.webroot != "" {
+		mux.HandleFunc("/", s.handleStatic)
+	}
 
-	log.Printf("seqpald listening on %s, OpenAMP at %s (confidential=%v)", cfg.listen, cfg.openampURL, cfg.confidential)
+	log.Printf("seqpald listening on %s, OpenAMP at %s (confidential=%v, webroot=%q)", cfg.listen, cfg.openampURL, cfg.confidential, cfg.webroot)
 	log.Fatal(http.ListenAndServe(cfg.listen, mux))
 }
 
@@ -87,6 +99,24 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 
 func writeErr(w http.ResponseWriter, code int, format string, args ...any) {
 	writeJSON(w, code, map[string]string{"error": fmt.Sprintf(format, args...)})
+}
+
+// handleStatic serves the built SPA with single-page-app fallback: an existing
+// file is served directly; anything else returns index.html so the client
+// router can handle the route.
+func (s *server) handleStatic(w http.ResponseWriter, r *http.Request) {
+	clean := path.Clean("/" + strings.TrimPrefix(r.URL.Path, "/"))
+	fp := filepath.Join(s.cfg.webroot, filepath.FromSlash(clean))
+	// Contain within webroot (defense against path traversal).
+	if rel, err := filepath.Rel(s.cfg.webroot, fp); err != nil || strings.HasPrefix(rel, "..") {
+		http.NotFound(w, r)
+		return
+	}
+	if fi, err := os.Stat(fp); err == nil && !fi.IsDir() {
+		http.ServeFile(w, r, fp)
+		return
+	}
+	http.ServeFile(w, r, filepath.Join(s.cfg.webroot, "index.html"))
 }
 
 func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
