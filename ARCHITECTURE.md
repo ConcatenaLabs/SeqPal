@@ -1,16 +1,19 @@
-# SeqPal demo — architecture & QA notes
+# SeqPal — architecture & QA notes
 
-A front-end/UX demo of the SeqPal tokenization-as-a-service product, inferred from
-the business plan (currently **v0.72**). It is intentionally not wired to any
-backend or third party — see [What's mocked](#whats-mocked). This document is the
-handoff reference: how the code is organised, how state and the core flows work,
-what is faithfully modelled vs. simulated, and how it's tested.
+The SeqPal tokenization-as-a-service PoC, inferred from the business plan
+(currently **v0.72**). The front-end and compliance/legal scaffolding are
+faithful but simulated; the token deployment is real: issuing an asset mints a
+real OpenAMP restricted asset on the Sequentia testnet through a thin backend
+(`seqpald`). See [What's real vs mocked](#whats-real-vs-mocked). This document is
+the handoff reference: how the code is organised, how state and the core flows
+work, what is real vs simulated, and how it's tested.
 
 ## Stack
 
-- **Vite + React 18 + React Router 6**, **Tailwind CSS 3**. No backend.
-- State lives in the browser via a small React context backed by `localStorage`
-  (key `seqpal.demo.v2`).
+- **Vite + React 18 + React Router 6**, **Tailwind CSS 3**; `@noble/curves` for
+  real secp256k1 enclave keys. Backend: **`seqpald`**, a small Go service.
+- Front-end state lives in the browser via a small React context backed by
+  `localStorage` (key `seqpal.demo.v2`).
 - Tests use Node's built-in test runner (`node --test`) — zero extra deps.
 
 ```
@@ -33,8 +36,12 @@ src/
   lib/
     store.jsx                  React context: account + issuances, persisted to
                                localStorage. Re-exports the pure helpers in util.js.
-    util.js                    Pure, framework-free helpers (id/hash/GAID
+    util.js                    Pure, framework-free helpers (sample id/hash
                                generators, addBusinessDays, slugify).
+    keys.js                    Real secp256k1 enclave keys for a SeqPal ID
+                               (x-only pubkey, OpenAMP AID derivation, Schnorr sign).
+    openamp.js                 Client for the OpenAMP public API + the seqpald
+                               deploy endpoint (issuance is proxied, token-gated).
     policy.js                  isEligible() — the single eligibility rule shared by
                                the portal gate and the "offerings you can access" list.
     economics.js               parseMoney/fmtAmount, post-money ownership, and the
@@ -63,7 +70,7 @@ One signed-in account per browser, plus a personas roster (`localStorage`):
 ```
 account: {
   individual: { name, residenceCode, jurisdiction, accredited, accreditationMethod,
-                idNumber, gaid } | null,   // null = signed out; this is the "login"
+                idNumber, aid, enclaveKey:{priv,xonly} } | null,  // null = signed out; this is the "login"
   corporates: [ { id, entity, jurisdiction, idNumber } ]   // KYB entities
 }
 personas: { [idNumber]: account }   // every account verified in this browser;
@@ -125,7 +132,7 @@ A demo "fast-forward" advances states. Asset id/txid appear only once live.
 
 ### Servicing (`ServicingPanel.jsx`, live issuances)
 - **Distributions** — dividend/coupon/yield; settlement asset defaults to the
-  issuance's unit (BTC L-BTC vs USDt); Debt coupons framed as Calculation-&-Paying
+  issuance's unit (BTC vs USDX); Debt coupons framed as Calculation-&-Paying
   Agent on the Note's agreed schedule.
 - **Corporate actions** — structure-specific, with the applicable **event fee**
   surfaced (SPV 0.50%/$5K waterfall; Debt 1% call, $10K–$50K default).
@@ -138,7 +145,7 @@ Issuer configures a branded portal on their own domain (CNAME), requests escrow,
 and accepts operator terms; the route is guarded (DR has no subscription portal;
 not-live issuances can't publish). The investor portal gates on SeqPal ID
 eligibility, enforces the minimum and remaining-capacity (no oversubscription),
-takes a funding rail (USD wire / BTC / L-USDT; BTC→L-USDT for USD raises), and
+takes a funding rail (USD wire / BTC / USDX; BTC→USDX for USD raises), and
 records subscriptions to escrow. The issuer closes the round on closing
 conditions → subscriptions settle into the Registry of Members.
 
@@ -150,12 +157,31 @@ conditions → subscriptions settle into the Registry of Members.
   over a typical 4-month window. (Replaced the old Platform Services Fee.)
 - All per-structure fees match the plan's §6.2 / Appendix A.
 
-## What's mocked
+## What's real vs mocked
 
-KYC/KYB verification, payments (setup/ID/E&S fees), e-signature, Próspera
-incorporation + RFSA filing + Blockstream AMP deployment (the "fast-forward"),
-escrow funding, and the DR brokerage-custody relationship. Asset ids/txids and
-GAIDs are plausible fakes. Nothing is broadcast to any network.
+**Real (Sequentia testnet).** Each SeqPal ID is a real secp256k1 enclave key
+(`lib/keys.js`); only the x-only public key leaves the browser. The deploy step
+(status `deploying` → `live`, in `IssuanceDetail.advance`) calls `lib/openamp.js`
+→ the `seqpald` backend → the OpenAMP issuer API, which mints a real restricted
+asset on Sequentia. The asset id, txid, contract hash and issuer AID shown on the
+issuance page come back from the chain. Clawback defaults on; the contract commits
+to a `terms_hash` over SeqPal's compliance configuration. Confidential issuance is
+an opt-in toggle, available where the node is confidentiality-enabled (transparent
+on the public testnet, enabled on mainnet).
+
+**Mocked.** KYC/KYB verification, payments (setup/ID/E&S fees), e-signature,
+Próspera incorporation and RFSA filing (the "fast-forward" advances those steps),
+escrow funding, and the DR brokerage-custody relationship. The sample issuance
+loaded from the dashboard uses placeholder ids; real deployed issuances do not.
+
+## Backend (`seqpald`)
+
+OpenAMP gates issuance behind a bearer token, which is a server-side secret and
+must never reach the browser. `seqpald/` is a tiny stateless Go service that holds
+the token and exposes `POST /api/deploy` (register the issuer key, then mint via
+OpenAMP's issuer endpoint) and `GET /api/health` (reports upstream reachability
+and whether confidential issuance is available). Everything else the SPA reads
+straight from OpenAMP's public endpoints. Deploy notes: `seqpald/DEPLOY.md`.
 
 ## Scope discipline (what is deliberately NOT on the site)
 

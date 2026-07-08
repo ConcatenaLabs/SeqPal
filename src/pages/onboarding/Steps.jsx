@@ -5,14 +5,13 @@ import { Badge, DemoNote } from '../../components/ui'
 import Modal from '../../components/Modal'
 import {
   useStore,
-  fakeAssetId,
-  fakeTxid,
   fakeIdNumber,
   addBusinessDays,
 } from '../../lib/store'
 import { STRUCTURES, getStructure } from '../../data/structures'
 import { JURISDICTIONS, CATCH_ALL_ROW } from '../../data/jurisdictions'
 import { computeSetupCost } from '../../data/pricing'
+import { parseMoney } from '../../lib/economics'
 
 // Target time-to-live in business days, [private, public]. Public offerings take
 // materially longer (extra RFSA disclosure, audited financials, per-jurisdiction
@@ -139,11 +138,11 @@ export function Step1Identity({ data, update }) {
             onClick={() => selectCorporate(c)}
             className={`card flex w-full items-start gap-4 p-5 text-left transition-all ${
               isSel((p) => p.corpId === c.id)
-                ? 'ring-2 ring-liquid shadow-glow'
+                ? 'ring-2 ring-seq shadow-glow'
                 : 'hover:shadow-card'
             }`}
           >
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-liquid/10 text-liquid-600">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-seq/10 text-seq-600">
               <Icon.building width={22} height={22} />
             </span>
             <span className="min-w-0 flex-1">
@@ -161,7 +160,7 @@ export function Step1Identity({ data, update }) {
               </span>
             </span>
             {isSel((p) => p.corpId === c.id) && (
-              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-liquid text-white">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-seq text-white">
                 <Icon.check width={14} height={14} />
               </span>
             )}
@@ -317,7 +316,7 @@ export function Step2Structure({ data, update }) {
                 className={`flex h-11 w-11 items-center justify-center rounded-xl ${
                   s.accent === 'btc'
                     ? 'bg-btc-50 text-btc-600'
-                    : 'bg-liquid/10 text-liquid-600'
+                    : 'bg-seq/10 text-seq-600'
                 }`}
               >
                 <Ic width={22} height={22} />
@@ -954,6 +953,25 @@ export function Step5Compliance({ data, update }) {
             />
           </div>
         </div>
+
+        <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-xl border border-ink-900/10 bg-ink-900/[0.02] px-4 py-3">
+          <input
+            type="checkbox"
+            className="mt-1 h-4 w-4 accent-seq-600"
+            checked={!!data.confidential}
+            onChange={(e) => update({ confidential: e.target.checked })}
+          />
+          <span className="text-sm">
+            <span className="font-semibold text-ink-900">Confidential holdings</span>
+            <span className="block text-ink-700/70">
+              Blind amounts and the asset tag on-chain. Your issuer still sees and
+              reports every holding through the policy server; outside observers see
+              nothing. Sequentia is transparent by default, so this is opt-in per
+              asset. Requires a confidentiality-enabled node; on this public testnet
+              issuances stay transparent and this is enabled on mainnet.
+            </span>
+          </span>
+        </label>
       </div>
 
       {data.isPublic && (
@@ -1130,6 +1148,9 @@ export function Step6Checkout({ data, onDeployed }) {
   // private placements that haven't yet collected investor subscriptions.
   const mintTarget =
     isRaise && !data.isPublic ? 'placement-portal escrow address' : 'issuer wallet'
+  // Initial token supply for the OpenAMP mint (see pay()): one token per unit of
+  // the target raise, defaulting to 1,000,000 for structures without a raise.
+  const supply = Math.max(1, Math.round(parseMoney(data.raise) || 1_000_000))
 
   const pay = () => {
     setPhase('processing')
@@ -1149,8 +1170,13 @@ export function Step6Checkout({ data, onDeployed }) {
         fields: data.fields,
         policy: data.policy,
         mintTarget,
-        assetId: fakeAssetId(),
-        txid: fakeTxid(),
+        supply,
+        precision: 8,
+        confidential: !!data.confidential,
+        // assetId / txid are assigned by the OpenAMP policy server when the
+        // issuance is deployed (status -> live), not at checkout.
+        assetId: null,
+        txid: null,
         status: 'awaiting_incorporation',
         createdAt: created.toISOString(),
         incorporationEta: etaDate.toISOString(),
@@ -1208,7 +1234,7 @@ export function Step6Checkout({ data, onDeployed }) {
                   day: 'numeric',
                 })}
               </span>
-              . We’ll then file with the RFSA (where applicable), deploy the AMP asset, and
+              . We’ll then file with the RFSA (where applicable), deploy the OpenAMP asset, and
               mint the initial supply to the {mintTarget}.
             </p>
           </div>
@@ -1235,7 +1261,7 @@ export function Step6Checkout({ data, onDeployed }) {
       <StepHeader
         n={6}
         title="Checkout & deployment"
-        sub="Review the final summary and pay the fixed setup fee. SeqPal then registers the entity on the Próspera e-registry, files with the RFSA where applicable, and deploys the AMP asset."
+        sub="Review the final summary and pay the fixed setup fee. SeqPal then registers the entity on the Próspera e-registry, files with the RFSA where applicable, and deploys the OpenAMP asset on Sequentia."
       />
 
       <div className="grid gap-5 lg:grid-cols-5">
@@ -1259,7 +1285,8 @@ export function Step6Checkout({ data, onDeployed }) {
               ['Unit of account', data.unit === 'BTC' ? 'BTC (₿)' : 'USD ($)'],
               ['Target raise', data.raise || '—'],
               ['Initial mint to', mintTarget],
-              ['Network', 'Liquid · Blockstream AMP'],
+              ['Initial supply', supply.toLocaleString() + ' ' + (data.ticker || 'tokens')],
+              ['Network', 'Sequentia · OpenAMP'],
             ].map(([k, v]) => (
               <div key={k} className="flex items-center justify-between py-2.5">
                 <dt className="text-ink-700/70">{k}</dt>

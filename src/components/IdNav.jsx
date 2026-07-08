@@ -80,7 +80,7 @@ export default function IdNav() {
             </>
           ) : (
             <span className="inline-flex items-center gap-1.5 text-sm text-ink-700/70">
-              <Icon.shield width={16} height={16} className="text-liquid-600" />
+              <Icon.shield width={16} height={16} className="text-seq-600" />
               Your compliance passport
             </span>
           )}

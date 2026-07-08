@@ -43,7 +43,7 @@ function buildSample(individual) {
     },
     subscriptions: [
       { id: 'sub_a', name: 'Imani Okafor', jur: 'SV', amount: 250000, rail: 'USD', status: 'settled', at: now },
-      { id: 'sub_b', name: 'Lukas Meyer', jur: 'CH', amount: 500000, rail: 'BTC → L-USDT', status: 'in_escrow', at: now },
+      { id: 'sub_b', name: 'Lukas Meyer', jur: 'CH', amount: 500000, rail: 'BTC → USDX', status: 'in_escrow', at: now },
     ],
   }
 }
@@ -130,11 +130,11 @@ export default function Dashboard() {
           </div>
         </div>
         <div className="card flex items-center gap-4 p-5">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-liquid/10 text-liquid-600">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-seq/10 text-seq-600">
             <Icon.exchange width={22} height={22} />
           </div>
           <div>
-            <div className="text-sm text-ink-700/70">Live on Liquid</div>
+            <div className="text-sm text-ink-700/70">Live on Sequentia</div>
             <div className="font-semibold text-ink-900">{liveCount}</div>
           </div>
         </div>
@@ -151,7 +151,7 @@ export default function Dashboard() {
             <h3 className="mt-5 text-lg font-bold text-ink-900">No issuances yet</h3>
             <p className="mt-2 max-w-sm text-sm text-ink-700/80">
               Start your first issuance and walk through the six-step onboarding flow —
-              from structure choice to live deployment on the Liquid Network.
+              from structure choice to live deployment on Sequentia.
             </p>
             <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
               <Link to="/onboarding" className="btn-primary">
@@ -176,8 +176,8 @@ export default function Dashboard() {
                 >
                   <div
                     className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${
-                      s?.accent === 'liquid'
-                        ? 'bg-liquid/10 text-liquid-600'
+                      s?.accent === 'seq'
+                        ? 'bg-seq/10 text-seq-600'
                         : 'bg-btc-50 text-btc-600'
                     }`}
                   >

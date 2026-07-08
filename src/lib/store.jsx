@@ -120,7 +120,6 @@ export {
   fakeHex,
   fakeAssetId,
   fakeTxid,
-  fakeGaid,
   fakeIdNumber,
   addBusinessDays,
   slugify,

@@ -45,21 +45,21 @@ export default function Passport({ profile, type = 'individual' }) {
         </div>
         <div>
           <div className="text-xs text-white/40">SeqPal ID number</div>
-          <div className="break-all font-mono text-sm text-liquid-400">
+          <div className="break-all font-mono text-sm text-seq-400">
             {profile.idNumber}
           </div>
         </div>
-        {!isCorp && profile.gaid && (
+        {!isCorp && profile.aid && (
           <div>
-            <div className="text-xs text-white/40">Linked wallet (Liquid GAID)</div>
+            <div className="text-xs text-white/40">Sequentia enclave account (AID)</div>
             <div className="font-mono text-xs text-white/70">
-              {profile.gaid.slice(0, 8)}…{profile.gaid.slice(-6)}
+              {profile.aid.slice(0, 8)}…{profile.aid.slice(-6)}
             </div>
           </div>
         )}
         <div className="flex flex-wrap items-center gap-2 border-t border-white/10 pt-3 text-xs text-white/60">
           <span className="inline-flex items-center gap-1.5">
-            <Icon.shield width={14} height={14} className="text-liquid-400" /> Sanctions
+            <Icon.shield width={14} height={14} className="text-seq-400" /> Sanctions
             clear
           </span>
           <span className="text-white/20">·</span>

@@ -33,7 +33,7 @@ export const STRUCTURES = [
     name: 'Equity SPV Tokens',
     short: 'Equity SPV',
     icon: 'spv',
-    accent: 'liquid',
+    accent: 'seq',
     requiresKyb: true,
     claim:
       'Beneficial interest in a single concentrated position the SPV holds in a foreign operating company.',
@@ -85,7 +85,7 @@ export const STRUCTURES = [
     name: 'Depository Receipt Tokens',
     short: 'Depository Receipt',
     icon: 'dr',
-    accent: 'liquid',
+    accent: 'seq',
     requiresKyb: true,
     claim:
       'A 1:1 claim on a specific traditional financial instrument custodied on behalf of the LLC.',

@@ -20,7 +20,7 @@ const products = [
     icon: Icon.id,
     name: 'SeqPal ID',
     tagline: 'A universal compliance passport.',
-    body: 'A consolidated KYC/KYB and accreditation passport that, once established, automatically whitelists the holder for every SeqPal-issued asset for which their profile is compliant. The passport’s claims are enforced on every transfer of the issued tokens via Blockstream AMP.',
+    body: 'A consolidated KYC/KYB and accreditation passport that, once established, automatically whitelists the holder for every SeqPal-issued asset for which their profile is compliant. The passport’s claims are enforced on every transfer of the issued tokens via OpenAMP.',
     points: [
       'KYC / KYB and accreditation in one profile',
       'Sanctions screening every 24 hours; PEP & adverse-media at least monthly',
@@ -51,7 +51,7 @@ const products = [
       'Offering memorandum & version-controlled data room',
       'SeqPal ID identity and eligibility gate',
       'Subscription-agreement workflow and e-signature',
-      'Escrow in fiat (segregated bank account, tri-party agreement) or BTC / L-USDT (segregated wallets), released on closing',
+      'Escrow in fiat (segregated bank account, tri-party agreement) or BTC / USDX (segregated wallets), released on closing',
     ],
     cta: { to: '/onboarding', label: 'Configure a portal' },
   },
@@ -85,7 +85,7 @@ function Architecture() {
       </div>
       <div className="mt-4 rounded-2xl border border-ink-900/10 bg-white p-5 shadow-card sm:p-7">
         {/* identity layer */}
-        <div className="flex items-center gap-3 rounded-xl bg-liquid/10 px-4 py-3 text-liquid-600">
+        <div className="flex items-center gap-3 rounded-xl bg-seq/10 px-4 py-3 text-seq-600">
           <Icon.id width={20} height={20} className="shrink-0" />
           <div className="text-sm">
             <span className="font-bold text-ink-900">SeqPal ID</span>
@@ -126,10 +126,10 @@ function Architecture() {
         <div className="flex items-center gap-3 rounded-xl bg-btc-50 px-4 py-3 text-btc-700">
           <Icon.bitcoin width={20} height={20} className="shrink-0" />
           <div className="text-sm">
-            <span className="font-bold text-ink-900">Bitcoin · Liquid Network</span>
+            <span className="font-bold text-ink-900">Bitcoin · Sequentia</span>
             <span className="text-ink-700/80">
               {' '}
-              — Transfer-Restricted assets issued via Blockstream AMP, settled in BTC or
+              — Transfer-Restricted assets issued via OpenAMP, settled in BTC or
               stablecoins
             </span>
           </div>
@@ -147,7 +147,7 @@ export default function Products() {
           <SectionHeading
             eyebrow="Products"
             title="The complete issuance stack"
-            sub="Four tightly integrated products. Every third-party integration — KYC, e-signature, escrow, and the AMP issuance layer — is pre-built once, so the platform is plug-and-play for every issuer."
+            sub="Four tightly integrated products. Every third-party integration — KYC, e-signature, escrow, and the OpenAMP issuance layer — is pre-built once, so the platform is plug-and-play for every issuer."
           />
           <Architecture />
         </div>

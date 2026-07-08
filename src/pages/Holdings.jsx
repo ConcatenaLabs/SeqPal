@@ -123,8 +123,8 @@ export default function Holdings() {
                 >
                   <div
                     className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${
-                      s?.accent === 'liquid'
-                        ? 'bg-liquid/10 text-liquid-600'
+                      s?.accent === 'seq'
+                        ? 'bg-seq/10 text-seq-600'
                         : 'bg-btc-50 text-btc-600'
                     }`}
                   >
@@ -167,9 +167,9 @@ export default function Holdings() {
               )
             })}
             <p className="px-1 pt-1 text-xs text-ink-700/55">
-              Settled positions have been delivered to your whitelisted wallet
-              {account.individual.gaid
-                ? ` (GAID ${account.individual.gaid.slice(0, 6)}…${account.individual.gaid.slice(-4)})`
+              Settled positions have been delivered to your enclave
+              {account.individual.aid
+                ? ` (AID ${account.individual.aid.slice(0, 6)}…${account.individual.aid.slice(-4)})`
                 : ''}
               . In-escrow positions settle when the issuer’s closing conditions are met.
             </p>

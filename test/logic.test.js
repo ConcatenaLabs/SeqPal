@@ -14,11 +14,11 @@ import {
 import {
   slugify,
   addBusinessDays,
-  fakeGaid,
   fakeHex,
   fakeIdNumber,
 } from '../src/lib/util.js'
 import { ownsIssuance, ownedIssuances } from '../src/lib/account.js'
+import { generateEnclaveKey, computeAID, xonlyOf } from '../src/lib/keys.js'
 
 test('computeSetupCost — Native Equity tiers, surcharge, secured, DR', () => {
   // standard private placement
@@ -166,7 +166,22 @@ test('util — slugify, addBusinessDays, id/hash formats', () => {
 
   assert.equal(fakeHex(64).length, 64)
   assert.match(fakeHex(64), /^[0-9a-f]{64}$/)
-  assert.equal(fakeGaid().length, 40)
-  assert.match(fakeGaid(), /^[A-Za-z0-9]{40}$/)
   assert.match(fakeIdNumber('SQID-I'), /^SQID-I-[A-Z0-9]+-[A-Z0-9]+$/)
+})
+
+test('enclave keys — real x-only key + deterministic AID', () => {
+  const k = generateEnclaveKey()
+  assert.match(k.priv, /^[0-9a-f]{64}$/)
+  assert.match(k.xonly, /^[0-9a-f]{64}$/)
+  // x-only pubkey is reproducible from the private key.
+  assert.equal(xonlyOf(k.priv), k.xonly)
+  // AID matches the policy server's derivation (sha256("openamp-aid-v1"||pk),
+  // first 20 bytes) and is deterministic for the same key.
+  const aid1 = computeAID([k.xonly])
+  const aid2 = computeAID([k.xonly])
+  assert.match(aid1, /^[0-9a-f]{40}$/)
+  assert.equal(aid1, aid2)
+  // Known vector: AID of the all-zero... well, a fixed key.
+  const fixed = 'a'.repeat(64)
+  assert.equal(computeAID([fixed]).length, 40)
 })

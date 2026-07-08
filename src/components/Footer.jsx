@@ -38,7 +38,7 @@ export default function Footer() {
           <div className="lg:col-span-2">
             <Logo light />
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-white/60">
-              End-to-end tokenization-as-a-service on Bitcoin&apos;s Liquid Network.
+              End-to-end tokenization-as-a-service on Bitcoin&apos;s Sequentia.
               Structure, issue, and service compliant security tokens in days.
             </p>
             <div className="mt-5 flex flex-wrap gap-2 text-xs text-white/50">
@@ -46,10 +46,10 @@ export default function Footer() {
                 Próspera ZEDE
               </span>
               <span className="rounded-full border border-white/15 px-2.5 py-1">
-                Liquid Network
+                Sequentia
               </span>
               <span className="rounded-full border border-white/15 px-2.5 py-1">
-                Blockstream AMP
+                OpenAMP
               </span>
             </div>
           </div>

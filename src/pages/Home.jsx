@@ -18,7 +18,7 @@ const pillars = [
   {
     icon: Icon.bitcoin,
     title: 'Strategically Bitcoin-First',
-    body: 'Every asset is issued on Bitcoin’s Liquid Network via Blockstream AMP. Confidential transactions, sub-cent fees, and distributions in BTC or stablecoins.',
+    body: 'Every asset is issued on Sequentia via OpenAMP. Confidential transactions, sub-cent fees, and distributions in BTC or stablecoins.',
   },
 ]
 
@@ -61,12 +61,12 @@ export default function Home() {
       <section className="relative overflow-hidden bg-ink-950 text-white">
         <div className="absolute inset-0 grid-bg opacity-60" />
         <div className="absolute -left-40 -top-40 h-96 w-96 rounded-full bg-btc/20 blur-3xl" />
-        <div className="absolute -right-32 top-20 h-96 w-96 rounded-full bg-liquid/20 blur-3xl" />
+        <div className="absolute -right-32 top-20 h-96 w-96 rounded-full bg-seq/20 blur-3xl" />
         <div className="container-x relative grid gap-12 py-20 lg:grid-cols-2 lg:items-center lg:py-28">
           <div>
             <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/80">
               <span className="h-1.5 w-1.5 rounded-full bg-btc" />
-              Domiciled in Próspera ZEDE · built on the Liquid Network
+              Domiciled in Próspera ZEDE · built on the Sequentia
             </span>
             <h1 className="mt-6 text-4xl font-extrabold leading-[1.05] tracking-tight sm:text-5xl lg:text-6xl">
               Tokenize real-world assets in{' '}
@@ -129,8 +129,8 @@ export default function Home() {
                   </div>
                   <div className="flex items-center justify-between rounded-lg bg-ink-900/[0.03] px-3 py-2.5 text-sm">
                     <span className="text-ink-700">Network</span>
-                    <span className="font-mono text-xs font-semibold text-liquid-600">
-                      Liquid · AMP
+                    <span className="font-mono text-xs font-semibold text-seq-600">
+                      Sequentia · OpenAMP
                     </span>
                   </div>
                   <div className="rounded-lg border border-btc/20 bg-btc-50 px-3 py-2.5">
@@ -154,7 +154,7 @@ export default function Home() {
             <div className="absolute -bottom-5 -left-5 hidden rounded-xl border border-white/10 bg-ink-900 px-4 py-3 shadow-xl sm:block">
               <div className="text-xs text-white/50">SeqPal ID</div>
               <div className="mt-0.5 flex items-center gap-2 text-sm font-semibold text-white">
-                <Icon.shield width={16} height={16} className="text-liquid" />
+                <Icon.shield width={16} height={16} className="text-seq" />
                 Eligibility verified
               </div>
             </div>
@@ -236,7 +236,7 @@ export default function Home() {
                     className={`flex h-11 w-11 items-center justify-center rounded-xl ${
                       s.accent === 'btc'
                         ? 'bg-btc-50 text-btc-600'
-                        : 'bg-liquid/10 text-liquid-600'
+                        : 'bg-seq/10 text-seq-600'
                     }`}
                   >
                     <Ic width={22} height={22} />
@@ -299,9 +299,9 @@ export default function Home() {
             />
             <ul className="mt-8 space-y-4">
               {[
-                'Transfer-Restricted assets issued via Blockstream AMP',
+                'Transfer-Restricted assets issued via OpenAMP',
                 'Whitelist enforced by SeqPal ID at the protocol level',
-                'Listable on Liquid-native venues such as SideSwap (venue-curated), with asset-level KYC',
+                'Listable on Sequentia-native venues such as SeqDEX (venue-curated), with asset-level KYC',
                 'Distributions paid pro-rata in BTC or stablecoins',
               ].map((t) => (
                 <li key={t} className="flex items-start gap-3">
@@ -316,7 +316,7 @@ export default function Home() {
           <div className="card overflow-hidden">
             <div className="border-b border-ink-900/10 bg-ink-900/[0.02] px-6 py-4">
               <div className="flex items-center gap-2 text-sm font-semibold text-ink-800">
-                <Icon.wallet width={18} height={18} className="text-liquid-600" />
+                <Icon.wallet width={18} height={18} className="text-seq-600" />
                 Holder portfolio
               </div>
             </div>
@@ -347,7 +347,7 @@ export default function Home() {
       <section className="container-x pb-4">
         <div className="relative overflow-hidden rounded-3xl bg-ink-950 px-8 py-16 text-center text-white sm:px-16">
           <div className="absolute -left-20 -top-20 h-72 w-72 rounded-full bg-btc/20 blur-3xl" />
-          <div className="absolute -bottom-20 -right-20 h-72 w-72 rounded-full bg-liquid/20 blur-3xl" />
+          <div className="absolute -bottom-20 -right-20 h-72 w-72 rounded-full bg-seq/20 blur-3xl" />
           <div className="relative">
             <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl">
               Ready to issue your asset?

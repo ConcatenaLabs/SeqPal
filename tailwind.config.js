@@ -20,7 +20,7 @@ export default {
           600: '#e07d09',
           700: '#b9650a',
         },
-        liquid: {
+        seq: {
           DEFAULT: '#27c2c9',
           400: '#3dd6dd',
           500: '#27c2c9',
