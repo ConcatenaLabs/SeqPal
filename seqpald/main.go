@@ -1,15 +1,14 @@
-// seqpald is SeqPal's thin deployment backend.
+// seqpald is SeqPal's platform backend.
 //
-// The OpenAMP policy server gates asset issuance behind a bearer token, which
-// is a server-side secret and must never reach the browser. seqpald is the one
-// component that holds it: the SeqPal front-end sends an issuer's enclave public
-// key plus the asset parameters, and seqpald registers the account and mints the
-// restricted asset through OpenAMP's issuer API. Everything else the front-end
-// needs (assets, balances, addresses, the transparency log) it reads directly
-// from OpenAMP's public endpoints.
+// It holds three things the browser must never hold: the OpenAMP issuer bearer
+// token, the books and records (accounts, entities, issuances, deployments), and
+// the append-only audit chain. Principals authenticate by proving possession of
+// their enclave key (BIP340 over a tagged challenge), never with a password, and
+// every ownership decision is derived from the session's AID rather than from
+// anything the client sends. The browser keeps only an encrypted key, a session
+// cookie, and UI state; no financial fact is asserted by the browser.
 //
-// It holds no keys of its own and no database: it is a stateless, audited seam
-// between the public SeqPal UI and the privileged OpenAMP issuer endpoint.
+// Interface contract: seqpald/M1-CONTRACT.md.
 package main
 
 import (
@@ -19,22 +18,29 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math"
 	"net/http"
+	"net/url"
 	"os"
-	"path"
-	"path/filepath"
 	"strings"
 	"time"
 )
 
 type config struct {
 	listen       string
+	dbPath       string
 	openampURL   string // e.g. http://127.0.0.1:8722 (no trailing slash, no /v1)
 	issuerToken  string
-	confidential bool   // does this deployment's node support confidential issuance?
+	confidential bool // does this deployment's node support confidential issuance?
 	network      string
-	webroot      string // built SPA to serve at / (empty = API only)
+	webroot      string   // built SPA to serve at / (empty = API only)
+	devOrigins   []string // extra allowed CORS origins for local development
+}
+
+type server struct {
+	cfg  config
+	st   *Store
+	http *http.Client
+	rl   *rateLimiter
 }
 
 func env(key, def string) string {
@@ -46,52 +52,163 @@ func env(key, def string) string {
 
 func main() {
 	cfg := config{}
+	var devOrigins string
 	flag.StringVar(&cfg.listen, "listen", env("SEQPALD_LISTEN", "127.0.0.1:8730"), "HTTP listen address")
+	flag.StringVar(&cfg.dbPath, "db", env("SEQPALD_DB", "./seqpald.db"), "SQLite database path")
 	flag.StringVar(&cfg.openampURL, "openamp", env("OPENAMPD_URL", "http://127.0.0.1:8722"), "OpenAMP policy server base URL")
 	flag.StringVar(&cfg.issuerToken, "issuertoken", env("OPENAMPD_ISSUER_TOKEN", ""), "OpenAMP issuer bearer token")
 	flag.StringVar(&cfg.network, "network", env("SEQPALD_NETWORK", "sequentia-testnet"), "network label reported to the UI")
 	confDefault := env("SEQPALD_CONFIDENTIAL", "") == "1" || env("SEQPALD_CONFIDENTIAL", "") == "true"
 	flag.BoolVar(&cfg.confidential, "confidential", confDefault, "node supports confidential issuance")
 	flag.StringVar(&cfg.webroot, "webroot", env("SEQPALD_WEBROOT", ""), "built SPA directory to serve at / (empty = API only)")
+	flag.StringVar(&devOrigins, "devorigins", env("SEQPALD_DEV_ORIGINS", ""), "comma-separated extra CORS origins for local development")
 	flag.Parse()
 
 	cfg.openampURL = strings.TrimRight(cfg.openampURL, "/")
+	for _, o := range strings.Split(devOrigins, ",") {
+		if o = strings.TrimSpace(o); o != "" {
+			cfg.devOrigins = append(cfg.devOrigins, strings.TrimRight(o, "/"))
+		}
+	}
 	if cfg.issuerToken == "" {
 		log.Println("warning: no issuer token set; deployments will fail (set OPENAMPD_ISSUER_TOKEN)")
 	}
 
-	s := &server{cfg: cfg, http: &http.Client{Timeout: 60 * time.Second}}
+	st, err := openStore(cfg.dbPath)
+	if err != nil {
+		log.Fatalf("open store %s: %v", cfg.dbPath, err)
+	}
+	defer st.Close()
+	if err := st.PurgeExpired(); err != nil {
+		log.Printf("warning: purge expired sessions and challenges: %v", err)
+	}
 
+	s := &server{
+		cfg:  cfg,
+		st:   st,
+		http: &http.Client{Timeout: 60 * time.Second},
+		rl:   newRateLimiter(),
+	}
+
+	log.Printf("seqpald listening on %s, OpenAMP at %s (db=%s, confidential=%v, webroot=%q)",
+		cfg.listen, cfg.openampURL, cfg.dbPath, cfg.confidential, cfg.webroot)
+	log.Fatal(http.ListenAndServe(cfg.listen, s.handler()))
+}
+
+// handler wires every route. Caddy strips the /seqpal prefix in production, so
+// requests arrive here as /api/...; the prefix is stripped here too, so a direct
+// hit on the listener behaves identically to one through the proxy.
+func (s *server) handler() http.Handler {
 	mux := http.NewServeMux()
+
+	// Public.
 	mux.HandleFunc("GET /api/health", s.handleHealth)
-	mux.HandleFunc("POST /api/deploy", s.handleDeploy)
-	mux.HandleFunc("OPTIONS /api/deploy", func(w http.ResponseWriter, r *http.Request) { cors(w); w.WriteHeader(204) })
-	// Serve the built SPA (and its client-side routes) when a webroot is set.
-	// Caddy strips the /seqpal prefix before proxying, so the browser's absolute
-	// asset paths (/seqpal/assets/...) arrive here as /assets/...; SPA routes
-	// that aren't real files fall back to index.html. seqpald runs as root, so
-	// this avoids Caddy's inability to read files under /root (mode 700).
-	if cfg.webroot != "" {
+	mux.HandleFunc("POST /api/auth/challenge", s.handleChallenge)
+	mux.HandleFunc("POST /api/auth/register", s.handleRegister)
+	mux.HandleFunc("POST /api/auth/login", s.handleLogin)
+
+	// Session required.
+	mux.HandleFunc("POST /api/auth/logout", s.requireSession(s.handleLogout))
+	mux.HandleFunc("GET /api/me", s.requireSession(s.handleMe))
+	mux.HandleFunc("POST /api/entities", s.requireSession(s.handleCreateEntity))
+	mux.HandleFunc("GET /api/issuances", s.requireSession(s.handleListIssuances))
+	mux.HandleFunc("POST /api/issuances", s.requireSession(s.handleCreateIssuance))
+	mux.HandleFunc("PATCH /api/issuances/{id}", s.requireSession(s.handlePatchIssuance))
+	mux.HandleFunc("POST /api/deploy", s.requireSession(s.handleDeploy))
+
+	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		writeErr(w, 404, "no such endpoint")
+	})
+
+	if s.cfg.webroot != "" {
 		mux.HandleFunc("/", s.handleStatic)
 	}
 
-	log.Printf("seqpald listening on %s, OpenAMP at %s (confidential=%v, webroot=%q)", cfg.listen, cfg.openampURL, cfg.confidential, cfg.webroot)
-	log.Fatal(http.ListenAndServe(cfg.listen, mux))
+	return stripSeqpal(s.securityHeaders(s.cors(mux)))
 }
 
-type server struct {
-	cfg  config
-	http *http.Client
+func stripSeqpal(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/seqpal/") {
+			r.URL.Path = strings.TrimPrefix(r.URL.Path, "/seqpal")
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
-func cors(w http.ResponseWriter) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Headers", "content-type")
-	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+// securityHeaders sets the contract's header set on every response. connect-src
+// 'self' holds because OpenAMP is same-origin behind Caddy in production and
+// behind the vite proxy in development.
+func (s *server) securityHeaders(next http.Handler) http.Handler {
+	const csp = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+		"img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; " +
+		"base-uri 'none'; form-action 'self'; object-src 'none'"
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("Content-Security-Policy", csp)
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("Referrer-Policy", "no-referrer")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Permissions-Policy", "geolocation=(), camera=(), microphone=()")
+		next.ServeHTTP(w, r)
+	})
+}
+
+// cors allows same-origin requests only, plus an explicit development allowlist.
+// The old wildcard let any page on the internet drive the API with the browser's
+// cookies; there is no wildcard here, and credentials are only ever granted to an
+// origin we named.
+func (s *server) cors(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := r.Header.Get("Origin")
+		if origin != "" {
+			if s.originAllowed(origin, r) {
+				h := w.Header()
+				h.Set("Access-Control-Allow-Origin", origin)
+				h.Set("Access-Control-Allow-Credentials", "true")
+				h.Set("Access-Control-Allow-Headers", "content-type")
+				h.Set("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS")
+				h.Add("Vary", "Origin")
+			} else if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+		}
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *server) originAllowed(origin string, r *http.Request) bool {
+	u, err := url.Parse(origin)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	if u.Host == r.Host {
+		return true
+	}
+	origin = strings.TrimRight(origin, "/")
+	for _, allowed := range s.cfg.devOrigins {
+		if strings.EqualFold(allowed, origin) {
+			return true
+		}
+	}
+	return false
+}
+
+func readJSON(r *http.Request, v any) error {
+	dec := json.NewDecoder(io.LimitReader(r.Body, maxRequestBody))
+	return dec.Decode(v)
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
-	cors(w)
 	w.Header().Set("content-type", "application/json")
 	w.WriteHeader(code)
 	json.NewEncoder(w).Encode(v)
@@ -101,165 +218,15 @@ func writeErr(w http.ResponseWriter, code int, format string, args ...any) {
 	writeJSON(w, code, map[string]string{"error": fmt.Sprintf(format, args...)})
 }
 
-// handleStatic serves the built SPA with single-page-app fallback: an existing
-// file is served directly; anything else returns index.html so the client
-// router can handle the route.
-func (s *server) handleStatic(w http.ResponseWriter, r *http.Request) {
-	clean := path.Clean("/" + strings.TrimPrefix(r.URL.Path, "/"))
-	fp := filepath.Join(s.cfg.webroot, filepath.FromSlash(clean))
-	// Contain within webroot (defense against path traversal).
-	if rel, err := filepath.Rel(s.cfg.webroot, fp); err != nil || strings.HasPrefix(rel, "..") {
-		http.NotFound(w, r)
-		return
-	}
-	if fi, err := os.Stat(fp); err == nil && !fi.IsDir() {
-		http.ServeFile(w, r, fp)
-		return
-	}
-	http.ServeFile(w, r, filepath.Join(s.cfg.webroot, "index.html"))
-}
-
-func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	// Report whether the OpenAMP server is reachable so the UI can degrade
-	// gracefully rather than failing at deploy time.
-	upstream := false
-	if resp, err := s.http.Get(s.cfg.openampURL + "/v1/assets"); err == nil {
-		upstream = resp.StatusCode < 500
-		resp.Body.Close()
-	}
-	writeJSON(w, 200, map[string]any{
-		"ok":           upstream,
-		"confidential": s.cfg.confidential,
-		"network":      s.cfg.network,
-	})
-}
-
-// deployReq is what the SeqPal front-end sends.
-type deployReq struct {
-	Name           string `json:"name"`
-	Ticker         string `json:"ticker"`
-	IssuerPubkey   string `json:"issuer_pubkey"` // x-only hex
-	Supply         uint64 `json:"supply"`        // whole tokens
-	Precision      int    `json:"precision"`
-	Clawback       *bool  `json:"clawback"`
-	Confidential   bool   `json:"confidential"`
-	FeeConvertAtom uint64 `json:"fee_convert_atoms"`
-	TermsHash      string `json:"terms_hash"`
-}
-
-func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
-	var req deployReq
-	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&req); err != nil {
-		writeErr(w, 400, "bad request body")
-		return
-	}
-	if len(req.IssuerPubkey) != 64 {
-		writeErr(w, 400, "issuer_pubkey must be a 32-byte x-only hex key")
-		return
-	}
-	if req.Name == "" || req.Ticker == "" {
-		writeErr(w, 400, "name and ticker are required")
-		return
-	}
-	if req.Precision <= 0 || req.Precision > 8 {
-		req.Precision = 8
-	}
-	if req.Supply == 0 {
-		req.Supply = 1_000_000
-	}
-	if req.Confidential && !s.cfg.confidential {
-		writeErr(w, 501, "confidential issuance is not available on this deployment; the node is not confidentiality-enabled (enabled on mainnet)")
-		return
-	}
-	if s.cfg.issuerToken == "" {
-		writeErr(w, 503, "deployment backend is not configured with an issuer token")
-		return
-	}
-
-	// atoms = supply * 10^precision, guarded against uint64 overflow.
-	scale := math.Pow10(req.Precision)
-	if float64(req.Supply)*scale > 9.0e18 {
-		writeErr(w, 400, "supply too large for the chosen precision")
-		return
-	}
-	atoms := req.Supply * pow10(req.Precision)
-
-	// 1. Register the issuer's enclave key as an OpenAMP account.
-	aid, err := s.registerUser(req.IssuerPubkey)
-	if err != nil {
-		writeErr(w, 502, "register account: %v", err)
-		return
-	}
-
-	// 2. Mint the restricted asset into that account's enclave. The issuer is
-	//    also the initial holder (the issuer-of-record treasury); distribution
-	//    to investors happens later through OpenAMP transfers.
-	clawback := true
-	if req.Clawback != nil {
-		clawback = *req.Clawback
-	}
-	issueBody := map[string]any{
-		"name":         req.Name,
-		"ticker":       req.Ticker,
-		"precision":    req.Precision,
-		"atoms":        atoms,
-		"holder_aid":   aid,
-		"issuer_aid":   aid,
-		"clawback":     clawback,
-		"burn_allowed": false,
-		"confidential": req.Confidential,
-		"rules":        map[string]any{"fee_convert_atoms": req.FeeConvertAtom},
-	}
-	if req.TermsHash != "" {
-		issueBody["terms_hash"] = req.TermsHash
-	}
-
-	var issued struct {
-		Asset        string `json:"asset"`
-		Txid         string `json:"txid"`
-		ContractHash string `json:"contract_hash"`
-		Error        string `json:"error"`
-	}
-	if err := s.callOpenAMP("POST", "/v1/issuer/assets", s.cfg.issuerToken, issueBody, &issued); err != nil {
-		writeErr(w, 502, "issue: %v", err)
-		return
-	}
-
-	// 3. Best-effort: fetch the enclave receive address for display.
-	var addr struct {
-		Address string `json:"address"`
-	}
-	_ = s.callOpenAMP("GET", "/v1/users/"+aid+"/address?asset="+issued.Asset, "", nil, &addr)
-
-	writeJSON(w, 200, map[string]any{
-		"asset":         issued.Asset,
-		"txid":          issued.Txid,
-		"contract_hash": issued.ContractHash,
-		"aid":           aid,
-		"address":       addr.Address,
-	})
-}
-
-func (s *server) registerUser(xonly string) (string, error) {
-	var out struct {
-		AID string `json:"aid"`
-	}
-	err := s.callOpenAMP("POST", "/v1/users", "", map[string]any{"pubkeys": []string{xonly}}, &out)
-	if err != nil {
-		return "", err
-	}
-	if out.AID == "" {
-		return "", fmt.Errorf("no aid returned")
-	}
-	return out.AID, nil
-}
-
-// callOpenAMP issues an authenticated (if token != "") JSON request to the
-// policy server and decodes the response into out (may be nil).
+// callOpenAMP issues an authenticated (if token != "") JSON request to the policy
+// server and decodes the response into out (may be nil).
 func (s *server) callOpenAMP(method, path, token string, body any, out any) error {
 	var rdr io.Reader
 	if body != nil {
-		b, _ := json.Marshal(body)
+		b, err := json.Marshal(body)
+		if err != nil {
+			return err
+		}
 		rdr = bytes.NewReader(b)
 	}
 	httpReq, err := http.NewRequest(method, s.cfg.openampURL+path, rdr)
@@ -292,12 +259,4 @@ func (s *server) callOpenAMP(method, path, token string, body any, out any) erro
 		return json.Unmarshal(raw, out)
 	}
 	return nil
-}
-
-func pow10(n int) uint64 {
-	out := uint64(1)
-	for i := 0; i < n; i++ {
-		out *= 10
-	}
-	return out
 }

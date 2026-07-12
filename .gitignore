@@ -15,6 +15,12 @@ npm-debug.log*
 .idea/
 *.local
 
-# seqpald build + secrets
+# seqpald build + state + secrets
 seqpald/seqpald
+seqpald/*.db
+seqpald/*.db-shm
+seqpald/*.db-wal
 *.env
+
+# vendored deps (139MB modernc.org/sqlite); box builds from the module cache
+seqpald/vendor/

@@ -1,78 +1,52 @@
-// Post-checkout lifecycle for an issuance. Próspera incorporation is not
-// instant — entity registration on the e-registry takes 1–3 business days —
-// so an issuance moves through several states before it is live.
+// The issuance lifecycle, as seqpald actually records it.
+//
+// seqpald stores exactly two statuses: `draft` until the asset is minted, and
+// `live` once the OpenAMP mint has returned an asset id and a txid. The former
+// "Incorporating" and "Deploying" states were advanced by a button in the
+// browser and tracked nothing, so they are gone: the steps below that SeqPal
+// does not yet observe are labelled as such rather than shown as progress.
 
 export const STATUS = {
-  awaiting_incorporation: {
-    label: 'Incorporating',
+  draft: {
+    label: 'Draft',
     color: 'amber',
-    blurb: 'Próspera LLC registration in progress',
-  },
-  deploying: {
-    label: 'Deploying',
-    color: 'seq',
-    blurb: 'Filing with the RFSA and deploying the OpenAMP asset on Sequentia',
+    blurb: 'Configured on SeqPal, not yet deployed on Sequentia',
   },
   live: {
-    label: 'Live',
+    label: 'Deployed',
     color: 'emerald',
-    blurb: 'Deployed and serviced by the Transfer Agent',
+    blurb: 'The OpenAMP restricted asset is minted on Sequentia',
   },
 }
 
-// The ordered milestones shown on the issuance timeline.
-export const MILESTONES = [
-  { key: 'payment', label: 'Setup fee paid', detail: 'Checkout complete' },
+// Preparation steps that happen off the platform. SeqPal does not observe them,
+// so they carry no state: they are a checklist, not progress.
+export const OFF_PLATFORM_STEPS = [
   {
     key: 'incorporation',
     label: 'Próspera LLC incorporated',
-    detail: 'Registered on the Próspera e-registry',
+    detail: 'Registered on the Próspera e-registry, typically 1 to 3 business days',
   },
   {
     key: 'filing',
-    label: 'Documents executed & RFSA filing',
+    label: 'Documents executed and RFSA filing',
     detail: 'Exempt notice (private placement) or RFSA registration (public offering)',
   },
-  {
-    key: 'deployment',
-    label: 'OpenAMP asset deployed',
-    detail: 'Transfer-restricted asset minted on Sequentia; Transfer Agent active',
-  },
-  { key: 'live', label: 'Live', detail: 'Ready for the placement portal' },
 ]
 
 // Depository Receipts additionally require a contracted brokerage-custody
-// relationship (the plan's single largest DR operational risk), so their
-// lifecycle carries an extra milestone.
-export function milestonesFor(structureId) {
+// relationship before the programme can operate.
+export function offPlatformSteps(structureId) {
   if (structureId === 'depository-receipt') {
     return [
-      MILESTONES[0],
-      MILESTONES[1],
+      OFF_PLATFORM_STEPS[0],
       {
         key: 'custody',
         label: 'Brokerage custody contracted',
         detail: 'Segregated custody sub-account at the partner broker',
       },
-      MILESTONES[2],
-      MILESTONES[3],
-      { key: 'live', label: 'Live', detail: 'Ready to mint & redeem' },
+      OFF_PLATFORM_STEPS[1],
     ]
   }
-  return MILESTONES
-}
-
-// How many milestones are complete for a given status.
-export function completedCount(status, structureId) {
-  if (status === 'awaiting_incorporation') return 1
-  if (status === 'deploying') return 2
-  if (status === 'live') return milestonesFor(structureId).length
-  return 0
-}
-
-// The next status in the chain (used by the demo "advance" control).
-export function nextStatus(status) {
-  if (status === 'awaiting_incorporation') return 'deploying'
-  if (status === 'deploying') return 'live'
-  return 'live'
+  return OFF_PLATFORM_STEPS
 }

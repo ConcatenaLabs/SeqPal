@@ -79,8 +79,12 @@ before a user reaches checkout instead of failing at the mint.
 ### Deploy rules (item 20, 28, 41, 115)
 
 - Session required; the issuance must belong to the session's AID; 403 otherwise.
-- Idempotency key = `sha256(issuer_pubkey || terms_hash)`. A replay returns the SAME
-  `{asset, txid, ...}` from the `deploys` table and never mints twice.
+- Idempotency key = `sha256(issuer_pubkey || issuance_id || terms_hash)` (the fields
+  NUL-separated). A replay of the SAME issuance returns the SAME `{asset, txid, ...}`
+  from the `deploys` table and never mints twice. The `issuance_id` MUST be in the key:
+  without it, two distinct drafts by one account with equal terms (the default case,
+  both terms `{}`) collide, so the second deploy returns the first's asset and strands
+  the second draft forever.
 - Rate limit: 5 deploys per account per hour, 20 per hour globally (in-memory token bucket
   is sufficient for M1; the audit log records refusals).
 - Validation, 400 on failure: `supply >= 1`; `1 <= precision <= 8`; ticker matches

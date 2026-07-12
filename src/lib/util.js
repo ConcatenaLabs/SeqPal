@@ -1,40 +1,6 @@
 // Pure, framework-free helpers (no React/JSX) so they can be unit-tested and
 // reused without importing the store/context module.
 
-// ── demo id / hash generators ──────────────────────────────────────────
-export function fakeHex(len = 64) {
-  const hex = '0123456789abcdef'
-  let out = ''
-  for (let i = 0; i < len; i++) out += hex[Math.floor(Math.random() * 16)]
-  return out
-}
-// Sample-data identifiers for the "load sample issuance" demo helper. Real
-// issuances get their asset id and txid from the OpenAMP policy server.
-export const fakeAssetId = () => fakeHex(64)
-export const fakeTxid = () => fakeHex(64)
-
-export function fakeIdNumber(prefix) {
-  return (
-    prefix +
-    '-' +
-    Math.random().toString(36).slice(2, 8).toUpperCase() +
-    '-' +
-    Math.random().toString(36).slice(2, 6).toUpperCase()
-  )
-}
-
-// Add N business days to a date (skips Sat/Sun).
-export function addBusinessDays(from, n) {
-  const d = new Date(from)
-  let added = 0
-  while (added < n) {
-    d.setDate(d.getDate() + 1)
-    const day = d.getDay()
-    if (day !== 0 && day !== 6) added++
-  }
-  return d
-}
-
 export function slugify(s) {
   return (s || '')
     .toLowerCase()

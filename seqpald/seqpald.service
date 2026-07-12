@@ -5,12 +5,41 @@ Wants=openampd.service
 
 [Service]
 Type=simple
-# Secrets (issuer token) live here, box-only, chmod 600, never in git.
-EnvironmentFile=/root/sequentia/seqpald.env
-ExecStart=/root/sequentia/SeqPal/seqpald/seqpald
+User=seqpal
+Group=seqpal
+# Secrets (the OpenAMP issuer token) live here, box-only, chmod 600, never in git.
+EnvironmentFile=/etc/seqpald/seqpald.env
+ExecStart=/usr/local/bin/seqpald
 Restart=on-failure
 RestartSec=3
-User=root
+
+# The SPA is served from /srv/seqpal/dist. It used to live under /root (mode 700),
+# which was the only reason this unit ever needed to run as root.
+StateDirectory=seqpald
+StateDirectoryMode=0700
+WorkingDirectory=/var/lib/seqpald
+ReadWritePaths=/var/lib/seqpald
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+CapabilityBoundingSet=
+UMask=0077
 
 [Install]
 WantedBy=multi-user.target

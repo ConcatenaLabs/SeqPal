@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { Icon } from '../../components/icons'
 import { Badge, DemoNote } from '../../components/ui'
 import { useStore } from '../../lib/store'
+import { view } from '../../lib/issuance'
 import { isEligible, tierFor } from '../../lib/policy'
 import { parseMoney, fmtAmount, unitSymbol } from '../../lib/economics'
 import { getStructure } from '../../data/structures'
@@ -19,16 +20,25 @@ const ACCENT_HEX = {
 
 export default function InvestorPortal() {
   const { id } = useParams()
-  const { account, isLoggedIn, issuances, updateIssuance } = useStore()
-  const iss = issuances.find((i) => i.id === id)
+  const { account, isSignedIn, issuances, simFor, updateSim } = useStore()
+  const found = issuances.find((i) => i.id === id)
+  const iss = found ? view(found) : null
+  const sim = simFor(id)
   const [phase, setPhase] = useState('offering') // offering | signing | wiring | done
   const [amount, setAmount] = useState('')
   const [rail, setRail] = useState('') // funding rail: wire | BTC | USDX
 
-  if (!iss || !iss.portal?.published) {
+  // The portal is a browser-session preview: it exists only in the SeqPal ID
+  // that created it (the issuer), so an anonymous or investor visitor in this
+  // build has nothing to see. On the live platform a portal is served from the
+  // issuer's own domain.
+  if (!iss || !sim.portal?.published) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-ink-900/[0.03] px-6 text-center">
-        <p className="text-ink-700">This offering isn’t available.</p>
+        <p className="max-w-md text-ink-700">
+          This offering preview is not available. In this build the placement portal is
+          simulated and lives only in the browser session that set it up.
+        </p>
         <Link to="/id" className="btn-outline mt-6">
           Go to SeqPal ID
         </Link>
@@ -36,7 +46,7 @@ export default function InvestorPortal() {
     )
   }
 
-  const p = iss.portal
+  const p = sim.portal
   const accent = ACCENT_HEX[p.accent] || ACCENT_HEX.btc
   const s = getStructure(iss.structureId)
 
@@ -53,44 +63,56 @@ export default function InvestorPortal() {
   const rails = isBTC ? ['BTC'] : ['USD wire', 'BTC', 'USDX']
   const railChosen = rail || rails[0]
 
-  // Eligibility: evaluate the visiting SeqPal ID against the token's policy.
-  const inv = account.individual
+  // Eligibility: evaluate the visiting SeqPal ID against the token's policy. The
+  // profile comes from the signed-in account record. NOTE: no eligibility rule
+  // is compiled into the on-chain asset yet, so this gate is honest UX, not an
+  // enforced restriction; enforcement lands in a later milestone.
+  const prof = account?.profile && typeof account.profile === 'object' ? account.profile : {}
+  const inv = account
+    ? {
+        name: account.display_name,
+        aid: account.aid,
+        residenceCode: prof.residence_code,
+        accredited: !!prof.accredited,
+      }
+    : null
   const tier = inv ? tierFor(iss.policy, inv.residenceCode) : undefined
   const eligible = inv ? isEligible(iss.policy, inv.residenceCode, inv.accredited) : false
   const jName = inv && JURISDICTIONS.find((j) => j.code === inv.residenceCode)?.name
 
   // Private placements reveal terms only to an eligible, verified investor.
-  const revealTerms = iss.isPublic || (isLoggedIn && eligible)
+  const revealTerms = iss.isPublic || (isSignedIn && eligible)
 
   // Round capacity: the target raise is treated as the hard cap.
   const raiseNum = parseMoney(iss.raise)
-  const committed = (iss.subscriptions || []).reduce((a, su) => a + su.amount, 0)
+  const committed = sim.subscriptions.reduce((a, su) => a + su.amount, 0)
   const remaining = raiseNum > 0 ? Math.max(0, raiseNum - committed) : null
   const full = raiseNum > 0 && committed >= raiseNum
 
   const subscribe = () => setPhase('signing')
   const sign = () => setPhase('wiring')
   const wire = () => {
-    // Record the subscription against the issuance: funds into escrow, pending
-    // settlement on the issuer closing the round.
+    // Simulated subscription, held in the browser session only. Nothing is
+    // escrowed, nothing settles, and no token is delivered.
     const amt = parseMoney(amount || p.minInvestment)
-    // For USD-denominated raises, BTC subscriptions convert to USDX on
-    // receipt (value fixed at escrow entry) — record the rail as it lands.
     const escrowedAs =
-      railChosen === 'USD wire' ? 'USD' : railChosen === 'BTC' && !isBTC ? 'BTC → USDX' : railChosen
-    updateIssuance(iss.id, (i) => ({
+      railChosen === 'USD wire'
+        ? 'USD'
+        : railChosen === 'BTC' && !isBTC
+          ? 'BTC → USDX'
+          : railChosen
+    updateSim(iss.id, (cur) => ({
       subscriptions: [
         {
           id: 'sub_' + Math.random().toString(36).slice(2, 9),
           name: inv.name,
-          idNumber: inv.idNumber,
           jur: inv.residenceCode,
           amount: amt,
           rail: escrowedAs,
           status: 'in_escrow',
           at: new Date().toISOString(),
         },
-        ...(i.subscriptions || []),
+        ...cur.subscriptions,
       ],
     }))
     setPhase('done')
@@ -138,7 +160,7 @@ export default function InvestorPortal() {
                 </h1>
                 <p className="mt-2 text-ink-700/80">
                   {iss.name} · <span className="font-mono text-sm">{iss.ticker}</span> ·
-                  issued on the Sequentia
+                  issued on Sequentia, a Bitcoin sidechain
                 </p>
 
                 <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -189,7 +211,9 @@ export default function InvestorPortal() {
                 <h1 className="mt-3 text-3xl font-extrabold tracking-tight text-ink-900">
                   {p.brandName}
                 </h1>
-                <p className="mt-2 text-ink-700/80">A private offering on the Sequentia.</p>
+                <p className="mt-2 text-ink-700/80">
+                  A private offering on Sequentia, a Bitcoin sidechain.
+                </p>
                 <div className="mt-8 rounded-2xl border border-dashed border-ink-900/20 bg-white p-8 text-center">
                   <Icon.lock width={26} height={26} className="mx-auto text-ink-500" />
                   <p className="mx-auto mt-3 max-w-md text-sm text-ink-700/75">
@@ -215,7 +239,7 @@ export default function InvestorPortal() {
                 </div>
               </div>
               <div className="p-5">
-                {!isLoggedIn ? (
+                {!isSignedIn ? (
                   <>
                     <p className="text-sm text-ink-700/80">
                       Every investor must hold a verified SeqPal ID that satisfies this
@@ -255,23 +279,16 @@ export default function InvestorPortal() {
                     <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500 text-white">
                       <Icon.check width={26} height={26} />
                     </div>
-                    <h3 className="mt-3 font-bold text-ink-900">Subscription received</h3>
-                    <p className="mt-1 text-sm text-ink-700/80">
-                      {fmt(parseMoney(amount || p.minInvestment))} is held in escrow. On
-                      closing, your{' '}
-                      {iss.ticker} tokens are delivered to your enclave
-                      {inv?.aid ? (
-                        <>
-                          {' '}
-                          <span className="font-mono text-xs text-ink-700">
-                            (AID {inv.aid.slice(0, 6)}…{inv.aid.slice(-4)})
-                          </span>
-                        </>
-                      ) : null}
-                      .
+                    <h3 className="mt-3 font-bold text-ink-900">Subscription recorded</h3>
+                    <p className="mt-1 text-sm leading-relaxed text-ink-700/80">
+                      This is a SIMULATED subscription of{' '}
+                      {fmt(parseMoney(amount || p.minInvestment))}, held in this browser
+                      session only. No money has moved into escrow and no {iss.ticker} token
+                      has been delivered to your enclave. Real subscription, escrow, and
+                      delivery are a later milestone.
                     </p>
-                    <Link to="/holdings" className="btn-primary mt-5 w-full">
-                      View my holdings
+                    <Link to="/id" className="btn-primary mt-5 w-full">
+                      Back to SeqPal ID
                       <Icon.arrowRight width={16} height={16} />
                     </Link>
                   </div>

@@ -66,7 +66,7 @@ export default function Home() {
           <div>
             <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/80">
               <span className="h-1.5 w-1.5 rounded-full bg-btc" />
-              Domiciled in Próspera ZEDE · built on the Sequentia
+              Domiciled in Próspera ZEDE · built on Sequentia, a Bitcoin sidechain
             </span>
             <h1 className="mt-6 text-4xl font-extrabold leading-[1.05] tracking-tight sm:text-5xl lg:text-6xl">
               Tokenize real-world assets in{' '}
@@ -74,8 +74,9 @@ export default function Home() {
             </h1>
             <p className="mt-6 max-w-xl text-lg leading-relaxed text-white/70">
               SeqPal is an end-to-end tokenization-as-a-service platform. Structure,
-              issue, and service compliant security tokens on Bitcoin — at fixed,
-              transparent prices, with no required human sales call.
+              issue, and service transfer-restricted security tokens on Sequentia, a
+              Bitcoin sidechain, at fixed, transparent prices, with no required human sales
+              call.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link to="/onboarding" className="btn-primary px-5 py-3 text-base">

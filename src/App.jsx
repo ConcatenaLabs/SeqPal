@@ -18,14 +18,14 @@ import InvestorPortal from './pages/portal/InvestorPortal'
 import NotFound from './pages/NotFound'
 
 const TITLES = {
-  '/': 'SeqPal — Tokenization-as-a-Service on Bitcoin',
-  '/products': 'Products — SeqPal',
-  '/structures': 'Issuance Structures — SeqPal',
-  '/pricing': 'Pricing — SeqPal',
+  '/': 'SeqPal · Tokenization-as-a-Service on Sequentia',
+  '/products': 'Products · SeqPal',
+  '/structures': 'Issuance Structures · SeqPal',
+  '/pricing': 'Pricing · SeqPal',
   '/id': 'SeqPal ID',
-  '/holdings': 'My holdings — SeqPal ID',
-  '/dashboard': 'Issuer Dashboard — SeqPal',
-  '/onboarding': 'New issuance — SeqPal',
+  '/holdings': 'My holdings · SeqPal ID',
+  '/dashboard': 'Issuer Dashboard · SeqPal',
+  '/onboarding': 'New issuance · SeqPal',
 }
 
 function ScrollToTop() {
@@ -37,9 +37,9 @@ function ScrollToTop() {
       (pathname.startsWith('/portal/')
         ? 'Investor portal'
         : pathname.includes('/portal')
-          ? 'Placement portal setup — SeqPal'
+          ? 'Placement portal setup · SeqPal'
           : pathname.startsWith('/issuance/')
-            ? 'Issuance — SeqPal'
+            ? 'Issuance · SeqPal'
             : 'SeqPal')
   }, [pathname])
   return null
@@ -50,7 +50,7 @@ export default function App() {
   // Three site chromes:
   //  - "focused": full-screen flows (issuer onboarding wizard, portal setup, and
   //    the investor-facing placement portal on the issuer's own domain).
-  //  - "id": the standalone SeqPal ID subsite (conceptually id.seqpal.io) — the
+  //  - "id": the standalone SeqPal ID subsite (conceptually id.seqpal.io) · the
   //    investor + login surface, with NO issuance-business navigation.
   //  - default: the issuer-facing issuance platform (marketing + dashboard).
   const isFocused =
