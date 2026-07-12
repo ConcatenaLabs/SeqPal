@@ -6,7 +6,9 @@ import {
   encryptKey,
   generateEnclaveKey,
   signChallenge,
+  signClosing,
   signDocument,
+  signMandate,
   signStatement,
 } from './keys'
 
@@ -263,6 +265,12 @@ export function StoreProvider({ children }) {
   // locked, which the caller surfaces as "unlock to sign".
   const signDoc = (docHashHex) => (priv ? signDocument(priv, docHashHex) : null)
 
+  // Sign a payout-mandate or closing authorization with the session's in-memory
+  // enclave key (over the canonical `sign_this` statement seqpald returned).
+  // Returns null when locked, which the caller surfaces as "unlock to sign".
+  const signMandateStmt = (statement) => (priv ? signMandate(priv, statement) : null)
+  const signCloseStmt = (statement) => (priv ? signClosing(priv, statement) : null)
+
   // ── in-memory simulation (portal drafts, subscriptions, servicing) ──
   // The latest chain-watch event for an issuance, or undefined until the SSE
   // stream delivers one (the surface then shows a distinct "awaiting" chip
@@ -300,6 +308,10 @@ export function StoreProvider({ children }) {
     deployIssuance,
     signWithKey,
     signDoc,
+    signMandateStmt,
+    signCloseStmt,
+    xonly: envelope?.xonly || account?.xonly,
+    hasKey: !!priv,
     watch,
     watchFor,
     simFor,

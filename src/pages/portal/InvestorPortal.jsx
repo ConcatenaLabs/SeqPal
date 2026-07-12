@@ -1,140 +1,96 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Icon } from '../../components/icons'
-import { Badge, DemoNote } from '../../components/ui'
+import { Badge } from '../../components/ui'
 import { useStore } from '../../lib/store'
-import { view } from '../../lib/issuance'
-import { isEligible, tierFor } from '../../lib/policy'
-import { parseMoney, fmtAmount, unitSymbol } from '../../lib/economics'
-import { getStructure } from '../../data/structures'
-import { JURISDICTIONS } from '../../data/jurisdictions'
+import * as api from '../../lib/api'
+import GateSteps from '../../components/money/GateSteps'
+import SubscribeFlow from '../../components/money/SubscribeFlow'
 
-const ACCENT_HEX = {
-  btc: '#F7931A',
-  seq: '#27c2c9',
-  indigo: '#4f46e5',
-  emerald: '#059669',
-  slate: '#334155',
+// The investor-facing offering, served by seqpald's promotion-gated endpoint.
+// An anonymous or ungated visitor sees only the fixed teaser (issuer, sector,
+// structure, availability, a verification CTA): no price, raise, returns, or
+// mechanics, so the ungated page stays below the EU public-offer and UK
+// financial-promotion lines. A verified, eligible investor who clears the gate
+// sees the full offering and can subscribe. Gate passage is the EU
+// offeree-counting event, recorded server-side.
+
+function Teaser({ teaser }) {
+  const t = teaser || {}
+  const rows = [
+    ['Issuer', t.issuer],
+    ['Sector', t.sector || 'Not stated'],
+    ['Structure', t.structure],
+  ]
+  return (
+    <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
+      {rows.map(([k, v]) => (
+        <div key={k} className="rounded-xl border border-ink-900/10 bg-white p-4">
+          <div className="text-xs text-ink-700/60">{k}</div>
+          <div className="mt-0.5 font-bold text-ink-900">{v || '-'}</div>
+        </div>
+      ))}
+      <div className="rounded-xl border border-ink-900/10 bg-white p-4">
+        <div className="text-xs text-ink-700/60">Available in</div>
+        <div className="mt-1 flex flex-wrap gap-1">
+          {(t.available_in || []).length ? (
+            t.available_in.map((c) => (
+              <Badge key={c} color="slate">
+                {c}
+              </Badge>
+            ))
+          ) : (
+            <span className="text-sm text-ink-700/70">By verified jurisdiction</span>
+          )}
+        </div>
+      </div>
+    </div>
+  )
 }
-
 
 export default function InvestorPortal() {
   const { id } = useParams()
-  const { account, isSignedIn, issuances, simFor, updateSim } = useStore()
-  const found = issuances.find((i) => i.id === id)
-  const iss = found ? view(found) : null
-  const sim = simFor(id)
-  const [phase, setPhase] = useState('offering') // offering | signing | wiring | done
-  const [amount, setAmount] = useState('')
-  const [rail, setRail] = useState('') // funding rail: wire | BTC | USDX
+  const { status, isSignedIn, simFor } = useStore()
+  const [offering, setOffering] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
 
-  // The portal is a browser-session preview: it exists only in the SeqPal ID
-  // that created it (the issuer), so an anonymous or investor visitor in this
-  // build has nothing to see. On the live platform a portal is served from the
-  // issuer's own domain.
-  if (!iss || !sim.portal?.published) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-ink-900/[0.03] px-6 text-center">
-        <p className="max-w-md text-ink-700">
-          This offering preview is not available. In this build the placement portal is
-          simulated and lives only in the browser session that set it up.
-        </p>
-        <Link to="/id" className="btn-outline mt-6">
-          Go to SeqPal ID
-        </Link>
-      </div>
-    )
-  }
+  const load = useCallback(async () => {
+    try {
+      const o = await api.offering(id)
+      setOffering(o)
+      setError(null)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }, [id])
 
-  const p = sim.portal
-  const accent = ACCENT_HEX[p.accent] || ACCENT_HEX.btc
-  const s = getStructure(iss.structureId)
+  // Re-fetch when the session changes (verifying flips the gate) and after a gate
+  // is cleared. status transitions loading -> anon | in.
+  useEffect(() => {
+    if (status === 'loading') return
+    load()
+  }, [status, load])
 
-  // General-solicitation gate. A private placement (Reg D 506(b)-style) may not
-  // be generally solicited: its terms, documents and target raise are shown only
-  // to a verified investor who clears the offering's eligibility policy. A public
-  // offering (506(c)-style) may be displayed openly. `eligible` is computed below.
-
-  // Unit of account & funding rails. A BTC-denominated raise is escrowed in
-  // kind; for USD-denominated raises BTC subscriptions are converted to USDX
-  // on receipt, fixing each subscription's value at the moment it enters escrow.
-  const isBTC = iss.unit === 'BTC'
-  const fmt = (n) => fmtAmount(n, iss.unit)
-  const rails = isBTC ? ['BTC'] : ['USD wire', 'BTC', 'USDX']
-  const railChosen = rail || rails[0]
-
-  // Eligibility: evaluate the visiting SeqPal ID against the token's policy. The
-  // profile comes from the signed-in account record. NOTE: no eligibility rule
-  // is compiled into the on-chain asset yet, so this gate is honest UX, not an
-  // enforced restriction; enforcement lands in a later milestone.
-  const prof = account?.profile && typeof account.profile === 'object' ? account.profile : {}
-  const inv = account
-    ? {
-        name: account.display_name,
-        aid: account.aid,
-        residenceCode: prof.residence_code,
-        accredited: !!prof.accredited,
-      }
-    : null
-  const tier = inv ? tierFor(iss.policy, inv.residenceCode) : undefined
-  const eligible = inv ? isEligible(iss.policy, inv.residenceCode, inv.accredited) : false
-  const jName = inv && JURISDICTIONS.find((j) => j.code === inv.residenceCode)?.name
-
-  // Private placements reveal terms only to an eligible, verified investor.
-  const revealTerms = iss.isPublic || (isSignedIn && eligible)
-
-  // Round capacity: the target raise is treated as the hard cap.
-  const raiseNum = parseMoney(iss.raise)
-  const committed = sim.subscriptions.reduce((a, su) => a + su.amount, 0)
-  const remaining = raiseNum > 0 ? Math.max(0, raiseNum - committed) : null
-  const full = raiseNum > 0 && committed >= raiseNum
-
-  const subscribe = () => setPhase('signing')
-  const sign = () => setPhase('wiring')
-  const wire = () => {
-    // Simulated subscription, held in the browser session only. Nothing is
-    // escrowed, nothing settles, and no token is delivered.
-    const amt = parseMoney(amount || p.minInvestment)
-    const escrowedAs =
-      railChosen === 'USD wire'
-        ? 'USD'
-        : railChosen === 'BTC' && !isBTC
-          ? 'BTC → USDX'
-          : railChosen
-    updateSim(iss.id, (cur) => ({
-      subscriptions: [
-        {
-          id: 'sub_' + Math.random().toString(36).slice(2, 9),
-          name: inv.name,
-          jur: inv.residenceCode,
-          amount: amt,
-          rail: escrowedAs,
-          status: 'in_escrow',
-          at: new Date().toISOString(),
-        },
-        ...cur.subscriptions,
-      ],
-    }))
-    setPhase('done')
-  }
+  // Branding: if the issuer previewing from their own session set up a portal, use
+  // it; otherwise a neutral SeqPal header with the issuer name from the teaser.
+  const portalCfg = simFor(id).portal || {}
+  const teaser = offering?.teaser
+  const brand = portalCfg.brandName || teaser?.issuer || 'Offering'
 
   return (
-    <div className="min-h-screen bg-ink-50/40" style={{ background: '#f7f8fa' }}>
-      {/* Issuer-branded header (whitelabel) */}
+    <div className="min-h-screen" style={{ background: '#f7f8fa' }}>
       <header className="border-b border-ink-900/10 bg-white">
         <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-5">
           <div className="flex items-center gap-2.5">
-            <span
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-sm font-bold text-white"
-              style={{ background: accent }}
-            >
-              {(p.brandName || 'A').slice(0, 1).toUpperCase()}
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-ink-900 text-sm font-bold text-white">
+              {brand.slice(0, 1).toUpperCase()}
             </span>
-            <span className="font-bold text-ink-900">{p.brandName}</span>
+            <span className="font-bold text-ink-900">{brand}</span>
           </div>
-          <div className="flex items-center gap-3 text-xs text-ink-700/60">
-            <span className="font-mono">invest.{p.slug}.com</span>
-          </div>
+          <span className="text-xs text-ink-700/60">Powered by SeqPal on Sequentia</span>
         </div>
       </header>
 
@@ -146,309 +102,146 @@ export default function InvestorPortal() {
           <Icon.arrowLeft width={15} height={15} /> SeqPal ID
         </Link>
 
-        <div className="grid gap-8 lg:grid-cols-[1.5fr_1fr]">
-          {/* Offering */}
-          <div>
-            <Badge color="slate">
-              {s?.name}
-              {!iss.isPublic ? ' · Private placement' : ''}
-            </Badge>
-            {revealTerms ? (
-              <>
-                <h1 className="mt-3 text-3xl font-extrabold tracking-tight text-ink-900">
-                  {p.headline}
-                </h1>
-                <p className="mt-2 text-ink-700/80">
-                  {iss.name} · <span className="font-mono text-sm">{iss.ticker}</span> ·
-                  issued on Sequentia, a Bitcoin sidechain
-                </p>
-
-                <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  {[
-                    ['Target raise', iss.raise || 'not set'],
-                    ['Min. investment', `${unitSymbol(iss.unit)}${p.minInvestment}`],
-                    ['Offering', iss.isPublic ? 'Public' : 'Private placement'],
-                  ].map(([k, v]) => (
-                    <div key={k} className="rounded-xl border border-ink-900/10 bg-white p-4">
-                      <div className="text-xs text-ink-700/60">{k}</div>
-                      <div className="mt-0.5 font-bold text-ink-900">{v}</div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Data room, only after eligibility */}
-                <div className="mt-8">
-                  <h2 className="flex items-center gap-2 font-bold text-ink-900">
-                    <Icon.lock width={16} height={16} className="text-ink-600" /> Data room
-                  </h2>
-                  {eligible ? (
-                    <div className="mt-3 space-y-2">
-                      {p.docs.map((d) => (
-                        <div
-                          key={d}
-                          className="flex items-center gap-3 rounded-lg border border-ink-900/10 bg-white px-4 py-3"
-                        >
-                          <Icon.doc width={18} height={18} className="text-ink-600" />
-                          <span className="flex-1 text-sm font-medium text-ink-900">{d}</span>
-                          <span className="text-xs text-ink-700/50">PDF</span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="mt-3 rounded-xl border border-dashed border-ink-900/20 bg-white p-6 text-center text-sm text-ink-700/70">
-                      <Icon.lock width={22} height={22} className="mx-auto text-ink-500" />
-                      <p className="mt-2">
-                        Offering documents unlock once your SeqPal ID clears the eligibility
-                        gate.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </>
-            ) : (
-              /* Private placement, anonymous visitor: no general solicitation. */
-              <>
-                <h1 className="mt-3 text-3xl font-extrabold tracking-tight text-ink-900">
-                  {p.brandName}
-                </h1>
-                <p className="mt-2 text-ink-700/80">
-                  A private offering on Sequentia, a Bitcoin sidechain.
-                </p>
-                <div className="mt-8 rounded-2xl border border-dashed border-ink-900/20 bg-white p-8 text-center">
-                  <Icon.lock width={26} height={26} className="mx-auto text-ink-500" />
-                  <p className="mx-auto mt-3 max-w-md text-sm text-ink-700/75">
-                    This is a private placement. Its terms, offering documents and target
-                    raise are shown only to investors who clear this offering’s eligibility
-                    policy with a verified SeqPal ID. SeqPal-issued private offerings are
-                    never generally solicited.
-                  </p>
-                </div>
-              </>
-            )}
+        {loading ? (
+          <div className="flex justify-center py-24">
+            <span className="h-8 w-8 animate-spin rounded-full border-4 border-btc/20 border-t-btc" />
           </div>
-
-          {/* Eligibility / subscription panel */}
-          <div className="lg:sticky lg:top-6 lg:self-start">
-            <div className="overflow-hidden rounded-2xl border border-ink-900/10 bg-white shadow-card">
-              <div
-                className="px-5 py-4 text-white"
-                style={{ background: accent }}
-              >
-                <div className="flex items-center gap-2 text-sm font-semibold">
-                  <Icon.shield width={16} height={16} /> SeqPal ID eligibility gate
-                </div>
-              </div>
-              <div className="p-5">
-                {!isSignedIn ? (
-                  <>
-                    <p className="text-sm text-ink-700/80">
-                      Every investor must hold a verified SeqPal ID that satisfies this
-                      offering’s jurisdiction and accreditation policy
-                      {iss.isPublic ? ' before subscribing.' : ' before viewing terms or subscribing.'}
-                    </p>
-                    <Link
-                      to={`/id?next=/portal/${iss.id}`}
-                      className="btn-primary mt-4 w-full"
-                    >
-                      Verify with SeqPal ID
-                      <Icon.arrowRight width={16} height={16} />
-                    </Link>
-                  </>
-                ) : !eligible ? (
-                  <>
-                    <div className="flex items-center gap-2 text-sm font-semibold text-rose-600">
-                      <Icon.close width={16} height={16} /> Not eligible
-                    </div>
-                    <p className="mt-2 text-sm text-ink-700/80">
-                      Your SeqPal ID ({jName}
-                      {inv?.accredited ? ', qualified' : ', retail'}) doesn’t satisfy this
-                      offering’s policy for your jurisdiction.
-                    </p>
-                    {tier === 'restricted' && !inv?.accredited && (
-                      <p className="mt-2 text-xs text-ink-700/60">
-                        This offering admits {jName} investors on a qualified / accredited
-                        basis only.
-                      </p>
-                    )}
-                    <Link to="/id" className="btn-outline mt-4 w-full">
-                      Manage SeqPal ID
-                    </Link>
-                  </>
-                ) : phase === 'done' ? (
-                  <div className="text-center">
-                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500 text-white">
-                      <Icon.check width={26} height={26} />
-                    </div>
-                    <h3 className="mt-3 font-bold text-ink-900">Subscription recorded</h3>
-                    <p className="mt-1 text-sm leading-relaxed text-ink-700/80">
-                      This is a SIMULATED subscription of{' '}
-                      {fmt(parseMoney(amount || p.minInvestment))}, held in this browser
-                      session only. No money has moved into escrow and no {iss.ticker} token
-                      has been delivered to your enclave. Real subscription, escrow, and
-                      delivery are a later milestone.
-                    </p>
-                    <Link to="/id" className="btn-primary mt-5 w-full">
-                      Back to SeqPal ID
-                      <Icon.arrowRight width={16} height={16} />
-                    </Link>
-                  </div>
-                ) : full && phase === 'offering' ? (
-                  <div className="text-center">
-                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-ink-900/[0.06] text-ink-700">
-                      <Icon.check width={24} height={24} />
-                    </div>
-                    <h3 className="mt-3 font-bold text-ink-900">Fully subscribed</h3>
-                    <p className="mt-1 text-sm text-ink-700/80">
-                      This round has reached its {iss.raise} target. The issuer may close
-                      or open a further tranche.
-                    </p>
-                  </div>
+        ) : error ? (
+          <div className="rounded-2xl border border-rose-200 bg-white p-8 text-center">
+            <p className="text-ink-700">{error}</p>
+          </div>
+        ) : (
+          <div className="grid gap-8 lg:grid-cols-[1.5fr_1fr]">
+            {/* Offering column */}
+            <div>
+              <Badge color="slate">{teaser?.structure || 'Offering'}</Badge>
+              <h1 className="mt-3 text-3xl font-extrabold tracking-tight text-ink-900">
+                {offering.gated ? teaser?.issuer : offering.name}
+              </h1>
+              <p className="mt-2 text-ink-700/80">
+                {offering.gated ? (
+                  'A tokenized offering issued on Sequentia, a Bitcoin sidechain.'
                 ) : (
                   <>
-                    <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">
-                      <Icon.check width={16} height={16} /> Eligible · {jName}
-                    </div>
-                    {tier === 'standard' && (
-                      <p className="mt-2 text-xs text-ink-700/60">
-                        Admitted on a standard basis. Local-law eligibility (often
-                        accredited / sophisticated status) is screened at admission and is
-                        the issuer’s responsibility.
-                      </p>
-                    )}
-
-                    {phase === 'offering' && (
-                      <div className="mt-4">
-                        {remaining !== null && (
-                          <p className="mb-2 text-xs text-ink-700/60">
-                            {fmt(remaining)} remaining of {iss.raise}
-                          </p>
-                        )}
-                        <label className="label" htmlFor="inv-amount">
-                          Investment amount
-                        </label>
-                        <div className="relative">
-                          <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-ink-700/60">
-                            {unitSymbol(iss.unit)}
-                          </span>
-                          <input
-                            id="inv-amount"
-                            className="input pl-7"
-                            placeholder={p.minInvestment}
-                            value={amount}
-                            onChange={(e) => setAmount(e.target.value)}
-                          />
-                        </div>
-                        {(() => {
-                          const amt = parseMoney(amount)
-                          const belowMin =
-                            amt > 0 && amt < parseMoney(p.minInvestment)
-                          const overCap =
-                            remaining !== null &&
-                            parseMoney(amount || p.minInvestment) > remaining
-                          return (
-                            <>
-                              <p
-                                className={`mt-1.5 text-xs ${
-                                  belowMin || overCap
-                                    ? 'font-medium text-rose-600'
-                                    : 'text-ink-700/60'
-                                }`}
-                              >
-                                {belowMin
-                                  ? `Below the ${unitSymbol(iss.unit)}${p.minInvestment} minimum for this offering`
-                                  : overCap
-                                    ? `Exceeds the round's remaining capacity (${fmt(remaining)} left)`
-                                    : `Minimum ${unitSymbol(iss.unit)}${p.minInvestment}`}
-                              </p>
-                              <button
-                                onClick={subscribe}
-                                disabled={belowMin || overCap}
-                                className="btn-primary mt-4 w-full"
-                              >
-                                Subscribe
-                                <Icon.arrowRight width={16} height={16} />
-                              </button>
-                            </>
-                          )
-                        })()}
-                      </div>
-                    )}
-
-                    {phase === 'signing' && (
-                      <div className="mt-4">
-                        <div className="rounded-lg border border-ink-900/10 p-4 text-sm text-ink-700/80">
-                          <div className="flex items-center gap-2 font-semibold text-ink-900">
-                            <Icon.doc width={16} height={16} /> Subscription Agreement
-                          </div>
-                          <p className="mt-2 text-xs">
-                            Sign the subscription agreement to commit{' '}
-                            {fmt(parseMoney(amount || p.minInvestment))}.
-                            Executed via integrated e-signature (mocked).
-                          </p>
-                        </div>
-                        <button onClick={sign} className="btn-primary mt-4 w-full">
-                          <Icon.check width={16} height={16} /> E-sign agreement
-                        </button>
-                      </div>
-                    )}
-
-                    {phase === 'wiring' && (
-                      <div className="mt-4">
-                        <div className="rounded-lg border border-ink-900/10 p-4 text-sm text-ink-700/80">
-                          <div className="flex items-center gap-2 font-semibold text-ink-900">
-                            <Icon.lock width={16} height={16} /> Fund escrow
-                          </div>
-                          <div className="mt-3">
-                            <label className="label" htmlFor="inv-rail">
-                              Fund with
-                            </label>
-                            <select
-                              id="inv-rail"
-                              className="select"
-                              value={railChosen}
-                              onChange={(e) => setRail(e.target.value)}
-                            >
-                              {rails.map((r) => (
-                                <option key={r}>{r}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <p className="mt-2 text-xs">
-                            {railChosen === 'USD wire'
-                              ? `Wire ${fmt(parseMoney(amount || p.minInvestment))} to the per-issuance segregated escrow this offering operates (fiat rail SIMULATED on the testnet).`
-                              : `Send ${fmt(parseMoney(amount || p.minInvestment))} to this issuance's per-issuance segregated escrow that SeqPal operates.`}{' '}
-                            {!isBTC && railChosen === 'BTC'
-                              ? 'BTC is converted to USDX on receipt, your subscription’s value is fixed the moment it enters escrow. '
-                              : isBTC
-                                ? 'This raise is BTC-denominated: your subscription is escrowed in kind. '
-                                : ''}
-                            Released to the issuer on closing; tokens delivered to your
-                            whitelisted wallet on settlement.
-                          </p>
-                        </div>
-                        <button onClick={wire} className="btn-primary mt-4 w-full">
-                          <Icon.wallet width={16} height={16} />{' '}
-                          {railChosen === 'USD wire' ? 'Confirm wire (mock)' : 'Confirm transfer (mock)'}
-                        </button>
-                      </div>
-                    )}
+                    {offering.name} · <span className="font-mono text-sm">{offering.ticker}</span> ·
+                    issued on Sequentia, a Bitcoin sidechain
                   </>
                 )}
-              </div>
+              </p>
+
+              {offering.gated ? (
+                <>
+                  <Teaser teaser={teaser} />
+                  <div className="mt-8 rounded-2xl border border-dashed border-ink-900/20 bg-white p-6">
+                    <div className="flex items-center gap-2">
+                      <Icon.lock width={18} height={18} className="text-ink-500" />
+                      <h2 className="font-bold text-ink-900">Verification required to view details</h2>
+                    </div>
+                    <p className="mt-2 text-sm leading-relaxed text-ink-700/75">
+                      Price, target raise, returns, offering documents and subscription mechanics
+                      are shown only to a verified investor whose jurisdiction and eligibility
+                      clear this offering's policy. This is not a general solicitation.
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    <div className="rounded-xl border border-ink-900/10 bg-white p-4">
+                      <div className="text-xs text-ink-700/60">Price</div>
+                      <div className="mt-0.5 font-bold text-ink-900">
+                        {Number(offering.price).toLocaleString('en-US')} {offering.quote || 'USD'}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-ink-900/10 bg-white p-4">
+                      <div className="text-xs text-ink-700/60">Ticker</div>
+                      <div className="mt-0.5 font-mono font-bold text-ink-900">{offering.ticker}</div>
+                    </div>
+                    <div className="rounded-xl border border-ink-900/10 bg-white p-4">
+                      <div className="text-xs text-ink-700/60">Network</div>
+                      <div className="mt-0.5 font-bold text-ink-900">Sequentia</div>
+                    </div>
+                  </div>
+                  {offering.offeree_warning && (
+                    <p className="mt-4 flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                      <Icon.spark width={14} height={14} className="mt-0.5 shrink-0" />
+                      {offering.offeree_warning}
+                    </p>
+                  )}
+                  <div className="mt-8">
+                    <h2 className="flex items-center gap-2 font-bold text-ink-900">
+                      <Icon.doc width={16} height={16} className="text-ink-600" /> Offering
+                      identifiers
+                    </h2>
+                    <dl className="mt-3 divide-y divide-ink-900/10 rounded-xl border border-ink-900/10 bg-white text-sm">
+                      {[
+                        ['Asset id', offering.asset_id],
+                        ['Document manifest', offering.manifest_hash],
+                      ].map(([k, v]) => (
+                        <div key={k} className="flex items-center justify-between gap-4 px-4 py-3">
+                          <dt className="text-ink-700/70">{k}</dt>
+                          <dd className="min-w-0 truncate text-right font-mono text-xs text-ink-800">
+                            {v || '-'}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                    <Link
+                      to={`/verify?asset=${encodeURIComponent(offering.asset_id)}`}
+                      className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-seq-600 hover:underline"
+                    >
+                      <Icon.shield width={15} height={15} /> Verify independently
+                    </Link>
+                  </div>
+                </>
+              )}
             </div>
 
-            <p className="mt-3 text-center text-[11px] leading-relaxed text-ink-700/50">
-              Operated by {iss.entityName || iss.name} LLC. Powered by SeqPal technology. Not an offer
-              to sell or a solicitation to buy any security.
-            </p>
+            {/* Action column */}
+            <div className="lg:sticky lg:top-6 lg:self-start">
+              <div className="overflow-hidden rounded-2xl border border-ink-900/10 bg-white shadow-card">
+                <div className="bg-ink-900 px-5 py-4 text-white">
+                  <div className="flex items-center gap-2 text-sm font-semibold">
+                    <Icon.shield width={16} height={16} /> SeqPal ID gate
+                  </div>
+                </div>
+                <div className="p-5">
+                  {!isSignedIn ? (
+                    <>
+                      <p className="text-sm text-ink-700/80">
+                        Verify with a SeqPal ID to check your eligibility for this offering. The
+                        rail you pay with is always your choice, never set by your jurisdiction.
+                      </p>
+                      <Link to={`/id?next=/portal/${id}`} className="btn-primary mt-4 w-full">
+                        Verify with SeqPal ID
+                        <Icon.arrowRight width={16} height={16} />
+                      </Link>
+                    </>
+                  ) : offering.gated ? (
+                    Array.isArray(offering.requirements) && offering.requirements.length > 0 ? (
+                      <>
+                        <p className="mb-3 text-sm text-ink-700/80">
+                          Complete these steps to view the offering and subscribe.
+                        </p>
+                        <GateSteps id={id} requirements={offering.requirements} onCleared={load} />
+                      </>
+                    ) : (
+                      <p className="text-sm text-ink-700/80">
+                        {offering.cta || 'Verification is required to view this offering.'}
+                      </p>
+                    )
+                  ) : (
+                    <SubscribeFlow offering={offering} issuanceId={id} />
+                  )}
+                </div>
+              </div>
+              <p className="mt-3 text-center text-[11px] leading-relaxed text-ink-700/50">
+                Nothing is an offer to sell or a solicitation to buy any security. Fiat rails are
+                SIMULATED on the testnet and labeled on every derived surface.
+              </p>
+            </div>
           </div>
-        </div>
-
-        <DemoNote className="mx-auto mt-10 max-w-xl">
-          This is the investor-facing portal as it appears on the issuer’s own domain. In
-          the demo your logged-in SeqPal ID acts as the visiting investor, and signing,
-          escrow funding, and token delivery are simulated.
-        </DemoNote>
+        )}
       </div>
     </div>
   )

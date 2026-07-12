@@ -1,0 +1,327 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"math"
+	"net/http"
+	"strings"
+	"time"
+)
+
+// Subscriptions: POST /issuances/{id}/subscribe {rail, amount, refund_address}.
+// The investor must be a verified, eligible SeqPal ID. The endpoint validates
+// eligibility, runs the offer-side gates for the investor's jurisdiction, records
+// a subscription, and returns the per-rail deposit address (usdx/btc) or starts
+// the SIMULATED fiat checkout (card/bank). States: created -> in_escrow -> settled
+// | refunded. The watcher advances in_escrow at N confirmations; nothing is
+// settled until close.
+
+type subscribeReq struct {
+	Rail          string  `json:"rail"`   // usdx | btc | card | bank
+	Amount        float64 `json:"amount"` // whole tokens to purchase
+	RefundAddress string  `json:"refund_address"`
+}
+
+func (s *server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
+	acct := principal(r)
+	iss, err := s.st.IssuanceByID(r.PathValue("id"))
+	if err != nil {
+		writeErr(w, 500, "store error")
+		return
+	}
+	if iss == nil {
+		writeErr(w, 404, "unknown issuance")
+		return
+	}
+	if iss.Status != "live" || iss.AssetID == "" {
+		writeErr(w, 409, "this offering is not yet live on chain")
+		return
+	}
+	if o, _ := s.st.OfferingByIssuance(iss.ID); o != nil && !o.OfferOpen {
+		writeErr(w, 409, "the offer window for this issuance is closed")
+		return
+	}
+
+	var req subscribeReq
+	if err := readJSON(r, &req); err != nil {
+		writeErr(w, 400, "bad request body")
+		return
+	}
+	req.Rail = strings.ToLower(strings.TrimSpace(req.Rail))
+	if req.Amount <= 0 {
+		writeErr(w, 400, "amount must be greater than zero")
+		return
+	}
+
+	// Verified, eligible investor.
+	claims, _ := s.st.ClaimsByAID(acct.AID)
+	if claims == nil || claims.Status != "verified" {
+		writeErr(w, 403, "a verified SeqPal ID is required to subscribe")
+		return
+	}
+	var user openampUser
+	if err := s.callOpenAMP("GET", "/v1/users/"+acct.AID, "", nil, &user); err != nil {
+		writeErr(w, 502, "could not read your policy-server registration: %v", err)
+		return
+	}
+	rules, ok, err := s.assetRules(iss.AssetID)
+	if err != nil {
+		writeErr(w, 502, "could not read the asset rules: %v", err)
+		return
+	}
+	if !ok {
+		writeErr(w, 409, "the offering asset is not resolvable on the policy server")
+		return
+	}
+	if eligible, reasons := evalEligibility(user.Categories, user.Frozen, rules, s.tipHeight()); !eligible {
+		s.st.Audit(acct.AID, "subscribe.refused", map[string]any{"issuance_id": iss.ID, "reasons": reasons})
+		writeJSON(w, 403, map[string]any{"error": "not eligible to hold this asset", "reasons": reasons})
+		return
+	}
+
+	// Promotion gate must be passed to subscribe (it is the offeree-counting event).
+	granted, promoReqs, _, _ := s.promotionGate(iss, iss.Terms, acct, claims)
+	if !granted {
+		writeJSON(w, 403, map[string]any{"error": "complete the promotion gate first", "requirements": promoReqs})
+		return
+	}
+	s.recordOffereeGrant(iss, acct, claims)
+
+	// Pricing: the offering reference price is required for a real-money leg.
+	price, _, hasPrice := offeringPrice(iss.Terms)
+	if !hasPrice || price <= 0 {
+		writeErr(w, 409, "this offering has no reference price; a price is required before subscriptions can be funded")
+		return
+	}
+	subUSD := req.Amount * price // quote assumed USD-equivalent for the PoC
+
+	// Subscribe-side gates (appropriateness/KID, SoF > USD 10k, US 506(c)).
+	if gateReqs := s.subscribeGates(iss, iss.Terms, acct, claims, subUSD); len(gateReqs) > 0 {
+		writeJSON(w, 403, map[string]any{"error": "additional steps are required before subscribing", "requirements": gateReqs})
+		return
+	}
+
+	var tokenAtoms uint64
+	if req.Amount == math.Trunc(req.Amount) {
+		ta, ok := atomsFor(uint64(req.Amount), iss.Precision)
+		if !ok {
+			writeErr(w, 400, "amount is too large for this asset's precision")
+			return
+		}
+		tokenAtoms = ta
+	} else {
+		ta := req.Amount * math.Pow10(iss.Precision)
+		if ta < 1 {
+			writeErr(w, 400, "amount is smaller than one atom at this asset's precision")
+			return
+		}
+		tokenAtoms = uint64(math.Round(ta))
+	}
+	if tokenAtoms == 0 {
+		writeErr(w, 400, "amount rounds to zero atoms")
+		return
+	}
+
+	sub := &Subscription{
+		ID:          mustID(),
+		IssuanceID:  iss.ID,
+		InvestorAID: acct.AID,
+		Rail:        req.Rail,
+		TokenAtoms:  tokenAtoms,
+		State:       "created",
+	}
+
+	switch req.Rail {
+	case "usdx":
+		if s.cfg.nodeURL == "" {
+			writeErr(w, 503, "the USDX rail is not available on this deployment")
+			return
+		}
+		if err := s.validateSeqAddress(req.RefundAddress); err != nil {
+			writeErr(w, 400, "refund_address is not a valid Sequentia address: %v", err)
+			return
+		}
+		addr, err := s.newUSDXDepositAddress()
+		if err != nil {
+			writeErr(w, 502, "could not derive a USDX deposit address: %v", err)
+			return
+		}
+		sub.DepositAddress = addr
+		sub.RefundAddress = req.RefundAddress
+		sub.PayAmount = usdToAtoms(subUSD)
+		sub.PayCcy = "USDX"
+		if err := s.st.InsertSubscription(sub); err != nil {
+			writeErr(w, 500, "could not record the subscription")
+			return
+		}
+		s.st.Audit(acct.AID, "subscribe.usdx", map[string]any{"issuance_id": iss.ID, "sub": sub.ID, "deposit_address": addr, "pay_atoms": sub.PayAmount})
+		writeJSON(w, 200, map[string]any{"subscription": sub, "deposit_address": addr, "pay_amount": sub.PayAmount, "pay_ccy": "USDX", "confs_required": s.cfg.escrowConfs})
+
+	case "btc":
+		if s.cfg.btcURL == "" {
+			writeErr(w, 503, "the native BTC rail is not available on this deployment")
+			return
+		}
+		if err := s.validateBTCAddress(req.RefundAddress); err != nil {
+			writeErr(w, 400, "refund_address is not a valid testnet4 Bitcoin address: %v", err)
+			return
+		}
+		btcUSD := btcPrice(s.fetchPrices())
+		if btcUSD <= 0 {
+			writeErr(w, 502, "no BTC/USD rate is available from the price server")
+			return
+		}
+		addr, err := s.newBTCDepositAddress()
+		if err != nil {
+			writeErr(w, 502, "could not derive a testnet4 deposit address: %v", err)
+			return
+		}
+		sub.DepositAddress = addr
+		sub.RefundAddress = req.RefundAddress
+		sub.PayAmount = uint64(math.Ceil(subUSD / btcUSD * 1e8)) // expected sats
+		sub.PayCcy = "BTC"
+		sub.USDRate = btcUSD // provisional; the confirmed rate is re-captured at N confs
+		if err := s.st.InsertSubscription(sub); err != nil {
+			writeErr(w, 500, "could not record the subscription")
+			return
+		}
+		s.st.Audit(acct.AID, "subscribe.btc", map[string]any{"issuance_id": iss.ID, "sub": sub.ID, "deposit_address": addr, "pay_sats": sub.PayAmount, "rate": btcUSD})
+		writeJSON(w, 200, map[string]any{
+			"subscription": sub, "deposit_address": addr, "pay_amount": sub.PayAmount, "pay_ccy": "BTC",
+			"quoted_rate_usd_btc": btcUSD, "confs_required": s.cfg.escrowConfs,
+			"registrar_note": "cross-chain registrar settlement: this BTC payment is confirmed on testnet4, then delivery is co-signed on Sequentia; it is not atomic",
+		})
+
+	case "card", "bank":
+		sub.RefundAddress = strings.TrimSpace(req.RefundAddress) // optional for fiat
+		sub.PayAmount = usdToMinor(subUSD)
+		sub.PayCcy = "USD"
+		sub.FundsSimulated = true
+		if err := s.st.InsertSubscription(sub); err != nil {
+			writeErr(w, 500, "could not record the subscription")
+			return
+		}
+		checkout, err := s.startFiatCheckout(sub, req.Rail, subUSD)
+		if err != nil {
+			writeErr(w, 500, "could not start the simulated checkout: %v", err)
+			return
+		}
+		s.st.Audit(acct.AID, "subscribe.fiat", map[string]any{"issuance_id": iss.ID, "sub": sub.ID, "rail": req.Rail, "amount_usd": subUSD, "simulated": true})
+		writeJSON(w, 200, map[string]any{
+			"subscription": sub, "checkout": checkout, "funds_simulated": true,
+			"label": "SIMULATED payment: no real card or bank transfer is processed",
+		})
+
+	default:
+		writeErr(w, 400, "rail must be one of usdx, btc, card, bank")
+	}
+}
+
+// handleMySubscriptions is GET /subscriptions: the caller's own subscriptions.
+func (s *server) handleMySubscriptions(w http.ResponseWriter, r *http.Request) {
+	acct := principal(r)
+	subs, err := s.st.SubscriptionsByInvestor(acct.AID)
+	if err != nil {
+		writeErr(w, 500, "store error")
+		return
+	}
+	writeJSON(w, 200, map[string]any{"subscriptions": subs})
+}
+
+// handleIssuanceSubscriptions is GET /issuances/{id}/subscriptions (owner): the
+// offering's subscription book and escrow ledger.
+func (s *server) handleIssuanceSubscriptions(w http.ResponseWriter, r *http.Request) {
+	acct := principal(r)
+	iss := s.ownedIssuance(w, acct, r.PathValue("id"))
+	if iss == nil {
+		return
+	}
+	subs, err := s.st.SubscriptionsByIssuance(iss.ID)
+	if err != nil {
+		writeErr(w, 500, "store error")
+		return
+	}
+	ledger, _ := s.st.LedgerByIssuance(iss.ID)
+	writeJSON(w, 200, map[string]any{"issuance_id": iss.ID, "subscriptions": subs, "ledger": ledger})
+}
+
+// --- pricing helpers ---------------------------------------------------------
+
+// btcPrice returns BTC/USD from the price feed (BTC or the testnet ticker TBTC).
+func btcPrice(prices map[string]float64) float64 {
+	if p := prices["BTC"]; p > 0 {
+		return p
+	}
+	return prices["TBTC"]
+}
+
+// usdToAtoms converts a USD figure to USDX atoms (USDX is treated 1:1 with USD at
+// 8 decimals for the PoC).
+func usdToAtoms(usd float64) uint64 {
+	if usd <= 0 {
+		return 0
+	}
+	return uint64(math.Round(usd * 1e8))
+}
+
+// usdToMinor converts a USD figure to minor units (cents).
+func usdToMinor(usd float64) uint64 {
+	if usd <= 0 {
+		return 0
+	}
+	return uint64(math.Round(usd * 100))
+}
+
+// --- address validation ------------------------------------------------------
+
+// validateSeqAddress checks a Sequentia (Elements) address is valid on the
+// configured network via the node's validateaddress. It rejects an empty address
+// and any address the node reports invalid, so a refund can only be captured for
+// an address the correct network recognizes.
+func (s *server) validateSeqAddress(addr string) error {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return fmt.Errorf("a refund address is required")
+	}
+	res, err := s.nodeRPC("validateaddress", addr)
+	if err != nil {
+		return fmt.Errorf("could not validate the address: %v", err)
+	}
+	return checkValidAddress(res)
+}
+
+// validateBTCAddress checks a testnet4 Bitcoin address via the parent-chain
+// node's validateaddress.
+func (s *server) validateBTCAddress(addr string) error {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return fmt.Errorf("a refund address is required")
+	}
+	res, err := s.btcRPC("", "validateaddress", addr)
+	if err != nil {
+		return fmt.Errorf("could not validate the address: %v", err)
+	}
+	return checkValidAddress(res)
+}
+
+func checkValidAddress(res json.RawMessage) error {
+	var out struct {
+		IsValid bool `json:"isvalid"`
+	}
+	if err := json.Unmarshal(res, &out); err != nil {
+		return err
+	}
+	if !out.IsValid {
+		return fmt.Errorf("the address is not valid on this network")
+	}
+	return nil
+}
+
+func mustID() string {
+	id, err := randHex(16)
+	if err != nil {
+		return fmt.Sprintf("sub-%d", time.Now().UnixNano())
+	}
+	return id
+}

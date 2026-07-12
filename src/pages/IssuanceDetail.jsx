@@ -12,18 +12,21 @@ import RegistryBadge from '../components/RegistryBadge'
 import HolderRegister from '../components/HolderRegister'
 import DataRoom from '../components/DataRoom'
 import RfsaFilingCard from '../components/RfsaFilingCard'
+import PlatformFeeCard from '../components/PlatformFeeCard'
+import PayoutMandateCard from '../components/PayoutMandateCard'
+import ClosingCard from '../components/ClosingCard'
 import { useStore } from '../lib/store'
 import { view } from '../lib/issuance'
 import { getStructure } from '../data/structures'
 import { JURISDICTIONS } from '../data/jurisdictions'
 import { STATUS, offPlatformSteps } from '../lib/lifecycle'
 import { termsHash } from '../lib/openamp'
-import { parseMoney, fmtAmount, ownershipPct, ownershipDenominator } from '../lib/economics'
 
 // What the server's refusal means, in one line. The server's own message is
 // always shown verbatim above this: this only adds context it cannot know.
 const DEPLOY_HINT = {
   400: 'The mint parameters were refused. Fix them here and try again: nothing was minted.',
+  402: 'The SeqPal setup fee is unpaid. Pay it in the Setup fee card, then deploy.',
   403: 'This issuance belongs to another SeqPal ID.',
   404: 'This issuance no longer exists on the server.',
   409: 'Pick a different ticker. Tickers are checked against the assets already live on the policy server.',
@@ -319,9 +322,9 @@ function PortalCard({ iss, portal }) {
       )}
       {isRaise && (
         <p className="mt-3 text-[11px] leading-relaxed text-ink-700/55">
-          The portal, its subscriptions, and escrow are SIMULATED in this build and live in
-          this browser session only. Nothing is stored on the server and no money or token
-          moves.
+          Subscriptions, escrow, and closing are real on the testnet: USDX and native BTC move on
+          chain, and card and bank rails are first-class SIMULATED and labeled. Manage the setup
+          fee, payout mandate, and closing below.
         </p>
       )}
     </div>
@@ -330,7 +333,7 @@ function PortalCard({ iss, portal }) {
 
 export default function IssuanceDetail() {
   const { id } = useParams()
-  const { loading, isSignedIn, issuances, simFor, updateSim, watchFor } = useStore()
+  const { loading, isSignedIn, issuances, simFor, watchFor } = useStore()
 
   if (loading) {
     return (
@@ -362,24 +365,7 @@ export default function IssuanceDetail() {
   const Ic = StructureIcon[s?.icon] || Icon.layers
   const sim = simFor(iss.id)
   const watch = watchFor(iss.id)
-
-  // Simulated raise, in memory for this browser session only.
-  const subs = sim.subscriptions
-  const escrowSubs = subs.filter((x) => x.status === 'in_escrow')
-  const settledSubs = subs.filter((x) => x.status === 'settled')
-  const raiseNum = parseMoney(iss.raise)
-  const escrowTotal = escrowSubs.reduce((a, x) => a + x.amount, 0)
-  const settledTotal = settledSubs.reduce((a, x) => a + x.amount, 0)
-  const denom = ownershipDenominator(iss.structureId, iss.fields, raiseNum)
-  const ownerPct = (amt) => ownershipPct(iss.structureId, iss.fields, raiseNum, amt)
   const isRaise = iss.structureId !== 'depository-receipt'
-
-  const closeRound = () =>
-    updateSim(iss.id, (cur) => ({
-      subscriptions: cur.subscriptions.map((x) =>
-        x.status === 'in_escrow' ? { ...x, status: 'settled' } : x
-      ),
-    }))
 
   const openJ = JURISDICTIONS.filter((j) => iss.policy?.[j.code] === 'standard')
   const restrictedJ = JURISDICTIONS.filter((j) => iss.policy?.[j.code] === 'restricted')
@@ -427,6 +413,7 @@ export default function IssuanceDetail() {
       <div className="mt-8 grid gap-6 lg:grid-cols-3">
         <div className="space-y-6">
           {!iss.live && iss.isPublic && <RfsaFilingCard iss={iss} />}
+          <PlatformFeeCard iss={iss} />
           {!iss.live && <DeployCard iss={iss} />}
           <PortalCard iss={iss} portal={sim.portal} />
         </div>
@@ -462,107 +449,10 @@ export default function IssuanceDetail() {
               </div>
 
               {isRaise && (
-                <div className="card p-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Icon.coins width={18} height={18} className="text-btc-600" />
-                      <h2 className="font-bold text-ink-900">Fundraising</h2>
-                    </div>
-                    <Badge color="amber">Simulated</Badge>
-                  </div>
-                  <p className="mt-1.5 text-xs leading-relaxed text-ink-700/60">
-                    Subscriptions, escrow, and settlement are simulated and held in this
-                    browser session only. No money moves and no token is delivered.
-                  </p>
-
-                  {subs.length === 0 ? (
-                    <div className="mt-4 rounded-lg bg-ink-900/[0.03] px-4 py-3 text-sm text-ink-700/70">
-                      No subscriptions.{' '}
-                      {sim.portal?.published ? (
-                        <Link
-                          to={`/portal/${iss.id}`}
-                          className="font-semibold text-btc-600 hover:underline"
-                        >
-                          Open the investor portal
-                        </Link>
-                      ) : (
-                        'Set up the placement portal to walk the investor flow.'
-                      )}
-                    </div>
-                  ) : (
-                    <>
-                      <div className="mt-4 grid grid-cols-3 gap-3">
-                        <div className="rounded-lg bg-ink-900/[0.03] px-3 py-2.5">
-                          <div className="text-xs text-ink-700/60">In escrow</div>
-                          <div className="mt-0.5 font-bold text-ink-900">
-                            {fmtAmount(escrowTotal, iss.unit)}
-                          </div>
-                        </div>
-                        <div className="rounded-lg bg-ink-900/[0.03] px-3 py-2.5">
-                          <div className="text-xs text-ink-700/60">Settled</div>
-                          <div className="mt-0.5 font-bold text-ink-900">
-                            {fmtAmount(settledTotal, iss.unit)}
-                          </div>
-                        </div>
-                        <div className="rounded-lg bg-ink-900/[0.03] px-3 py-2.5">
-                          <div className="text-xs text-ink-700/60">Subscribers</div>
-                          <div className="mt-0.5 font-bold text-ink-900">{subs.length}</div>
-                        </div>
-                      </div>
-                      {escrowSubs.length > 0 && (
-                        <>
-                          <div className="mt-3 divide-y divide-ink-900/5 rounded-lg border border-ink-900/10">
-                            {escrowSubs.map((su) => (
-                              <div
-                                key={su.id}
-                                className="flex items-center justify-between px-3 py-2 text-sm"
-                              >
-                                <div className="flex items-center gap-2">
-                                  <span className="font-medium text-ink-900">{su.name}</span>
-                                  <Badge color="slate">{su.jur}</Badge>
-                                  {su.rail && <Badge color="seq">{su.rail}</Badge>}
-                                </div>
-                                <span className="font-mono text-ink-800">
-                                  {fmtAmount(su.amount, iss.unit)}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                          <button onClick={closeRound} className="btn-outline mt-4 w-full">
-                            <Icon.check width={16} height={16} />
-                            Simulate closing: mark escrow settled
-                          </button>
-                        </>
-                      )}
-                      {settledSubs.length > 0 && (
-                        <div className="mt-4">
-                          <div className="text-xs font-semibold uppercase tracking-wide text-ink-700/60">
-                            Settled (simulated)
-                          </div>
-                          <div className="mt-2 divide-y divide-ink-900/5 rounded-lg border border-ink-900/10">
-                            {settledSubs.map((su) => (
-                              <div
-                                key={su.id}
-                                className="flex items-center justify-between px-3 py-2 text-sm"
-                              >
-                                <span className="font-medium text-ink-900">{su.name}</span>
-                                <span className="font-mono text-ink-800">
-                                  {denom
-                                    ? `${ownerPct(su.amount).toFixed(2)}%`
-                                    : fmtAmount(su.amount, iss.unit)}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                          <p className="mt-2 text-[11px] leading-relaxed text-ink-700/55">
-                            No token has been delivered to any of these holders. Real delivery
-                            is an OpenAMP transfer and is not built yet.
-                          </p>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
+                <>
+                  <PayoutMandateCard iss={iss} />
+                  <ClosingCard iss={iss} />
+                </>
               )}
 
               <div className="card overflow-hidden">

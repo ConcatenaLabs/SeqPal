@@ -10,10 +10,13 @@
 const BASE = '/seqpal/api'
 
 export class ApiError extends Error {
-  constructor(message, status) {
+  constructor(message, status, data) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    // The full parsed response body, so a caller can read structured fields a
+    // refusal carries (e.g. the subscribe gate `requirements`), not just message.
+    this.data = data || {}
   }
 }
 
@@ -37,7 +40,7 @@ async function req(path, { method = 'GET', body } = {}) {
     parsed = { error: text }
   }
   // Server messages are user-presentable and are surfaced verbatim.
-  if (!res.ok) throw new ApiError(parsed.error || `${res.status} ${res.statusText}`, res.status)
+  if (!res.ok) throw new ApiError(parsed.error || `${res.status} ${res.statusText}`, res.status, parsed)
   return parsed
 }
 
@@ -172,6 +175,64 @@ export const rfsaFile = (body) => req('/rfsa/filings', { method: 'POST', body })
 
 // Public lookup of a filing by number: { filing, label }.
 export const rfsaLookup = (number) => req(`/rfsa/filings/${encodeURIComponent(number)}`)
+
+// ── M5 money engine: offering, gates, subscriptions, fees, closing ──────────
+// The promotion-gated offering. PUBLIC: with no session (or an ungated one) it
+// returns { gated:true, teaser, cta }; a session that fails the gate adds
+// { requirements:[{kind,message,blocked}] }; a passing session returns the full
+// offering { gated:false, name, ticker, asset_id, price, quote, terms, rails[],
+// manifest_hash, offeree_warning? }. Granting is the EU offeree-counting event.
+export const offering = (id) => req(`/issuances/${encodeURIComponent(id)}/offering`)
+
+// Clear one offer-side gate: { kind: uk_statement | appropriateness | sof, ... }.
+// uk_statement { basis:hnw|soph, income_gbp, net_assets }; appropriateness
+// { kid_ack:true, answers }; sof { source, amount_usd }. Returns { kind, recorded }.
+export const gate = (id, body) =>
+  req(`/issuances/${encodeURIComponent(id)}/gate`, { method: 'POST', body })
+
+// Subscribe on the payer's chosen rail: { rail: usdx|btc|card|bank, amount,
+// refund_address }. usdx/btc → { subscription, deposit_address, pay_amount,
+// pay_ccy, confs_required, registrar_note? }; card/bank → { subscription,
+// checkout, funds_simulated:true, label }. A 403 carries { requirements[] }.
+export const subscribe = (id, body) =>
+  req(`/issuances/${encodeURIComponent(id)}/subscribe`, { method: 'POST', body })
+
+// The caller's own subscriptions across offerings. Escrow state is polled here:
+// created → in_escrow (deposit confirmed at N confs) → settled | refunded.
+export const mySubscriptions = () => req('/subscriptions')
+
+// Owner view of one offering's subscription book + escrow ledger.
+export const issuanceSubscriptions = (id) =>
+  req(`/issuances/${encodeURIComponent(id)}/subscriptions`)
+
+// Poll a SIMULATED fiat checkout: { id, state, receipt, amount_display,
+// funds_simulated:true, label }.
+export const fiatStatus = (id) => req(`/fiat/${encodeURIComponent(id)}`)
+
+// Owner: the platform-fee invoices (auto-creates the setup invoice):
+// { invoices[], setup_fee_usd, escrow_fee_bps }. The setup fee blocks deploy.
+export const fees = (id) => req(`/issuances/${encodeURIComponent(id)}/fees`)
+
+// Owner: pay a platform fee on the issuer's chosen rail { kind:setup, rail }.
+// Fiat → { checkout }; on-chain → { deposit_address, pay_amount, pay_ccy }.
+export const payFee = (id, body) =>
+  req(`/issuances/${encodeURIComponent(id)}/fees/pay`, { method: 'POST', body })
+
+// Owner: the registered payout mandates for an issuance.
+export const mandates = (id) => req(`/issuances/${encodeURIComponent(id)}/mandate`)
+
+// Owner: register a BIP340-signed payout mandate. POST with no signature returns
+// { sign_this, tag } to sign; resubmit with { signature, signer_xonly }.
+export const mandate = (id, body) =>
+  req(`/issuances/${encodeURIComponent(id)}/mandate`, { method: 'POST', body })
+
+// Owner: close the offering. POST with no signature returns { sign_this, tag };
+// resubmit signed → { close_height, results[] } (per-subscription delivery+release).
+export const close = (id, body) =>
+  req(`/issuances/${encodeURIComponent(id)}/close`, { method: 'POST', body })
+
+// Owner: the per-subscription settlement records (delivery/release/refund txids).
+export const settlements = (id) => req(`/issuances/${encodeURIComponent(id)}/settlements`)
 
 // ── platform reviewer (admin-session only) ──────────────────────────────────
 export const reviewQueue = () => req('/admin/review-queue')

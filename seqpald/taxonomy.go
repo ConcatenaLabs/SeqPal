@@ -140,6 +140,28 @@ func signTagged(privHex, tag string, msg []byte) (string, error) {
 	return hex.EncodeToString(sig.Serialize()), nil
 }
 
+// signSighash produces a BIP340 signature over a RAW 32-byte transfer sighash
+// (NOT a tagged hash) with a custodied enclave private key. This is the escrow
+// enclave's holder-side signature in the hosted transfer flow: openampd's
+// /v1/transfers/{id}/complete verifies sig.Verify(sighash, pubkey), so the digest
+// must be signed exactly as delivered, unlike the tagged challenge/claims paths.
+func signSighash(privHex, sighashHex string) (string, error) {
+	pb, err := hex.DecodeString(privHex)
+	if err != nil {
+		return "", err
+	}
+	digest, err := hex.DecodeString(sighashHex)
+	if err != nil || len(digest) != 32 {
+		return "", fmt.Errorf("sighash must be a 32-byte hex digest")
+	}
+	priv, _ := btcec.PrivKeyFromBytes(pb)
+	sig, err := schnorr.Sign(priv, digest)
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(sig.Serialize()), nil
+}
+
 const claimsTag = "seqpal-claims-v1"
 
 // verifyTaggedByKey checks a BIP340 signature over a tagged hash of msg against
