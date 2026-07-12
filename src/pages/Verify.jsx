@@ -6,6 +6,18 @@ import CopyId from '../components/CopyId'
 import { getAsset, canonicalJSON, termsHash } from '../lib/openamp'
 import { getRegistryEntry } from '../lib/market'
 import { txUrl, assetUrl, registryPath, EXPLORER } from '../lib/chain'
+import * as api from '../lib/api'
+import { useStore } from '../lib/store'
+
+const DOC_LABELS = {
+  'offering-memorandum': 'Offering memorandum',
+  'subscription-agreement': 'Subscription agreement',
+  'operating-agreement': 'Operating agreement',
+  'escrow-terms': 'Escrow terms',
+  'kid-summary': 'Key information summary',
+  'uk-investor-statement': 'UK investor statement',
+  'lift-artifact': 'Basis of admission',
+}
 
 // Public "Verify independently" explainer (M3 requirement 5 / item 75). It walks
 // an auditor with no SeqPal session from the terms document, to terms_hash, to
@@ -40,6 +52,7 @@ function KV({ k, children }) {
 export default function Verify() {
   const [params] = useSearchParams()
   const assetId = params.get('asset') || ''
+  const { issuances } = useStore()
   const [state, setState] = useState({ loading: !!assetId })
 
   useEffect(() => {
@@ -52,9 +65,10 @@ export default function Verify() {
         // Recompute the on-chain commitment in the browser: sha256 of the
         // canonical contract JSON must equal the on-chain contract_hash.
         let recomputed = null
+        let contractObj = null
         try {
-          const obj = typeof asset.contract === 'string' ? JSON.parse(asset.contract) : asset.contract
-          recomputed = await termsHash(obj)
+          contractObj = typeof asset.contract === 'string' ? JSON.parse(asset.contract) : asset.contract
+          recomputed = await termsHash(contractObj)
         } catch {
           recomputed = null
         }
@@ -64,7 +78,29 @@ export default function Verify() {
         } catch {
           registry = null
         }
-        if (!cancelled) setState({ loading: false, asset, recomputed, registry })
+        // The document manifest is public via GET /terms/{terms_hash}: it binds
+        // the document set to the terms_hash committed inside the contract.
+        let termsDoc = null
+        const th = contractObj?.terms_hash
+        if (th) {
+          try {
+            termsDoc = await api.getTerms(th)
+          } catch {
+            termsDoc = null
+          }
+        }
+        // The anchored amendment chain is owner-scoped. If the viewer owns an
+        // issuance for this asset, render the genesis-plus-amendments chain.
+        let amends = null
+        const owned = issuances.find((i) => i.asset_id === assetId)
+        if (owned) {
+          try {
+            amends = await api.amendments(owned.id)
+          } catch {
+            amends = null
+          }
+        }
+        if (!cancelled) setState({ loading: false, asset, recomputed, registry, termsDoc, amends })
       } catch (e) {
         if (!cancelled) setState({ loading: false, error: e.message })
       }
@@ -72,9 +108,9 @@ export default function Verify() {
     return () => {
       cancelled = true
     }
-  }, [assetId])
+  }, [assetId, issuances])
 
-  const { loading, asset, recomputed, registry, error } = state
+  const { loading, asset, recomputed, registry, termsDoc, amends, error } = state
   const contract =
     asset && (typeof asset.contract === 'string' ? safeParse(asset.contract) : asset.contract)
   const termsHashOnChain = contract?.terms_hash
@@ -113,17 +149,57 @@ export default function Verify() {
       )}
 
       <div className="mt-10">
-        <Step n={1} title="The offering terms document">
+        <Step n={1} title="The offering terms document and its content-addressed documents">
           <p>
             An offering is described by a terms document. Its canonical form is hashed to a{' '}
             <span className="font-mono text-xs">terms_hash</span>: change one character of the terms
-            and the hash changes. The document generator and the document-to-hash manifest arrive in
-            the next milestone; today the hash commitment is already live and checkable.
+            and the hash changes. The full offering document set (memorandum, subscription
+            agreement, operating agreement, escrow terms, and the statutory statements) is generated
+            deterministically and content-addressed, and a manifest of those document hashes is bound
+            inside the terms object. So the terms_hash commits to the exact document bytes.
           </p>
           {termsHashOnChain && (
             <KV k="terms_hash (in the contract)">
               <CopyId value={termsHashOnChain} label="terms hash" />
             </KV>
+          )}
+          {termsDoc?.manifest_hash && (
+            <KV k="document manifest hash">
+              <CopyId value={termsDoc.manifest_hash} label="manifest hash" />
+            </KV>
+          )}
+          {termsDoc?.manifest?.set?.length > 0 && (
+            <div className="space-y-1.5 pt-1">
+              {termsDoc.manifest.set.map((d) => (
+                <div
+                  key={d.hash}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-ink-900/[0.03] px-3 py-2"
+                >
+                  <span className="text-sm font-medium text-ink-900">
+                    {DOC_LABELS[d.kind] || d.title || d.kind}
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <CopyId value={d.hash} label="document hash" />
+                    <a
+                      href={api.docUrl(d.hash)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs font-medium text-seq-600 hover:underline"
+                    >
+                      open
+                    </a>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          {termsDoc?.access?.model && (
+            <p className="text-xs leading-relaxed text-ink-700/60">
+              Access model: {termsDoc.access.model}
+              {termsDoc.access.offer_open === false
+                ? ' This offer has closed, so every preimage above is public.'
+                : ' The manifest hashes above are public now; preimages open to anyone at offer close.'}
+            </p>
           )}
         </Step>
 
@@ -243,17 +319,56 @@ export default function Verify() {
             , which you can walk end to end and re-hash yourself.
           </p>
         </Step>
+
+        <Step n={5} title="The genesis commitment, plus any anchored amendments">
+          <p>
+            The on-chain commitment is the genesis <span className="font-mono text-xs">terms_hash</span>{' '}
+            plus an anchored chain of rules amendments. Each amendment is a content-addressed document
+            recording the prior rules hash, the new rules hash, the basis, and the effective Sequentia
+            block height, anchored through the transparency log. So the current rules are the genesis
+            terms plus every amendment, and each link is checkable.
+          </p>
+          {amends?.genesis_terms_hash && (
+            <KV k="genesis terms_hash">
+              <CopyId value={amends.genesis_terms_hash} label="genesis terms hash" />
+            </KV>
+          )}
+          {amends?.amendments?.length > 0 ? (
+            <div className="space-y-1.5 pt-1">
+              {amends.amendments.map((a) => (
+                <div key={a.amend_hash} className="rounded-lg bg-ink-900/[0.03] px-3 py-2 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-semibold text-ink-900">
+                      Amendment {a.ord} · effective block{' '}
+                      {Number(a.effective_height).toLocaleString('en-US')}
+                    </span>
+                    {a.anchor_txid && <CopyId value={a.anchor_txid} kind="tx" label="anchor txid" />}
+                  </div>
+                  {a.basis && <p className="mt-1 text-ink-700/70">{a.basis}</p>}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-ink-700/60">
+              {amends
+                ? 'No amendments have been filed: the current rules are the genesis commitment.'
+                : 'The anchored amendment chain renders for the issuer of record. For any auditor, the genesis commitment above and the transparency log are public.'}
+            </p>
+          )}
+        </Step>
       </div>
 
       <div className="mt-4 rounded-xl border border-ink-900/10 bg-ink-900/[0.02] px-5 py-4 text-sm text-ink-700/80">
         <div className="flex items-center gap-2 font-semibold text-ink-900">
-          <Icon.shield width={16} height={16} /> What this does not yet cover
+          <Icon.shield width={16} height={16} /> What you can and cannot verify here
         </div>
         <p className="mt-1.5 leading-relaxed">
-          The signed terms document and its content-addressed manifest are generated in the next
-          milestone; until then this page verifies the on-chain commitment and the hash chain, not
-          the human-readable document behind the hash. Everything shown above is real and live on
-          the Sequentia testnet.
+          Everything above is real and live on the Sequentia testnet: you can reproduce the
+          contract hash and the document manifest hash in your own browser, walk the transparency
+          log, and follow every identifier to the explorer. What stays a labeled simulation is the
+          world outside the chain, the regulator relationship and the incorporation registry, marked
+          as such on the Legal and Licensing page and the Status page. The signature on a document is
+          a real signature; the e-signature provider around it is simulated.
         </p>
       </div>
 

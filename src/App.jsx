@@ -9,6 +9,10 @@ import Products from './pages/Products'
 import Structures from './pages/Structures'
 import Pricing from './pages/Pricing'
 import Verify from './pages/Verify'
+import Faq from './pages/Faq'
+import Legal from './pages/Legal'
+import Privacy from './pages/Privacy'
+import Status from './pages/Status'
 import IdLanding from './pages/id/IdLanding'
 import IdRegister from './pages/id/IdRegister'
 import IdPassport from './pages/id/IdPassport'
@@ -28,6 +32,10 @@ const TITLES = {
   '/structures': 'Issuance Structures · SeqPal',
   '/pricing': 'Pricing · SeqPal',
   '/verify': 'Verify independently · SeqPal',
+  '/faq': 'FAQ · SeqPal',
+  '/legal': 'Legal & Licensing · SeqPal',
+  '/privacy': 'Privacy · SeqPal',
+  '/status': 'Status · SeqPal',
   '/id': 'SeqPal ID',
   '/id/register': 'Register · SeqPal ID',
   '/id/passport': 'Passport · SeqPal ID',
@@ -80,6 +88,10 @@ export default function App() {
           <Route path="/structures" element={<Structures />} />
           <Route path="/pricing" element={<Pricing />} />
           <Route path="/verify" element={<Verify />} />
+          <Route path="/faq" element={<Faq />} />
+          <Route path="/legal" element={<Legal />} />
+          <Route path="/privacy" element={<Privacy />} />
+          <Route path="/status" element={<Status />} />
           <Route path="/id" element={<IdLanding />} />
           <Route path="/id/register" element={<IdRegister />} />
           <Route path="/id/passport" element={<IdPassport />} />

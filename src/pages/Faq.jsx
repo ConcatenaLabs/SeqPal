@@ -1,0 +1,258 @@
+import { Link } from 'react-router-dom'
+import { Icon } from '../components/icons'
+
+// The public FAQ (plan 4.9). Ungated: reachable with no SeqPal ID and no session,
+// because the people who most need it are deciding whether to trust the platform
+// at all. It is a compliance artifact, not marketing: it draws the boundaries of
+// what SeqPal, Sequentia, and Prospera do and do not do. Plain language, no
+// privileged-asset framing, no promise the platform cannot keep.
+
+// Each item's answer is an array of paragraphs (strings) or a small element.
+const SECTIONS = [
+  {
+    title: 'What SeqPal is, and is not',
+    items: [
+      {
+        q: 'What is SeqPal?',
+        a: [
+          'SeqPal is a transfer agent and registrar for tokenized securities. It gives issuers tools to programmatically enforce, and therefore comply with, the securities restrictions that apply to their offering across jurisdictions. In this proof of concept the licence and the registrations are labeled simulations, and every page says which parts are simulated.',
+          'Mechanically, SeqPal does identity and eligibility, policy-enforced transfer restrictions, the register, servicing, the documents, and the transparency log. It never chooses your structure for you, warrants that your terms are lawful, acts as your counsel, or absorbs your liability.',
+        ],
+      },
+      {
+        q: 'Is SeqPal a law firm? Is it responsible if I break the law?',
+        a: [
+          'No. SeqPal is not a law firm, it does not give legal advice, and it does not opine on your offering. The issuer remains responsible for the lawfulness of its own offering, in every jurisdiction where it makes the offering available. SeqPal is infrastructure, not your counsel, and it does not absorb your liability.',
+        ],
+      },
+      {
+        q: 'Is SeqPal a broker or a placement agent?',
+        a: [
+          'No. SeqPal is not a broker-dealer and not a placement agent. The Legal and Licensing page explains, as production analysis, what a platform serving US, EU, or UK investors would actually need, for example US Exchange Act s.15(a) broker-dealer registration. We state that conclusion rather than lean on "agent of the Prospera issuer".',
+        ],
+      },
+    ],
+  },
+  {
+    title: 'What Sequentia gives you, and what it does not replace',
+    items: [
+      {
+        q: 'What does issuing on the Sequentia network actually give me?',
+        a: [
+          'A real secondary market with access to Bitcoin liquidity, native BTC settlement on the parent chain rather than a wrapped token, Bitcoin-anchored finality, fees payable in any accepted asset, an open and auditable register, and restrictions that persist for the life of the asset because every transfer needs a policy co-signature.',
+          'The restricted asset is one row among equals next to BTC and every other asset on the network. It is permissioned, not privileged: it can only move between eligible, registered holders, and a policy co-signature checks each transfer.',
+        ],
+      },
+      {
+        q: 'Does Sequentia bring me investors?',
+        a: [
+          'No. Sequentia does not bring you a primary market. You still have to find and qualify your own investors, and nobody on the network will do that for you. A listing is not a market: the network does not create demand, does not underwrite, and does not make an illiquid asset liquid.',
+          'Secondary trading of a restricted asset is deliberately narrow: only eligible, registered holders may acquire it, venues can check eligibility but can never grant it, and a refusal at settlement is normal rather than a bug.',
+        ],
+      },
+      {
+        q: 'Can an investor pay in Bitcoin?',
+        a: [
+          'Native BTC works, and it settles on the parent chain, not as a wrapped token. The one honest limit is that the restricted leg cannot sit in a hash-locked swap output, so a BTC purchase routes through the mechanisms in the integration spec rather than a plain atomic swap, and their trust properties are disclosed where they are used.',
+        ],
+      },
+    ],
+  },
+  {
+    title: 'What Prospera gives you, and what it does not replace',
+    items: [
+      {
+        q: 'Why Prospera?',
+        a: [
+          'Prospera (RFSA) is a legitimate issuance jurisdiction with a regime that is genuinely favourable to tokenized issuance, and this platform is built for it. That is a real advantage on the issuance side.',
+        ],
+      },
+      {
+        q: 'Does the Prospera regime cover my investors?',
+        a: [
+          'No. It does not extend to your investors. You must still abide by the law of every jurisdiction where the offering is made available, and those laws bind the offer, not just the issuer.',
+          'Concretely: a public web page is a financial promotion in many places; US investors normally mean Regulation S offshore or Rule 506(c) verified accreditation, and their tokens are restricted securities whose resale is limited; EU access engages the Prospectus Regulation and, for some structures, AIFMD; the UK requires statutory investor statements. Unanalyzed jurisdictions are excluded by default, and that default protects you.',
+          'This is exactly why the platform compiles your jurisdiction matrix into policy-server rules: the restrictions you configure are enforced by the network on every transfer, not by a promise.',
+        ],
+      },
+    ],
+  },
+  {
+    title: 'Identity, eligibility, and access',
+    items: [
+      {
+        q: 'What is a SeqPal ID?',
+        a: [
+          'A SeqPal ID is the identity layer for the whole OpenAMP-on-Sequentia world, and there is one registration flow, identical for everyone. It never asks whether you are an issuer or an investor. What it produces is a verified identity bound to a key you generate in your browser.',
+          'An investor needs one to be permitted to hold or trade these restricted assets anywhere on Sequentia, including on a venue that lists them, and an issuer uses the same credential to issue. "Issuer" and "investor" are things a verified identity does later, never a type chosen at signup.',
+        ],
+      },
+      {
+        q: 'What is an eligibility category, and why can it expire?',
+        a: [
+          'A category is a compound token such as j:DE:ret or j:US:acc that records your jurisdiction and eligibility tier. Only the platform can stamp one, and those categories are what gate every transfer. A category carries a validity window, so it can expire, for example when an accreditation verification goes stale, and a real refusal follows until it is renewed.',
+        ],
+      },
+      {
+        q: 'What can the platform see and do about my holdings?',
+        a: [
+          'For clawback-enabled assets with a platform-held issuer key, SeqPal has transfer power over your holdings. We say that out loud: it is control amounting to custody, and it is on the Legal and Licensing page and in every offering memorandum as a risk factor.',
+        ],
+      },
+    ],
+  },
+  {
+    title: 'Custody, keys, and loss',
+    items: [
+      {
+        q: 'What key do I hold, and what does it control?',
+        a: [
+          'You hold one half of a 2-of-2 enclave key, generated in your browser and stored only as an encrypted backup under your passphrase. Your half is negative control: it lets you refuse a transfer. It does not, on its own, move a clawback-enabled asset, because the platform holds the issuer key.',
+        ],
+      },
+      {
+        q: 'What happens if I lose my key?',
+        a: [
+          'For a clawback-enabled asset there is a runbook: the platform can claw back and re-deliver your position to a fresh AID you control. That is a real recovery path, and its trust implication is exactly the custody conclusion above, so we state it rather than imply your key alone is the whole story. This is why "self-custodial" is qualified here rather than absolute.',
+        ],
+      },
+    ],
+  },
+  {
+    title: 'Money, fees, and settlement',
+    items: [
+      {
+        q: 'Which payment rails are real?',
+        a: [
+          'USDX and native testnet BTC are real settlement assets. Card and bank transfer are honestly simulated: the full checkout flow, state machine, receipts, and refund path run, but the funds are marked simulated, and every money surface derived from them carries a simulated badge at the checkout itself, not in a side note.',
+        ],
+      },
+      {
+        q: 'What does delivery versus payment mean here?',
+        a: [
+          'It means the token and the payment settle together rather than one party trusting the other to follow through. Where a rail supports it, this is atomic; where it does not, it is registrar-settled, and the platform says which. The production USDX design is non-custodial: the investor funds an address only they control, so funds are not in SeqPal custody before settlement.',
+        ],
+      },
+      {
+        q: 'Who pays network fees, and in what asset? What does SeqPal charge?',
+        a: [
+          'Network fees are paid in an accepted asset, and the amount is shown in that fee asset’s own units. There is no privileged fee coin: block proposers choose what they accept, and the Sequence token is one accepted asset among equals. SeqPal’s own platform fees are published on the Pricing page rather than quoted case by case.',
+        ],
+      },
+    ],
+  },
+  {
+    title: 'Confidentiality and transparency',
+    items: [
+      {
+        q: 'Is my holding private?',
+        a: [
+          'Sequentia is transparent by default, and confidentiality is opt-in per asset. An opt-in confidential asset blinds amounts and the asset tag on chain, but the issuer and the policy server still see holdings, because they enforce eligibility. It is not privacy from your registrar.',
+          'The public transparency log records policy decisions as pseudonymous AIDs and hashes, and your AID’s category tokens and frozen status are publicly readable. The Privacy page details exactly what is exposed.',
+        ],
+      },
+    ],
+  },
+  {
+    title: 'Finality and reorgs',
+    items: [
+      {
+        q: 'When is a transfer final?',
+        a: [
+          'Nothing is final at zero confirmations. Sequentia follows Bitcoin reorgs in real time by design, which is the point rather than a defect, because it is what makes cross-chain settlement with Bitcoin safe. A state is only as final as its Bitcoin anchor is deep. If Bitcoin reorgs, the interface regresses a state rather than lying that it was final.',
+        ],
+      },
+    ],
+  },
+  {
+    title: 'This is a testnet proof of concept',
+    items: [
+      {
+        q: 'What is real, and what is simulated?',
+        a: [
+          'No real funds, no real securities, no legal effect. Genuinely real: the keys, the assets, the transfers, the enforcement and the refusals, the register, and the log. Simulated and labeled: identity verification, incorporation, the regulator relationship, the fiat rails, and the legal instruments.',
+        ],
+        after: {
+          to: '/status',
+          label: 'See the full real-vs-simulated master list on the Status page',
+        },
+      },
+    ],
+  },
+]
+
+function Item({ item }) {
+  return (
+    <div className="border-t border-ink-900/10 py-5 first:border-t-0 first:pt-0">
+      <h3 className="font-semibold text-ink-900">{item.q}</h3>
+      <div className="mt-2 space-y-2 text-sm leading-relaxed text-ink-700/85">
+        {item.a.map((p, i) => (
+          <p key={i}>{p}</p>
+        ))}
+      </div>
+      {item.after && (
+        <Link
+          to={item.after.to}
+          className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-seq-600 hover:underline"
+        >
+          {item.after.label}
+          <Icon.arrowRight width={14} height={14} />
+        </Link>
+      )}
+    </div>
+  )
+}
+
+export default function Faq() {
+  return (
+    <section className="container-x max-w-4xl py-14">
+      <div className="eyebrow">Questions and boundaries</div>
+      <h1 className="mt-3 text-3xl font-extrabold tracking-tight text-ink-900 sm:text-4xl">
+        Frequently asked questions
+      </h1>
+      <p className="mt-4 text-lg leading-relaxed text-ink-700/90">
+        No account and no SeqPal ID needed to read this. Its job is to draw the boundaries of what
+        SeqPal is, what it is not, and what the technology and the jurisdiction do and do not do for
+        you. If something is simulated in this proof of concept, it says so.
+      </p>
+
+      <div className="mt-10 space-y-8">
+        {SECTIONS.map((sec) => (
+          <div key={sec.title} className="card p-6">
+            <h2 className="text-xl font-bold text-ink-900">{sec.title}</h2>
+            <div className="mt-4">
+              {sec.items.map((it) => (
+                <Item key={it.q} item={it} />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-10 rounded-xl border border-ink-900/10 bg-ink-900/[0.02] px-5 py-4">
+        <div className="flex items-center gap-2 font-semibold text-ink-900">
+          <Icon.shield width={16} height={16} /> Verify it yourself
+        </div>
+        <p className="mt-1.5 text-sm leading-relaxed text-ink-700/80">
+          You do not have to trust any of this. The Verify page walks you from an offering’s terms
+          document to its on-chain commitment to the key that co-signs every transfer, all recomputed
+          in your own browser.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-4 text-sm">
+          <Link to="/verify" className="font-medium text-seq-600 hover:underline">
+            Verify independently
+          </Link>
+          <Link to="/legal" className="font-medium text-seq-600 hover:underline">
+            Legal and Licensing
+          </Link>
+          <Link to="/privacy" className="font-medium text-seq-600 hover:underline">
+            Privacy
+          </Link>
+          <Link to="/status" className="font-medium text-seq-600 hover:underline">
+            Status
+          </Link>
+        </div>
+      </div>
+    </section>
+  )
+}

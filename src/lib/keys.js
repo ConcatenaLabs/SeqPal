@@ -70,6 +70,19 @@ export function signStatement(privHex, tag, statement) {
   return bytesToHex(schnorr.sign(msg, hexToBytes(privHex), NO_AUX))
 }
 
+// E-signature over an offering document. The signer's enclave key signs the
+// TAGGED document hash under tag "openamp-document-v1" (integration spec 0.4(2)):
+// message = the 32 raw bytes of the document's content address, never the raw
+// hash blind-signed (that would be a signing oracle over an arbitrary digest,
+// spec 0.4(3)). seqpald verifies this tagged signature against the signer's
+// registered x-only key, then stores and anchors it. The signature is
+// cryptographically real; only the provider-grade e-signature UI is simulated.
+// docHashHex is the 64-hex content address of the document.
+export function signDocument(privHex, docHashHex) {
+  const msg = taggedHash('openamp-document-v1', hexToBytes(docHashHex))
+  return bytesToHex(schnorr.sign(msg, hexToBytes(privHex), NO_AUX))
+}
+
 // ── Encrypted key envelope ─────────────────────────────────────────────
 // AES-GCM under PBKDF2-SHA256 (200k iterations, 16-byte salt). The envelope is
 // what localStorage holds and what the user exports as a backup file.

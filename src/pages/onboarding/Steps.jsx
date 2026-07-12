@@ -31,7 +31,7 @@ function StepHeader({ n, title, sub }) {
   )
 }
 
-/* ──────────────────── Step 1 — Identity & principal ──────────────────── */
+/* ──────────────────── Step 1, Identity & principal ──────────────────── */
 
 export function Step1Identity({ data, update }) {
   const { account, entities, createEntity } = useStore()
@@ -243,7 +243,7 @@ export function Step1Identity({ data, update }) {
   )
 }
 
-/* ─────────────────────── Step 2 — Architecture Routing ─────────────────────── */
+/* ─────────────────────── Step 2, Architecture Routing ─────────────────────── */
 
 export function Step2Structure({ data, update }) {
   const isCorp = data.principal?.kind === 'entity'
@@ -263,7 +263,7 @@ export function Step2Structure({ data, update }) {
       <StepHeader
         n={2}
         title="Choose your issuance structure"
-        sub="Four structures, each backed by a Próspera LLC and templated paperwork. Pick the one that matches your asset — you can always start another issuance in a different structure later."
+        sub="Four structures, each backed by a Próspera LLC and templated paperwork. Pick the one that matches your asset, you can always start another issuance in a different structure later."
       />
       <div className="grid gap-4 sm:grid-cols-2">
         {STRUCTURES.map((s) => {
@@ -282,7 +282,7 @@ export function Step2Structure({ data, update }) {
                         structureId: s.id,
                         isPublic: s.id === 'depository-receipt',
                         // a new structure means new attestation and a new
-                        // document package — any prior e-signature is void
+                        // document package, any prior e-signature is void
                         attested: false,
                         docsSigned: false,
                       }
@@ -319,7 +319,7 @@ export function Step2Structure({ data, update }) {
               <p className="mt-1.5 text-sm leading-relaxed text-ink-700/90">{s.claim}</p>
               {locked ? (
                 <p className="mt-3 text-xs font-medium text-ink-600">
-                  Requires a corporate (KYB) principal — switch in step 1.
+                  Requires a corporate (KYB) principal, switch in step 1.
                 </p>
               ) : (
                 <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-700/70">
@@ -346,7 +346,7 @@ export function Step2Structure({ data, update }) {
   )
 }
 
-/* ───────────────────────── Step 3 — Data Room ───────────────────────── */
+/* ───────────────────────── Step 3, Data Room ───────────────────────── */
 
 const FIELD_CONFIG = {
   'native-equity': [
@@ -386,7 +386,7 @@ const FIELD_CONFIG = {
 // Structure-specific mandatory attestations the flow won't advance without.
 const ATTESTATIONS = {
   'equity-spv':
-    'I attest that I have board consent, or a clean reading of the underlying company’s shareholder agreement, permitting this SPV tokenization — no right of first refusal, drag-along, or transfer restriction is breached. SeqPal disclaims responsibility for shareholder-agreement compliance.',
+    'I attest that I have board consent, or a clean reading of the underlying company’s shareholder agreement, permitting this SPV tokenization, no right of first refusal, drag-along, or transfer restriction is breached. SeqPal disclaims responsibility for shareholder-agreement compliance.',
   'debt-yield':
     'I attest that borrower KYB is complete and a financial disclosure pack will be published verbatim to investors in the Note Purchase Agreement schedules. SeqPal is the platform, not the credit underwriter.',
   'depository-receipt':
@@ -453,7 +453,7 @@ export function Step3DataRoom({ data, update }) {
 
   const setField = (k, v, sym = symbol) => {
     const fields = { ...data.fields, [k]: v }
-    // The document package is generated from these inputs (plan §3.3 step 4) —
+    // The document package is generated from these inputs (plan §3.3 step 4);
     // editing any deal term after e-signing voids the signature.
     const patch = { fields, docsSigned: false }
     if (k === 'raise') {
@@ -542,7 +542,7 @@ export function Step3DataRoom({ data, update }) {
               onChange={(e) => setUnit(e.target.value)}
             >
               <option value="USD">USD (default)</option>
-              <option value="BTC">BTC — Bitcoin-denominated</option>
+              <option value="BTC">BTC, Bitcoin-denominated</option>
             </select>
             <p className="mt-1.5 text-xs text-ink-700/60">
               {data.unit === 'BTC'
@@ -567,7 +567,7 @@ export function Step3DataRoom({ data, update }) {
           ))}
         </div>
         <p className="mt-5 text-xs text-ink-700/60">
-          All fields are optional in this demo — enter as much or as little as you like.
+          All fields are optional in this demo, enter as much or as little as you like.
         </p>
       </div>
 
@@ -593,12 +593,12 @@ export function Step3DataRoom({ data, update }) {
   )
 }
 
-/* ──────────────────── Step 4 — Document Automation ──────────────────── */
+/* ──────────────────── Step 4, Document Automation ──────────────────── */
 
 const DOC_PACKAGE = (structureId, isPublic) => {
   const docs = [
     'Articles of Incorporation (Próspera LLC)',
-    'Operating Agreement — blockchain as Registry of Members',
+    'Operating Agreement, blockchain as Registry of Members',
   ]
   if (structureId === 'native-equity') {
     docs.push('Share Issuance Resolutions', 'Investment Memorandum / Token Subscription Agreement')
@@ -618,7 +618,7 @@ const DOC_PACKAGE = (structureId, isPublic) => {
   return docs
 }
 
-// A rendered, prefilled preview of a generated template — "the Magic Moment".
+// A rendered, prefilled preview of a generated template, "the Magic Moment".
 function DocPreview({ docName, data }) {
   const s = getStructure(data.structureId)
   const cfg = FIELD_CONFIG[data.structureId] || []
@@ -664,7 +664,7 @@ function DocPreview({ docName, data }) {
                 {data.principal?.name}
               </li>
               <li>
-                <span className="text-ink-700/70">Agent:</span> SeqPal — {s?.seqpalRole}
+                <span className="text-ink-700/70">Agent:</span> SeqPal, {s?.seqpalRole}
               </li>
             </ul>
           </section>
@@ -711,7 +711,7 @@ function DocPreview({ docName, data }) {
         </div>
       </div>
       <p className="mt-3 text-xs leading-relaxed text-ink-700/60">
-        Prefilled template — infrastructure, not legal advice. SeqPal is not a law firm.
+        Prefilled template, infrastructure, not legal advice. SeqPal is not a law firm.
         You may accept, modify, or reject any clause, with or without your own counsel.
       </p>
     </div>
@@ -737,7 +737,7 @@ export function Step4Documents({ data, update }) {
       <StepHeader
         n={4}
         title="Document automation suite"
-        sub="SeqPal’s document engine maps your inputs to a standardized library of clause templates. The package is rendered for your review and e-signature — prefilled templates you’re free to accept, modify, or reject."
+        sub="SeqPal’s document engine maps your inputs to a standardized library of clause templates. The package is rendered for your review and e-signature, prefilled templates you’re free to accept, modify, or reject."
       />
 
       {phase === 'idle' && (
@@ -801,7 +801,7 @@ export function Step4Documents({ data, update }) {
             <div className="mt-5 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
               <Icon.doc width={18} height={18} className="mt-0.5 shrink-0" />
               <p className="leading-relaxed">
-                <span className="font-semibold">Public offering — issuer-supplied items.</span>{' '}
+                <span className="font-semibold">Public offering, issuer-supplied items.</span>{' '}
                 Beyond this generated package you’ll also provide audited (or audit-reviewed)
                 financials and a signed local-counsel opinion for each admitted jurisdiction.
                 SeqPal supplies the template framework and RFSA filing path; these are
@@ -812,7 +812,7 @@ export function Step4Documents({ data, update }) {
 
           <DemoNote className="mt-5">
             Click any document to preview the prefilled template. E-signature runs through
-            an integrated provider in the live platform; here “sign” is simulated — no
+            an integrated provider in the live platform; here “sign” is simulated, no
             documents are actually executed. SeqPal is not a law firm and these templates
             are infrastructure, not legal advice.
           </DemoNote>
@@ -834,7 +834,7 @@ export function Step4Documents({ data, update }) {
           )}
           {phase === 'signed' && (
             <p className="mt-5 text-center text-sm font-medium text-emerald-600">
-              All documents signed — continue to compliance configuration.
+              All documents signed, continue to compliance configuration.
             </p>
           )}
         </>
@@ -843,7 +843,7 @@ export function Step4Documents({ data, update }) {
   )
 }
 
-/* ─────────────── Step 5 — Tokenomics & Compliance Baking ─────────────── */
+/* ─────────────── Step 5, Tokenomics & Compliance Baking ─────────────── */
 
 function defaultPolicy(isPublic) {
   const p = {}
@@ -883,7 +883,7 @@ export function Step5Compliance({ data, update }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.isPublic])
 
-  // The token is usually named after the entity — prefill, leave editable.
+  // The token is usually named after the entity, prefill, leave editable.
   useEffect(() => {
     if (!data.name && data.entityName) update({ name: data.entityName })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -986,7 +986,7 @@ export function Step5Compliance({ data, update }) {
       <StepHeader
         n={5}
         title="Tokenomics & compliance baking"
-        sub="Name your asset and configure the policy that gets baked into the token’s whitelist. SeqPal supplies a suggested-minimum restriction set — you can make any rule stricter, but mandatory floors cannot be loosened."
+        sub="Name your asset and configure the policy that gets baked into the token’s whitelist. SeqPal supplies a suggested-minimum restriction set, you can make any rule stricter, but mandatory floors cannot be loosened."
       />
 
       <div className="card mb-5 p-7">
@@ -1054,10 +1054,10 @@ export function Step5Compliance({ data, update }) {
         <div className="mb-5 flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
           <Icon.lock width={18} height={18} className="mt-0.5 shrink-0" />
           <p className="leading-relaxed">
-            <span className="font-semibold">DR — US persons excluded at launch.</span>{' '}
+            <span className="font-semibold">DR, US persons excluded at launch.</span>{' '}
             Depository Receipts mirroring US-listed securities carry SEC unregistered-ADR
             and synthetic-equity enforcement risk, so US persons are not admitted at launch. Admitting them
-            requires your own US counsel (e.g. a Reg S structure) — confirm US here only on
+            requires your own US counsel (e.g. a Reg S structure), confirm US here only on
             that basis.
           </p>
         </div>
@@ -1112,7 +1112,7 @@ export function Step5Compliance({ data, update }) {
                           title={
                             data.isPublic
                               ? 'Public-offering registration / exemption confirmed'
-                              : 'Authorization uploaded — retail may be admitted'
+                              : 'Authorization uploaded, retail may be admitted'
                           }
                         >
                           <Icon.check width={10} height={10} />{' '}
@@ -1581,7 +1581,7 @@ function CompiledRulesView({ preview }) {
   )
 }
 
-/* ──────────────────── Step 6 — Checkout & Deployment ──────────────────── */
+/* ──────────────────── Step 6, Checkout & Deployment ──────────────────── */
 
 export function Step6Checkout({ data, onDeployed }) {
   // Both create and deploy go through the store so its issuance list refreshes
@@ -1767,7 +1767,7 @@ export function Step6Checkout({ data, onDeployed }) {
           <dl className="mt-4 space-y-2.5 text-sm">
             <div className="flex justify-between">
               <dt className="text-ink-700/80">
-                {cost.simple ? 'Setup — Simple Native Equity' : `Setup — ${s?.short}`}
+                {cost.simple ? 'Setup, Simple Native Equity' : `Setup, ${s?.short}`}
               </dt>
               <dd className="font-mono font-medium">${cost.base.toLocaleString()}</dd>
             </div>

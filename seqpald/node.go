@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -109,9 +110,12 @@ func (s *server) anchorStatus() (*nodeAnchorStatus, error) {
 }
 
 // nodeRawTx is the subset of getrawtransaction (verbose) the watcher reads to
-// discover which block confirms an issuance txid. Discovery requires the node to
-// index transactions (-txindex, which the box already runs for its explorer);
-// the reorg re-check below uses getblockheader by hash and needs no index.
+// discover which block confirms an issuance txid. getrawtransaction by id needs
+// the node to run -txindex; the box's producer node (node000, which openampd and
+// seqpald share) does NOT run it (the explorer uses a separate electrs), so this
+// call fails for a confirmed tx. rawTransaction therefore falls back to electrs,
+// which indexes every tx and answers without -txindex. The reorg re-check uses
+// getblockheader by hash and needs no index.
 type nodeRawTx struct {
 	Txid          string `json:"txid"`
 	Confirmations int64  `json:"confirmations"`
@@ -120,15 +124,69 @@ type nodeRawTx struct {
 }
 
 func (s *server) rawTransaction(txid string) (*nodeRawTx, error) {
-	res, err := s.nodeRPC("getrawtransaction", txid, true)
+	res, nodeErr := s.nodeRPC("getrawtransaction", txid, true)
+	if nodeErr == nil {
+		var tx nodeRawTx
+		if err := json.Unmarshal(res, &tx); err == nil {
+			return &tx, nil
+		}
+	}
+	// Fallback: node lacks -txindex, so getrawtransaction cannot find a confirmed
+	// tx by id. Discover the confirming block via electrs and compute confirmations
+	// against the current tip.
+	st, exErr := s.electrsTxStatus(txid)
+	if exErr != nil {
+		if nodeErr != nil {
+			return nil, nodeErr
+		}
+		return nil, exErr
+	}
+	tx := &nodeRawTx{Txid: txid}
+	if st.Confirmed && st.BlockHash != "" {
+		tx.BlockHash = st.BlockHash
+		inChain := true
+		tx.InActiveChain = &inChain
+		if tip, err := s.nodeBlockCount(); err == nil && tip >= st.BlockHeight {
+			tx.Confirmations = tip - st.BlockHeight + 1
+		} else {
+			tx.Confirmations = 1
+		}
+	}
+	return tx, nil
+}
+
+// electrsStatus is the box explorer's confirmation view of a txid, the reliable
+// source when the node RPC lacks -txindex.
+type electrsStatus struct {
+	Confirmed   bool   `json:"confirmed"`
+	BlockHeight int64  `json:"block_height"`
+	BlockHash   string `json:"block_hash"`
+}
+
+func (s *server) electrsTxStatus(txid string) (*electrsStatus, error) {
+	if s.cfg.electrsURL == "" {
+		return nil, fmt.Errorf("no electrs url configured")
+	}
+	url := strings.TrimRight(s.cfg.electrsURL, "/") + "/tx/" + txid + "/status"
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
-	var tx nodeRawTx
-	if err := json.Unmarshal(res, &tx); err != nil {
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
 		return nil, err
 	}
-	return &tx, nil
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("electrs tx status -> HTTP %d", resp.StatusCode)
+	}
+	raw, _ := readAllLimited(resp.Body, 1<<20)
+	var st electrsStatus
+	if err := json.Unmarshal(raw, &st); err != nil {
+		return nil, err
+	}
+	return &st, nil
 }
 
 // nodeBlockHeader is the subset of getblockheader the watcher reads. A stale

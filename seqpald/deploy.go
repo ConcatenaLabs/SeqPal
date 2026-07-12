@@ -147,8 +147,22 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	if len(terms) == 0 {
 		terms = iss.Terms
 	}
+	if err := json.Unmarshal(rawOrEmpty(terms), new(any)); err != nil {
+		refuse(400, "terms must be a JSON object")
+		return
+	}
+	// M4: bind the generated document set into terms so terms_hash (and thus the
+	// on-chain contract_hash) commits to the exact document bytes. ensureDocuments
+	// is deterministic and idempotent, so a browser that already called the
+	// documents endpoint recomputes the identical hash and the cross-check below
+	// still holds; a deploy that skipped that step still binds real documents.
+	boundTerms, manifest, err := s.ensureDocuments(iss, rawOrEmpty(terms))
+	if err != nil {
+		refuse(400, "documents could not be generated: "+err.Error())
+		return
+	}
 	var termsObj any
-	if err := json.Unmarshal(rawOrEmpty(terms), &termsObj); err != nil {
+	if err := json.Unmarshal(boundTerms, &termsObj); err != nil {
 		refuse(400, "terms must be a JSON object")
 		return
 	}
@@ -161,6 +175,32 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	if req.TermsHash != "" && !strings.EqualFold(req.TermsHash, termsHash) {
 		refuse(400, "terms_hash mismatch: the terms the browser hashed are not the terms it sent")
 		return
+	}
+
+	// Publish the terms document (manifest + canonical bytes) so GET /api/terms
+	// resolves it, and open the offer window for preimage gating.
+	_ = s.st.PutTermsDoc(&TermsDoc{
+		TermsHash: termsHash, IssuanceID: iss.ID, CanonicalTerms: string(canonical),
+		ManifestHash: manifest.ManifestHash, Manifest: string(jsonCompact(manifest)),
+	})
+	_, _ = s.st.EnsureOffering(iss.ID)
+
+	// M4: a public offering cannot deploy without an RFSA filing bound to these
+	// exact terms. Private placements (the default when terms carry no public
+	// marker) are ungated, which keeps every pre-M4 deploy path working.
+	if isPublicOffering(canonical) {
+		filing, ferr := s.st.FilingByTermsHash(termsHash)
+		if ferr != nil {
+			writeErr(w, 500, "store error")
+			return
+		}
+		if filing == nil {
+			refuse(403, "a public offering requires an RFSA filing bound to these terms; file at POST /rfsa/filings first")
+			return
+		}
+		s.st.Audit(acct.AID, "deploy.filing_ok", map[string]any{
+			"issuance_id": iss.ID, "filing_number": filing.FilingNumber, "terms_hash": termsHash,
+		})
 	}
 
 	// Idempotency: a given issuance minted under a given key and terms mints exactly

@@ -1,4 +1,4 @@
-// SeqPal's templated suggested-minimum private-placement default — the
+// SeqPal's templated suggested-minimum private-placement default, the
 // Investor Jurisdiction Compliance Matrix (Appendix C of the plan). This is the
 // canonical reference behind SeqPal ID's default whitelist and the portal gate.
 //
@@ -117,13 +117,13 @@ export const EU_MEMBER_STATES = [
 // Jurisdiction options offered at SeqPal ID registration, with the qualified-
 // investor basis SeqPal applies for that residence.
 export const RESIDENCE_OPTIONS = [
-  { code: 'US', name: 'United States', accreditationLabel: 'Accredited investor — Reg D Rule 501' },
-  { code: 'GB', name: 'United Kingdom', accreditationLabel: 'Sophisticated / high-net-worth — FSMA s.86' },
-  { code: 'EU', name: 'European Union', accreditationLabel: 'Professional / qualified investor — MiFID II' },
-  { code: 'CH', name: 'Switzerland', accreditationLabel: 'Professional client — FinSA Art. 4' },
-  { code: 'SG', name: 'Singapore', accreditationLabel: 'Accredited investor — SFA s.275' },
-  { code: 'AE', name: 'UAE (ADGM / DIFC)', accreditationLabel: 'Professional client — DFSA / FSRA' },
-  { code: 'BR', name: 'Brazil', accreditationLabel: 'Professional / qualified investor — CVM' },
-  { code: 'SV', name: 'El Salvador', accreditationLabel: 'Accredited / sophisticated — Digital Assets Law' },
-  { code: 'AR', name: 'Argentina', accreditationLabel: 'Inversor calificado — CNV' },
+  { code: 'US', name: 'United States', accreditationLabel: 'Accredited investor, Reg D Rule 501' },
+  { code: 'GB', name: 'United Kingdom', accreditationLabel: 'Sophisticated / high-net-worth, FSMA s.86' },
+  { code: 'EU', name: 'European Union', accreditationLabel: 'Professional / qualified investor, MiFID II' },
+  { code: 'CH', name: 'Switzerland', accreditationLabel: 'Professional client, FinSA Art. 4' },
+  { code: 'SG', name: 'Singapore', accreditationLabel: 'Accredited investor, SFA s.275' },
+  { code: 'AE', name: 'UAE (ADGM / DIFC)', accreditationLabel: 'Professional client, DFSA / FSRA' },
+  { code: 'BR', name: 'Brazil', accreditationLabel: 'Professional / qualified investor, CVM' },
+  { code: 'SV', name: 'El Salvador', accreditationLabel: 'Accredited / sophisticated, Digital Assets Law' },
+  { code: 'AR', name: 'Argentina', accreditationLabel: 'Inversor calificado, CNV' },
 ]

@@ -29,7 +29,7 @@ export default function NetworkFees({ iss }) {
         const assetPrice = prices[ticker]?.price || 0
         const seq = seqPrice(prices)
         const atoms = feeConvertAtoms(prices, assetPrice, POLICY_FEE_BASE_UNITS)
-        // Fee value from the SEQ value basis: (base units / 1e8) * SEQ price.
+        // Fee value from the Sequence-token value basis: (base units / 1e8) * price.
         const feeValueUSD = seq > 0 ? (POLICY_FEE_BASE_UNITS / 1e8) * seq : null
         setState({ loading: false, assetPrice, seq, atoms, feeValueUSD, resolved: assetPrice > 0 })
       })

@@ -6,6 +6,7 @@ import {
   encryptKey,
   generateEnclaveKey,
   signChallenge,
+  signDocument,
   signStatement,
 } from './keys'
 
@@ -256,6 +257,12 @@ export function StoreProvider({ children }) {
   // rather than handling the key themselves. Returns null when locked.
   const signWithKey = (tag, statement) => (priv ? signStatement(priv, tag, statement) : null)
 
+  // E-sign an offering document with the session's in-memory enclave key. The
+  // key signs the TAGGED document hash (tag openamp-document-v1), never a raw
+  // blind digest. The decrypted key never leaves the store. Returns null when
+  // locked, which the caller surfaces as "unlock to sign".
+  const signDoc = (docHashHex) => (priv ? signDocument(priv, docHashHex) : null)
+
   // ── in-memory simulation (portal drafts, subscriptions, servicing) ──
   // The latest chain-watch event for an issuance, or undefined until the SSE
   // stream delivers one (the surface then shows a distinct "awaiting" chip
@@ -292,6 +299,7 @@ export function StoreProvider({ children }) {
     patchIssuance,
     deployIssuance,
     signWithKey,
+    signDoc,
     watch,
     watchFor,
     simFor,

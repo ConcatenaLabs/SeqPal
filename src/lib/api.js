@@ -118,6 +118,61 @@ export const verifyEntity = (id, body) =>
 export const eligibility = (aid, asset) =>
   req(`/eligibility?aid=${encodeURIComponent(aid)}&asset=${encodeURIComponent(asset)}`)
 
+// ── legal document pipeline (M4) ────────────────────────────────────────────
+// Generate (or regenerate) the deterministic, content-addressed document set
+// for an issuance and bind its manifest into terms_hash. Owner session only.
+// Returns { issuance_id, terms_hash, manifest_hash, documents:[{hash,kind,title}],
+// characterization, e_signature_tag, note }. Deploy with the exact returned terms.
+export const generateDocuments = (id) =>
+  req(`/issuances/${encodeURIComponent(id)}/documents`, { method: 'POST', body: {} })
+
+// The public data-room manifest for a terms_hash: { terms_hash, manifest_hash,
+// manifest, terms, access{model,offer_open,close_height}, verify{steps}, issuance }.
+// Public: the hash commitment is verifiable with no session.
+export const getTerms = (hash) => req(`/terms/${encodeURIComponent(hash)}`)
+
+// A browser-resolvable URL for one document preimage. During the offer window a
+// preimage is gate-passers-only (a non-200 to anonymous requests, the standing
+// probe); at offer close it publishes. `?format=pdf` serves the house PDF if the
+// box toolchain is present, else the canonical HTML with an X-PDF-Unavailable note.
+export const docUrl = (docHash, { pdf = false } = {}) =>
+  `${BASE}/doc/${encodeURIComponent(docHash)}${pdf ? '?format=pdf' : ''}`
+
+// Publish every offer-window preimage for an issuance (owner). { issuance_id,
+// offer_open:false, close_height }.
+export const offerClose = (id) =>
+  req(`/issuances/${encodeURIComponent(id)}/offer-close`, { method: 'POST', body: {} })
+
+// The instrument-characterization memo. `structure` empty returns { structures }
+// (all four); with a structure returns { characterization }. Public.
+export const characterization = (structure) =>
+  req(`/characterization${structure ? `?structure=${encodeURIComponent(structure)}` : ''}`)
+
+// The genesis-terms-hash plus anchored amendment chain, for the Verify explainer.
+// { issuance_id, asset_id, genesis_terms_hash, contract_hash, amendments[], note }.
+// Owner session only.
+export const amendments = (id) => req(`/issuances/${encodeURIComponent(id)}/amendments`)
+
+// Record a real BIP340 e-signature over the tagged document hash. Owner/session
+// signs with the enclave key (see keys.signDocument). Returns { doc_hash,
+// signer_aid, tag, anchor_txid, note }.
+export const signDocumentSig = (docHash, sig) =>
+  req(`/documents/${encodeURIComponent(docHash)}/sign`, { method: 'POST', body: { sig } })
+
+// Every recorded e-signature for a document: { doc_hash, tag, signatures[] }. Public.
+export const docSignatures = (docHash) =>
+  req(`/documents/${encodeURIComponent(docHash)}/signatures`)
+
+// ── RFSA simulated registry (M4) ────────────────────────────────────────────
+// File with the RFSA Financial Products Registry before a public offering can
+// deploy. Body { issuer?, structure, doc_manifest_hash, terms_hash, issuance_id? }.
+// Returns { filing_number, filing, label }. Session gated (the filer is the
+// issuer of record). "Simulated regulator, real registry mechanics".
+export const rfsaFile = (body) => req('/rfsa/filings', { method: 'POST', body })
+
+// Public lookup of a filing by number: { filing, label }.
+export const rfsaLookup = (number) => req(`/rfsa/filings/${encodeURIComponent(number)}`)
+
 // ── platform reviewer (admin-session only) ──────────────────────────────────
 export const reviewQueue = () => req('/admin/review-queue')
 

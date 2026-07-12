@@ -29,13 +29,22 @@ const cols = [
       { to: '/dashboard', label: 'Dashboard' },
     ],
   },
+  {
+    title: 'Trust and legal',
+    links: [
+      { to: '/faq', label: 'FAQ' },
+      { to: '/legal', label: 'Legal & Licensing' },
+      { to: '/privacy', label: 'Privacy' },
+      { to: '/status', label: 'Status' },
+    ],
+  },
 ]
 
 export default function Footer() {
   return (
     <footer className="mt-24 border-t border-ink-900/10 bg-ink-950 text-white">
       <div className="container-x py-14">
-        <div className="grid gap-10 md:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-10 md:grid-cols-2 lg:grid-cols-6">
           <div className="lg:col-span-2">
             <Logo light />
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-white/60">

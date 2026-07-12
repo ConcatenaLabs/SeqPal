@@ -408,11 +408,52 @@ func (s *server) handleCompile(w http.ResponseWriter, r *http.Request) {
 // provisioned for this offering) and runs the pure compiler.
 func (s *server) compileForIssuance(iss *Issuance, terms json.RawMessage) (CompiledRules, error) {
 	env := compileEnv{
-		TipHeight:    s.tipHeight(),
-		BlocksPerDay: s.cfg.blocksPerDay,
-		PrimaryAIDs:  s.primaryAIDsFor(iss),
+		TipHeight:        s.tipHeight(),
+		BlocksPerDay:     s.cfg.blocksPerDay,
+		PrimaryAIDs:      s.primaryAIDsFor(iss),
+		Characterization: characterize(structureName(iss, terms)),
 	}
 	return compileRules(terms, env)
+}
+
+// structureName resolves the structure to classify: terms.structure takes
+// precedence (it is what the compiler already reads for velocity), falling back
+// to the issuance's StructureID. An empty result characterizes as plain equity.
+func structureName(iss *Issuance, terms json.RawMessage) string {
+	if name := termsStructureName(terms); name != "" {
+		return name
+	}
+	if iss != nil {
+		return iss.StructureID
+	}
+	return ""
+}
+
+// termsStructureName pulls terms.structure whether it is a bare string or an
+// object with a name field.
+func termsStructureName(terms json.RawMessage) string {
+	if len(terms) == 0 {
+		return ""
+	}
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(terms, &m); err != nil {
+		return ""
+	}
+	raw, ok := m["structure"]
+	if !ok {
+		return ""
+	}
+	var name string
+	if err := json.Unmarshal(raw, &name); err == nil {
+		return name
+	}
+	var obj struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(raw, &obj); err == nil {
+		return obj.Name
+	}
+	return ""
 }
 
 // primaryAIDsFor returns the escrow and entity-treasury AIDs for an issuance, if

@@ -11,7 +11,7 @@ const products = [
     points: [
       'Six-step onboarding flow',
       'Automated document drafting from your inputs',
-      'Fixed, published pricing — pay and deploy',
+      'Fixed, published pricing, pay and deploy',
       'Manage live issuances post-deployment',
     ],
     cta: { to: '/onboarding', label: 'Open the dashboard' },
@@ -128,8 +128,8 @@ function Architecture() {
           <div className="text-sm">
             <span className="font-bold text-ink-900">Bitcoin · Sequentia</span>
             <span className="text-ink-700/80">
-              {' '}
-              — Transfer-Restricted assets issued via OpenAMP, settled in BTC or
+              {': '}
+              Transfer-Restricted assets issued via OpenAMP, settled in BTC or
               stablecoins
             </span>
           </div>
@@ -147,7 +147,7 @@ export default function Products() {
           <SectionHeading
             eyebrow="Products"
             title="The complete issuance stack"
-            sub="Four tightly integrated products. Every third-party integration — KYC, e-signature, escrow, and the OpenAMP issuance layer — is pre-built once, so the platform is plug-and-play for every issuer."
+            sub="Four tightly integrated products. Every third-party integration, KYC, e-signature, escrow, and the OpenAMP issuance layer, is pre-built once, so the platform is plug-and-play for every issuer."
           />
           <Architecture />
         </div>
