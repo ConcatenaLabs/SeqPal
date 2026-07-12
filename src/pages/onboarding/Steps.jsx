@@ -6,8 +6,14 @@ import Modal from '../../components/Modal'
 import { useStore } from '../../lib/store'
 import { toTerms } from '../../lib/issuance'
 import { termsHash } from '../../lib/openamp'
+import { compileIssuance } from '../../lib/api'
 import { STRUCTURES, getStructure } from '../../data/structures'
-import { JURISDICTIONS, CATCH_ALL_ROW } from '../../data/jurisdictions'
+import {
+  JURISDICTIONS,
+  CATCH_ALL_ROW,
+  ELIG_CATEGORIES,
+  EU_MEMBER_STATES,
+} from '../../data/jurisdictions'
 import { computeSetupCost } from '../../data/pricing'
 import { parseMoney } from '../../lib/economics'
 
@@ -852,6 +858,16 @@ function defaultPolicy(isPublic) {
 }
 
 export function Step5Compliance({ data, update }) {
+  // The compiled-rules preview is computed server-side (seqpald is the only
+  // place the authoritative rules are produced); a draft issuance is created
+  // lazily the first time a preview is requested and reused at deploy.
+  const { createIssuance } = useStore()
+  const [preview, setPreview] = useState(null)
+  const [previewErr, setPreviewErr] = useState(null)
+  const [previewing, setPreviewing] = useState(false)
+  const [advOpen, setAdvOpen] = useState(false)
+  const [euPick, setEuPick] = useState({ code: 'DE', n: '' })
+
   // (Re)build the default policy whenever the offering type changes so the
   // public-offering overlay is reflected correctly.
   useEffect(() => {
@@ -880,6 +896,65 @@ export function Step5Compliance({ data, update }) {
   // in a normally-restricted jurisdiction. Mandatory floors can never be lifted.
   const lifted = data.lifted || {}
   const lift = (code) => update({ lifted: { ...lifted, [code]: true } })
+
+  // ── Transfer restrictions (lockup, Reg S, holder cap) ────────────────────
+  const lockup = data.lockup || { mode: 'none', days: '', height: '' }
+  const setLockup = (patch) => update({ lockup: { ...lockup, ...patch } })
+  const regS = data.regS || { enabled: false, prefix: 'j:US', mode: 'days', days: '', height: '' }
+  const setRegS = (patch) => update({ regS: { ...regS, ...patch } })
+  const euCaps = data.euCaps || {}
+  const setEuCap = (code, v) => {
+    const next = { ...euCaps }
+    const n = Number(v)
+    if (n > 0) next[code] = n
+    else delete next[code]
+    update({ euCaps: next })
+  }
+
+  // ── Per-jurisdiction eligibility-category refinement (advanced) ──────────
+  const eligCategories = data.eligCategories || {}
+  const admittedCodes = JURISDICTIONS.filter((j) => ['standard', 'restricted'].includes(policy[j.code]))
+  const admitsForAccess = (access) =>
+    access === 'standard' ? ['ret', 'acc', 'pro', 'hnw', 'soph'] : access === 'restricted' ? ['acc', 'pro'] : []
+  const defaultElig = (access) => (access === 'restricted' ? ['acc', 'pro'] : ['ret', 'acc', 'pro'])
+  const selectableFor = (code) => {
+    const admits = admitsForAccess(policy[code])
+    return ELIG_CATEGORIES.filter((c) => admits.includes(c.key) && (!c.gbOnly || code === 'GB'))
+  }
+  const eligFor = (code) => eligCategories[code] ?? defaultElig(policy[code])
+  const toggleElig = (code, key) => {
+    const cur = eligFor(code)
+    const next = cur.includes(key) ? cur.filter((k) => k !== key) : [...cur, key]
+    update({ eligCategories: { ...eligCategories, [code]: next } })
+  }
+
+  // ── Compiled-rules preview ───────────────────────────────────────────────
+  const previewRules = async () => {
+    setPreviewErr(null)
+    setPreviewing(true)
+    try {
+      if (!data.name?.trim() || !data.ticker?.trim())
+        throw new Error('Enter an asset name and ticker above before previewing the compiled rules.')
+      let id = data.issuanceId
+      if (!id) {
+        const issuance = await createIssuance({
+          name: data.name.trim(),
+          ticker: data.ticker.trim(),
+          structure_id: data.structureId,
+          entity_id: data.principal?.entity_id || undefined,
+          terms: toTerms(data),
+        })
+        id = issuance.id
+        update({ issuanceId: id })
+      }
+      const res = await compileIssuance(id, { terms: toTerms(data) })
+      setPreview(res)
+    } catch (e) {
+      setPreviewErr(e.message)
+    } finally {
+      setPreviewing(false)
+    }
+  }
 
   const optionsFor = (j) => {
     if (j.tier === 'blocked') return ['blocked']
@@ -996,6 +1071,11 @@ export function Step5Compliance({ data, update }) {
               ? 'Confirm, jurisdiction by jurisdiction, where the public offering is conducted. Unconfirmed jurisdictions stay excluded.'
               : 'Cross-checked against the SeqPal ID jurisdiction matrix. Blocked jurisdictions are a mandatory floor and cannot be admitted.'}
           </p>
+          <p className="mt-1 text-xs text-ink-700/55">
+            The catch-all is <span className="font-semibold text-ink-700">excluded by default</span>:
+            only a jurisdiction you admit here contributes eligibility categories, so a resident of
+            any jurisdiction you do not list is refused by the policy server.
+          </p>
         </div>
         <div className="max-h-[420px] divide-y divide-ink-900/10 overflow-y-auto">
           {JURISDICTIONS.map((j) => {
@@ -1082,8 +1162,8 @@ export function Step5Compliance({ data, update }) {
               </div>
               <div className="truncate text-xs text-ink-700/60">{CATCH_ALL_ROW.basis}</div>
             </div>
-            <span className="rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700">
-              Standard
+            <span className="rounded-lg border border-ink-900/15 bg-ink-900/[0.03] px-2.5 py-1.5 text-xs font-semibold text-ink-600">
+              Excluded
             </span>
           </div>
         </div>
@@ -1107,11 +1187,396 @@ export function Step5Compliance({ data, update }) {
           </div>
           <p className="mt-1.5 text-xs leading-relaxed text-ink-700/70">
             SeqPal ID verification, continuous sanctions screening, and OFAC/FATF-aligned
-            blocks — including OFAC/EU territorial sanctions for the occupied Ukrainian
-            territories — are always enforced and cannot be loosened.
+            blocks, including OFAC and EU territorial sanctions for the occupied Ukrainian
+            territories, are always enforced and cannot be loosened.
           </p>
         </div>
       </div>
+
+      {/* ── Transfer restrictions ─────────────────────────────────────────── */}
+      <div className="card mt-5 p-7">
+        <h3 className="font-bold text-ink-900">Transfer restrictions</h3>
+        <p className="mt-1 text-sm text-ink-700/70">
+          These compile into the on-chain rules the policy server enforces on every transfer.
+        </p>
+
+        {/* Lockup */}
+        <div className="mt-5">
+          <div className="label">Lockup</div>
+          <div className="flex flex-wrap gap-2">
+            {[
+              ['none', 'No lockup'],
+              ['days', 'For a number of days'],
+              ['height', 'Until a block height'],
+            ].map(([m, label]) => (
+              <button
+                key={m}
+                onClick={() => setLockup({ mode: m })}
+                className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
+                  lockup.mode === m
+                    ? 'border-btc bg-btc-50 text-btc-700'
+                    : 'border-ink-900/15 text-ink-700 hover:bg-ink-900/[0.02]'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {lockup.mode === 'days' && (
+            <div className="mt-3 max-w-xs">
+              <input
+                type="number"
+                min="1"
+                className="input"
+                placeholder="e.g. 365"
+                value={lockup.days}
+                onChange={(e) => setLockup({ days: e.target.value })}
+              />
+              <p className="mt-1.5 text-xs text-ink-700/60">
+                Converted to an absolute Sequentia block height against the chain tip when you
+                deploy. Nothing is final at 0 confirmations.
+              </p>
+            </div>
+          )}
+          {lockup.mode === 'height' && (
+            <div className="mt-3 max-w-xs">
+              <input
+                type="number"
+                min="1"
+                className="input"
+                placeholder="e.g. 250000"
+                value={lockup.height}
+                onChange={(e) => setLockup({ height: e.target.value })}
+              />
+              <p className="mt-1.5 text-xs text-ink-700/60">
+                Holders cannot move the asset until Sequentia block{' '}
+                {lockup.height ? Number(lockup.height).toLocaleString() : 'H'}. The per-offering
+                escrow is exempt so it can still deliver during the lockup.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Reg S window */}
+        <div className="mt-6 border-t border-ink-900/10 pt-5">
+          <label className="flex cursor-pointer items-start gap-3">
+            <input
+              type="checkbox"
+              className="mt-1 h-4 w-4 accent-btc"
+              checked={!!regS.enabled}
+              onChange={(e) => setRegS({ enabled: e.target.checked })}
+            />
+            <span className="text-sm">
+              <span className="font-semibold text-ink-900">Reg S distribution-compliance window</span>
+              <span className="mt-0.5 block text-ink-700/70">
+                During the offshore compliance period, a non-primary holder may not deliver to a
+                recipient carrying the restricted category prefix. Delivery by the offering escrow
+                is exempt.
+              </span>
+            </span>
+          </label>
+          {regS.enabled && (
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              <div>
+                <label className="label" htmlFor="regs-prefix">
+                  Category prefix
+                </label>
+                <input
+                  id="regs-prefix"
+                  className="input font-mono"
+                  placeholder="j:US"
+                  value={regS.prefix}
+                  onChange={(e) => setRegS({ prefix: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="label" htmlFor="regs-mode">
+                  Window by
+                </label>
+                <select
+                  id="regs-mode"
+                  className="select"
+                  value={regS.mode}
+                  onChange={(e) => setRegS({ mode: e.target.value })}
+                >
+                  <option value="days">Days from tip</option>
+                  <option value="height">Block height</option>
+                </select>
+              </div>
+              <div>
+                <label className="label" htmlFor="regs-val">
+                  {regS.mode === 'height' ? 'Until block' : 'Days'}
+                </label>
+                <input
+                  id="regs-val"
+                  type="number"
+                  min="1"
+                  className="input"
+                  placeholder={regS.mode === 'height' ? '250000' : '40'}
+                  value={regS.mode === 'height' ? regS.height : regS.days}
+                  onChange={(e) =>
+                    setRegS(regS.mode === 'height' ? { height: e.target.value } : { days: e.target.value })
+                  }
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Global holder cap */}
+        <div className="mt-6 border-t border-ink-900/10 pt-5">
+          <label className="label" htmlFor="holder-cap">
+            Global holder cap (optional)
+          </label>
+          <div className="max-w-xs">
+            <input
+              id="holder-cap"
+              type="number"
+              min="1"
+              className="input"
+              placeholder="e.g. 2000"
+              value={data.holderCap || ''}
+              onChange={(e) => update({ holderCap: e.target.value })}
+            />
+            <p className="mt-1.5 text-xs text-ink-700/60">
+              Maximum distinct holders across all jurisdictions. Leave blank for no cap.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* ── EU per-member-state offeree caps ──────────────────────────────── */}
+      <div className="card mt-5 p-7">
+        <h3 className="font-bold text-ink-900">EU per-member-state offeree caps</h3>
+        <p className="mt-1 text-sm text-ink-700/70">
+          The sub-150 prospectus-exemption count, bounded per member state. Compiles to a
+          per-category holder cap on that state's retail token.
+        </p>
+        <div className="mt-4 flex flex-wrap items-end gap-3">
+          <div>
+            <label className="label" htmlFor="eu-state">
+              Member state
+            </label>
+            <select
+              id="eu-state"
+              className="select"
+              value={euPick.code}
+              onChange={(e) => setEuPick({ ...euPick, code: e.target.value })}
+            >
+              {EU_MEMBER_STATES.map((m) => (
+                <option key={m.code} value={m.code}>
+                  {m.name} ({m.code})
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="label" htmlFor="eu-cap">
+              Cap
+            </label>
+            <input
+              id="eu-cap"
+              type="number"
+              min="1"
+              className="input w-28"
+              placeholder="149"
+              value={euPick.n}
+              onChange={(e) => setEuPick({ ...euPick, n: e.target.value })}
+            />
+          </div>
+          <button
+            onClick={() => {
+              if (Number(euPick.n) > 0) {
+                setEuCap(euPick.code, euPick.n)
+                setEuPick({ ...euPick, n: '' })
+              }
+            }}
+            className="btn-outline"
+          >
+            <Icon.check width={16} height={16} /> Add cap
+          </button>
+        </div>
+        {Object.keys(euCaps).length > 0 && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {Object.entries(euCaps).map(([code, n]) => {
+              const m = EU_MEMBER_STATES.find((s) => s.code === code)
+              return (
+                <span
+                  key={code}
+                  className="inline-flex items-center gap-2 rounded-lg border border-ink-900/15 bg-ink-900/[0.02] px-3 py-1.5 text-sm"
+                >
+                  <span className="font-mono text-xs text-ink-700/70">j:{code}:ret</span>
+                  <span className="font-semibold text-ink-900">{Number(n).toLocaleString()}</span>
+                  <span className="text-xs text-ink-700/60">{m?.name}</span>
+                  <button
+                    onClick={() => setEuCap(code, 0)}
+                    aria-label={`Remove ${code} cap`}
+                    className="text-ink-600 hover:text-rose-600"
+                  >
+                    <Icon.close width={14} height={14} />
+                  </button>
+                </span>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── Advanced: per-jurisdiction eligibility categories ─────────────── */}
+      <div className="card mt-5 overflow-hidden">
+        <button
+          onClick={() => setAdvOpen((o) => !o)}
+          className="flex w-full items-center justify-between px-6 py-4 text-left"
+        >
+          <span>
+            <span className="font-bold text-ink-900">Eligibility categories (advanced)</span>
+            <span className="mt-0.5 block text-sm text-ink-700/70">
+              Narrow which categories each admitted jurisdiction accepts. The access level sets
+              the default; you can only make a rule stricter.
+            </span>
+          </span>
+          <Icon.arrowRight
+            width={18}
+            height={18}
+            className={`shrink-0 text-ink-600 transition-transform ${advOpen ? 'rotate-90' : ''}`}
+          />
+        </button>
+        {advOpen && (
+          <div className="max-h-[380px] divide-y divide-ink-900/10 overflow-y-auto border-t border-ink-900/10">
+            {admittedCodes.length === 0 ? (
+              <p className="px-6 py-6 text-sm text-ink-700/60">
+                No jurisdiction is admitted yet. Set at least one to Standard or Qualified only in
+                the matrix above.
+              </p>
+            ) : (
+              admittedCodes.map((j) => {
+                const sel = eligFor(j.code)
+                return (
+                  <div key={j.code} className="flex flex-wrap items-center gap-3 px-6 py-3">
+                    <div className="w-40 shrink-0">
+                      <div className="text-sm font-medium text-ink-900">{j.name}</div>
+                      <div className="font-mono text-[11px] text-ink-700/55">
+                        {policy[j.code] === 'standard' ? 'Standard' : 'Qualified only'}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectableFor(j.code).map((c) => {
+                        const on = sel.includes(c.key)
+                        return (
+                          <button
+                            key={c.key}
+                            title={c.hint}
+                            onClick={() => toggleElig(j.code, c.key)}
+                            className={`rounded-md border px-2 py-1 font-mono text-[11px] font-semibold transition-colors ${
+                              on
+                                ? 'border-btc bg-btc-50 text-btc-700'
+                                : 'border-ink-900/15 text-ink-600 hover:bg-ink-900/[0.03]'
+                            }`}
+                          >
+                            j:{j.code}:{c.key}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── Compiled-rules preview ────────────────────────────────────────── */}
+      <div className="card mt-5 p-7">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="font-bold text-ink-900">Compiled policy preview</h3>
+            <p className="mt-1 text-sm text-ink-700/70">
+              seqpald compiles the matrix into the rules the policy server enforces. This is the
+              authoritative compile, computed on the server, not in your browser.
+            </p>
+          </div>
+          <button onClick={previewRules} disabled={previewing} className="btn-outline shrink-0 disabled:opacity-50">
+            {previewing ? (
+              <>
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-ink-900/20 border-t-ink-700" />
+                Compiling
+              </>
+            ) : (
+              <>
+                <Icon.bolt width={16} height={16} /> Preview compiled rules
+              </>
+            )}
+          </button>
+        </div>
+        {previewErr && (
+          <p className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{previewErr}</p>
+        )}
+        {preview && <CompiledRulesView preview={preview} />}
+      </div>
+    </div>
+  )
+}
+
+// A read-only render of the rules seqpald compiled from the matrix. Heights are
+// shown as absolute Sequentia block heights per the contract's display rule.
+function CompiledRulesView({ preview }) {
+  const r = preview.rules || {}
+  const rows = []
+  if (r.allowed_categories?.length)
+    rows.push(['Allowed categories', r.allowed_categories.join('  ')])
+  if (r.lockin_until_height)
+    rows.push(['Lockup', `until Sequentia block ${Number(r.lockin_until_height).toLocaleString()}`])
+  if (r.category_denies?.length)
+    rows.push([
+      'Reg S denies',
+      r.category_denies
+        .map((d) => `${d.prefix} until Sequentia block ${Number(d.until_height).toLocaleString()}`)
+        .join('; '),
+    ])
+  if (r.holder_caps_by_category && Object.keys(r.holder_caps_by_category).length)
+    rows.push([
+      'Per-category caps',
+      Object.entries(r.holder_caps_by_category)
+        .map(([k, v]) => `${k} = ${Number(v).toLocaleString()}`)
+        .join('; '),
+    ])
+  if (r.holder_cap) rows.push(['Global holder cap', Number(r.holder_cap).toLocaleString()])
+  if (r.velocity_window_blocks || r.velocity_max_atoms)
+    rows.push([
+      'Velocity',
+      `${Number(r.velocity_window_blocks || 0).toLocaleString()} blocks` +
+        (r.velocity_max_atoms ? ` / ${Number(r.velocity_max_atoms).toLocaleString()} atoms` : ''),
+    ])
+  rows.push([
+    'Primary senders (escrow / treasury)',
+    r.primary_aids?.length ? r.primary_aids.join('  ') : 'assigned at deploy',
+  ])
+
+  return (
+    <div className="mt-5">
+      <div className="rounded-xl border border-ink-900/10 bg-ink-900/[0.02] p-5">
+        {rows.length === 0 ? (
+          <p className="text-sm text-ink-700/70">
+            No categories are admitted, so no resident is eligible. Admit at least one
+            jurisdiction in the matrix above.
+          </p>
+        ) : (
+          <dl className="divide-y divide-ink-900/10 text-sm">
+            {rows.map(([k, v]) => (
+              <div key={k} className="flex flex-col gap-1 py-2.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-6">
+                <dt className="shrink-0 text-ink-700/70">{k}</dt>
+                <dd className="break-all font-mono text-xs text-ink-900 sm:text-right">{v}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </div>
+      <p className="mt-2 text-xs leading-relaxed text-ink-700/55">
+        Chain tip {Number(preview.tip_height || 0).toLocaleString()} ·{' '}
+        {Number(preview.blocks_per_day || 0).toLocaleString()} blocks/day. Day-based windows are
+        resolved to absolute block heights when you deploy.
+      </p>
     </div>
   )
 }
@@ -1121,7 +1586,7 @@ export function Step5Compliance({ data, update }) {
 export function Step6Checkout({ data, onDeployed }) {
   // Both create and deploy go through the store so its issuance list refreshes
   // before we navigate to the new issuance page.
-  const { createIssuance, deployIssuance } = useStore()
+  const { createIssuance, patchIssuance, deployIssuance } = useStore()
   const s = getStructure(data.structureId)
   const cost = computeSetupCost(data.structureId, data.isPublic, {
     raise: data.raise,
@@ -1150,15 +1615,29 @@ export function Step6Checkout({ data, onDeployed }) {
     setPhase('working')
     try {
       const terms = toTerms({ ...data, mintTarget })
-      const issuance = await createIssuance({
-        name: data.name,
-        ticker: data.ticker,
-        structure_id: data.structureId,
-        entity_id: data.principal?.entity_id || undefined,
-        terms,
-      })
+      // Reuse the draft issuance the compiled-rules preview created, if any, so
+      // the preview and the mint are the same record; otherwise create it now.
+      let issuanceId = data.issuanceId
+      if (issuanceId) {
+        await patchIssuance(issuanceId, {
+          name: data.name,
+          ticker: data.ticker,
+          structure_id: data.structureId,
+          entity_id: data.principal?.entity_id || '',
+          terms,
+        })
+      } else {
+        const issuance = await createIssuance({
+          name: data.name,
+          ticker: data.ticker,
+          structure_id: data.structureId,
+          entity_id: data.principal?.entity_id || undefined,
+          terms,
+        })
+        issuanceId = issuance.id
+      }
       const dep = await deployIssuance({
-        issuance_id: issuance.id,
+        issuance_id: issuanceId,
         supply,
         precision,
         clawback: true,
@@ -1167,7 +1646,7 @@ export function Step6Checkout({ data, onDeployed }) {
         terms,
         terms_hash: await termsHash(terms),
       })
-      setResult({ issuance, deploy: dep })
+      setResult({ issuanceId, deploy: dep })
       setPhase('live')
     } catch (e) {
       setErr({ message: e.message, status: e.status })
@@ -1233,7 +1712,7 @@ export function Step6Checkout({ data, onDeployed }) {
             Sequentia explorer.
           </div>
 
-          <button onClick={() => onDeployed(result.issuance.id)} className="btn-primary mt-6 w-full">
+          <button onClick={() => onDeployed(result.issuanceId)} className="btn-primary mt-6 w-full">
             Go to my issuance
             <Icon.arrowRight width={16} height={16} />
           </button>

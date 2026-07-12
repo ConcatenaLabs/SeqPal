@@ -93,6 +93,85 @@ CREATE TABLE audit_log (
     hash      TEXT NOT NULL
 );
 `,
+	// M2: compliance engine. All additive; an M1 database migrates forward in
+	// place. Claims records are the source of truth from which each user's
+	// openampd category list is a pure projection; screening and the review
+	// queue drive the sanctions path; enclave_keys hold the per-offering escrow
+	// and per-entity treasury keys seqpald custodies; platform_keys hold the
+	// claims-signing key.
+	`
+CREATE TABLE claims (
+    aid                TEXT PRIMARY KEY REFERENCES accounts(aid),
+    residence          TEXT    NOT NULL DEFAULT '',
+    base_eligibility   TEXT    NOT NULL DEFAULT 'ret',
+    accredited         INTEGER NOT NULL DEFAULT 0,
+    accred_artifact    TEXT    NOT NULL DEFAULT '',
+    accred_valid_until INTEGER NOT NULL DEFAULT 0,
+    us_person          INTEGER NOT NULL DEFAULT 0,
+    gb_hnw             INTEGER NOT NULL DEFAULT 0,
+    gb_soph            INTEGER NOT NULL DEFAULT 0,
+    tax_residencies    TEXT    NOT NULL DEFAULT '[]',
+    valid_until        INTEGER NOT NULL DEFAULT 0,
+    status             TEXT    NOT NULL DEFAULT 'unverified',
+    vocab_version      INTEGER NOT NULL DEFAULT 0,
+    claims_sig         TEXT    NOT NULL DEFAULT '',
+    verified_at        INTEGER NOT NULL DEFAULT 0,
+    updated_at         INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE screening (
+    aid              TEXT    NOT NULL,
+    list             TEXT    NOT NULL,
+    last_screened_at INTEGER NOT NULL DEFAULT 0,
+    matched          INTEGER NOT NULL DEFAULT 0,
+    matched_entry    TEXT    NOT NULL DEFAULT '',
+    PRIMARY KEY (aid, list)
+);
+CREATE TABLE review_queue (
+    id            TEXT PRIMARY KEY,
+    aid           TEXT    NOT NULL,
+    list          TEXT    NOT NULL DEFAULT '',
+    matched_entry TEXT    NOT NULL DEFAULT '',
+    state         TEXT    NOT NULL DEFAULT 'pending',
+    disposition   TEXT    NOT NULL DEFAULT '',
+    created_at    INTEGER NOT NULL,
+    decided_at    INTEGER NOT NULL DEFAULT 0,
+    decided_by    TEXT    NOT NULL DEFAULT '',
+    note          TEXT    NOT NULL DEFAULT ''
+);
+CREATE INDEX idx_review_state ON review_queue(state);
+CREATE INDEX idx_review_aid ON review_queue(aid);
+CREATE TABLE enclave_keys (
+    aid        TEXT PRIMARY KEY,
+    kind       TEXT    NOT NULL,
+    ref_id     TEXT    NOT NULL DEFAULT '',
+    xonly      TEXT    NOT NULL,
+    priv       TEXT    NOT NULL,
+    created_at INTEGER NOT NULL
+);
+CREATE INDEX idx_enclave_ref ON enclave_keys(kind, ref_id);
+CREATE TABLE platform_keys (
+    name       TEXT PRIMARY KEY,
+    xonly      TEXT    NOT NULL,
+    priv       TEXT    NOT NULL,
+    created_at INTEGER NOT NULL
+);
+CREATE TABLE ubo_links (
+    entity_id    TEXT PRIMARY KEY,
+    ubo_aid      TEXT    NOT NULL,
+    treasury_aid TEXT    NOT NULL DEFAULT '',
+    statement    TEXT    NOT NULL DEFAULT '',
+    sig          TEXT    NOT NULL DEFAULT '',
+    created_at   INTEGER NOT NULL
+);
+CREATE TABLE notices (
+    id         TEXT PRIMARY KEY,
+    aid        TEXT    NOT NULL,
+    kind       TEXT    NOT NULL,
+    body       TEXT    NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL
+);
+CREATE INDEX idx_notices_aid ON notices(aid);
+`,
 }
 
 // Store is seqpald's persistent state. Every financial fact the UI shows is

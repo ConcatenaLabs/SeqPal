@@ -6,6 +6,7 @@ import {
   encryptKey,
   generateEnclaveKey,
   signChallenge,
+  signStatement,
 } from './keys'
 
 // localStorage holds exactly two things, and neither is a financial fact:
@@ -215,6 +216,11 @@ export function StoreProvider({ children }) {
     return res
   }
 
+  // Sign an application statement with the session's in-memory enclave key. The
+  // decrypted key never leaves the store, so callers ask the store to sign
+  // rather than handling the key themselves. Returns null when locked.
+  const signWithKey = (tag, statement) => (priv ? signStatement(priv, tag, statement) : null)
+
   // ── in-memory simulation (portal drafts, subscriptions, servicing) ──
   const simFor = (id) => sim[id] || EMPTY_SIM
   const updateSim = (id, patch) =>
@@ -245,6 +251,7 @@ export function StoreProvider({ children }) {
     createIssuance,
     patchIssuance,
     deployIssuance,
+    signWithKey,
     simFor,
     updateSim,
   }

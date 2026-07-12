@@ -73,3 +73,34 @@ export const patchIssuance = (id, body) =>
 // Idempotent on sha256(xonly || terms_hash), so a retry of the same terms
 // returns the first result rather than minting a second asset.
 export const deploy = (body) => req('/deploy', { method: 'POST', body })
+
+// Compile the Step 5 matrix (or a preview override) into openampd rules,
+// server-side. seqpald is the only place the authoritative rules are computed;
+// this returns { rules, tip_height, blocks_per_day } for the onboarding preview.
+export const compileIssuance = (id, body) =>
+  req(`/issuances/${encodeURIComponent(id)}/compile`, { method: 'POST', body })
+
+// ── SeqPal ID (M2) ─────────────────────────────────────────────────────────
+// Run KYC (labeled-simulated document review, real states) plus real sanctions
+// screening on the signed-in identity, then stamp categories on approval.
+// Returns { status, aid, categories?, valid_until?, screening[] }.
+export const idVerify = (body) => req('/id/verify', { method: 'POST', body })
+
+// The passport: { aid, enclave_key, status, categories[], valid_until,
+// screening[], lists_screened[], frozen, entities[], accepted{assets,venues} }.
+export const idPassport = () => req('/id/passport')
+
+// KYB review for a linked corporate entity: provisions the entity treasury
+// enclave and records the UBO link. Returns { entity, treasury_aid, ubo_link }.
+export const verifyEntity = (id, body) =>
+  req(`/id/entities/${encodeURIComponent(id)}/verify`, { method: 'POST', body })
+
+// Advisory eligibility preflight (public): { aid, asset, eligible, reasons[] }.
+export const eligibility = (aid, asset) =>
+  req(`/eligibility?aid=${encodeURIComponent(aid)}&asset=${encodeURIComponent(asset)}`)
+
+// ── platform reviewer (admin-session only) ──────────────────────────────────
+export const reviewQueue = () => req('/admin/review-queue')
+
+export const reviewDecide = (id, body) =>
+  req(`/admin/review/${encodeURIComponent(id)}`, { method: 'POST', body })

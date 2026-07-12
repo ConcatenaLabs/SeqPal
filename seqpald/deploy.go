@@ -207,6 +207,7 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	// 1. Register the issuer's enclave key as an OpenAMP account. The AID is
 	//    recomputed locally and asserted: a policy server answering with a
 	//    different AID would silently mint into an account we do not control.
+	//    This is the issuer of record (clawback authority), not the holder.
 	aid, err := s.registerUser(acct.XOnly)
 	if err != nil {
 		refuse(502, "register account with the policy server: "+err.Error())
@@ -217,21 +218,49 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 2. Mint the restricted asset into that account's enclave. The issuer is also
-	//    the initial holder (the issuer-of-record treasury); distribution to
-	//    investors happens later through OpenAMP transfers.
+	// 2. Create the per-offering escrow/distribution enclave: a fresh registered
+	//    openampd user whose key seqpald custodies. The mint lands HERE, not in
+	//    the issuer's personal AID, so primary distribution flows from a scoped
+	//    escrow. It is idempotent per issuance, so a retry reuses the same escrow.
+	escrow, err := s.createEnclave(enclaveOfferingEscrow, iss.ID)
+	if err != nil {
+		refuse(502, "provision the offering escrow enclave: "+err.Error())
+		return
+	}
+
+	// 3. Compile the Step 5 matrix into openampd rules. The escrow AID and (if the
+	//    offering is entity-backed) the entity treasury AID are the primary AIDs:
+	//    lock-in and Reg S category denies bind only NON-primary senders, so
+	//    escrow-to-investor delivery works during a lockup while allowed_categories
+	//    still applies to every recipient.
+	compiled, err := s.compileForIssuance(iss, canonical)
+	if err != nil {
+		refuse(400, "the jurisdiction matrix could not be compiled: "+err.Error())
+		return
+	}
+	primary := []string{escrow.AID}
+	if iss.EntityID != "" {
+		if k, _ := s.st.EnclaveKeyByRef(enclaveEntityTreasury, iss.EntityID); k != nil {
+			primary = append(primary, k.AID)
+		}
+	}
+	compiled.PrimaryAIDs = primary
+	compiled.FeeConvertAtoms = req.FeeConvertAtom
+
+	// 4. Mint the restricted asset into the escrow enclave (holder = escrow AID).
+	//    The issuer AID remains the issuer of record for clawback authority.
 	issueBody := map[string]any{
 		"name":         iss.Name,
 		"ticker":       iss.Ticker,
 		"precision":    req.Precision,
 		"atoms":        atoms,
-		"holder_aid":   aid,
+		"holder_aid":   escrow.AID,
 		"issuer_aid":   aid,
 		"clawback":     clawback,
 		"burn_allowed": false,
 		"confidential": req.Confidential,
 		"terms_hash":   termsHash,
-		"rules":        map[string]any{"fee_convert_atoms": req.FeeConvertAtom},
+		"rules":        compiled,
 	}
 	var issued struct {
 		Asset        string `json:"asset"`
@@ -243,11 +272,12 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 3. Best-effort: fetch the enclave receive address for display.
+	// 5. Best-effort: fetch the escrow enclave's receive address for display (the
+	//    tokens live there). The response `aid` stays the issuer of record.
 	var addr struct {
 		Address string `json:"address"`
 	}
-	_ = s.callOpenAMP("GET", "/v1/users/"+aid+"/address?asset="+issued.Asset, "", nil, &addr)
+	_ = s.callOpenAMP("GET", "/v1/users/"+escrow.AID+"/address?asset="+issued.Asset, "", nil, &addr)
 
 	rec := &DeployRecord{
 		IdemKey:      idem,
@@ -278,7 +308,7 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		"asset_id":        issued.Asset,
 		"txid":            issued.Txid,
 		"contract_hash":   issued.ContractHash,
-		"holder_aid":      aid,
+		"holder_aid":      escrow.AID,
 		"enclave_address": addr.Address,
 	}); err != nil {
 		writeErr(w, 500, "store error")
@@ -287,8 +317,13 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	s.st.Audit(acct.AID, "deploy.success", map[string]any{
 		"issuance_id": iss.ID, "asset": issued.Asset, "txid": issued.Txid,
 		"contract_hash": issued.ContractHash, "atoms": atoms, "idem_key": idem,
+		"escrow_aid": escrow.AID, "primary_aids": primary,
 	})
-	writeJSON(w, 200, deployResponse(rec))
+	resp := deployResponse(rec)
+	resp["escrow_aid"] = escrow.AID
+	resp["holder_aid"] = escrow.AID
+	resp["rules"] = compiled
+	writeJSON(w, 200, resp)
 }
 
 func deployResponse(d *DeployRecord) map[string]any {

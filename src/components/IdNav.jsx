@@ -53,6 +53,26 @@ export default function IdNav() {
                 My ID
               </NavLink>
               <NavLink
+                to="/id/passport"
+                className={({ isActive }) =>
+                  `rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                    isActive ? 'text-btc-600' : 'text-ink-700 hover:bg-ink-900/5'
+                  }`
+                }
+              >
+                Passport
+              </NavLink>
+              <NavLink
+                to="/id/entities"
+                className={({ isActive }) =>
+                  `hidden rounded-lg px-3 py-2 text-sm font-medium transition-colors sm:block ${
+                    isActive ? 'text-btc-600' : 'text-ink-700 hover:bg-ink-900/5'
+                  }`
+                }
+              >
+                Companies
+              </NavLink>
+              <NavLink
                 to="/holdings"
                 className={({ isActive }) =>
                   `rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
@@ -79,10 +99,15 @@ export default function IdNav() {
               </button>
             </>
           ) : (
-            <span className="inline-flex items-center gap-1.5 text-sm text-ink-700/70">
-              <Icon.shield width={16} height={16} className="text-seq-600" />
-              Your compliance passport
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="hidden items-center gap-1.5 text-sm text-ink-700/70 sm:inline-flex">
+                <Icon.shield width={16} height={16} className="text-seq-600" />
+                Your compliance passport
+              </span>
+              <Link to="/id/register" className="btn-primary px-4 py-2 text-sm">
+                Create or sign in
+              </Link>
+            </div>
           )}
         </div>
       </div>
