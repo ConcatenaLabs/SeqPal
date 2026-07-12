@@ -297,6 +297,81 @@ export const consoleClawback = (id, body) =>
 // { notices:[{id, aid, kind, body, created_at}] }.
 export const notices = () => req('/id/notices')
 
+// ── M8 secondary market: P2P transfers + refusals + travel rule ─────────────
+// The once-per-investor market-abuse / insider-dealing acknowledgment state:
+// { acknowledged, version, sign_this, tag, at? }. It gates the transfer surfaces.
+export const marketAbuseAckGet = () => req('/id/market-abuse-ack')
+
+// Record the acknowledgment (session). A signature is optional; when supplied it
+// is a tagged acknowledgment by the caller's own key. Returns { acknowledged, at }.
+export const marketAbuseAck = (body = {}) =>
+  req('/id/market-abuse-ack', { method: 'POST', body })
+
+// Build a policy-co-signed holder-to-holder transfer. Body { asset, to_aid, atoms }.
+// Returns { transfer_id, oa_id, tx, to_sign:[{input,sighash,pubkey}],
+// recipient_preflight:{eligible,reasons}, travel_rule:{originator,beneficiary,
+// captured_via} }. A 403 with data.requirement === 'market_abuse_ack' means the
+// acknowledgment is unrecorded; a 404 means the beneficiary is not a registered
+// SeqPal identity (a P2P transfer captures both counterparties).
+export const buildTransfer = (body) => req('/transfers', { method: 'POST', body })
+
+// Complete a built transfer with the originator's signatures. Body { sigs:{input:sig} }.
+// Success → { transfer_id, txid, state:'settled' }. A REFUSAL is a first-class 403:
+// the thrown ApiError.data carries { state:'refused', refused:true, reason, log_url }.
+export const completeTransfer = (id, body) =>
+  req(`/transfers/${encodeURIComponent(id)}/complete`, { method: 'POST', body })
+
+// The caller's P2P transfers as originator, newest first: { transfers:[{transfer,
+// travel_rule}], log_url }. Each transfer carries its state (incl. a refusal reason).
+export const listTransfers = () => req('/transfers')
+
+// ── M8 listings authorization (public; serves the SeqDEX handover) ──────────
+// With ?asset=<id>: that asset's authorization or a not-authorized stub. Otherwise
+// every authorized listing, optionally filtered by ?issuer=<aid>. A venue reads
+// this to learn which assets an issuer authorized for listing; it can never GRANT
+// eligibility (that is stamped by SeqPal ID, checked at /api/eligibility).
+export const listings = ({ asset, issuer } = {}) => {
+  const q = new URLSearchParams()
+  if (asset) q.set('asset', asset)
+  if (issuer) q.set('issuer', issuer)
+  const s = q.toString()
+  return req(`/listings${s ? `?${s}` : ''}`)
+}
+
+// Owner: grant or revoke a listing authorization for the issuance's asset. POST
+// with no signature records it; an optional signature by the issuer's own key
+// (tag seqpal-listing-v1) is recorded when present. Body { authorized, venues[],
+// signature?, signer_xonly? } → { listing }.
+export const grantListing = (id, body) =>
+  req(`/issuances/${encodeURIComponent(id)}/listing`, { method: 'POST', body })
+
+// ── M8 Depository-Receipt programme (owner) ─────────────────────────────────
+// The programme state, its ops, and the chain-derived supply: { program, ops[],
+// circulating_atoms, height, supply_source:'chain-derived', custodian }.
+export const drProgram = (id) => req(`/issuances/${encodeURIComponent(id)}/dr`)
+
+// Enable the programme and enforce the US-person exclusion as a REAL policy-server
+// j:US category deny (not a display string): { program, note }.
+export const drEnable = (id) =>
+  req(`/issuances/${encodeURIComponent(id)}/dr/enable`, { method: 'POST', body: {} })
+
+// Mint = OA-6 reissuance into the custodian enclave. Body { atoms, target_aid?,
+// request_id? } (request_id is the idempotency key). Success → { op, reissue_txid,
+// state, circulating_atoms, height }. A 202 { state:'reblinding', request_id } means
+// the reissuance token is re-blinding; retry with the SAME request_id shortly.
+export const drMint = (id, body) =>
+  req(`/issuances/${encodeURIComponent(id)}/dr/mint`, { method: 'POST', body })
+
+// Redeem = OA-5 burn from a custodied enclave, reducing chain-derived supply. Body
+// { atoms, holder_aid?, request_id? } → { op, burn_txid, state, circulating_atoms,
+// height }. Idempotent by request_id; a lost write reconciles from the public log.
+export const drRedeem = (id, body) =>
+  req(`/issuances/${encodeURIComponent(id)}/dr/redeem`, { method: 'POST', body })
+
+// The chain-derived circulating supply alone: { asset, circulating_atoms, height,
+// supply_source:'chain-derived' }. Never a stored counter.
+export const drSupply = (id) => req(`/issuances/${encodeURIComponent(id)}/dr/supply`)
+
 // ── platform reviewer (admin-session only) ──────────────────────────────────
 export const reviewQueue = () => req('/admin/review-queue')
 

@@ -9,6 +9,7 @@ import {
   signClosing,
   signDocument,
   signMandate,
+  signSighash,
   signStatement,
 } from './keys'
 
@@ -271,6 +272,25 @@ export function StoreProvider({ children }) {
   const signMandateStmt = (statement) => (priv ? signMandate(priv, statement) : null)
   const signCloseStmt = (statement) => (priv ? signClosing(priv, statement) : null)
 
+  // Co-sign a policy-server transfer build with the session's in-memory enclave
+  // key: turn openampd's to_sign list ([{input, sighash, pubkey}]) into the
+  // { input: signature } map /api/transfers/{id}/complete expects. It refuses to
+  // sign any input whose pubkey is not this key's own x-only, the same guard
+  // seqpald applies server-side, so the holder never signs a sighash spending a
+  // key they do not hold. Returns null when the key is locked.
+  const signTransferSigs = (toSign) => {
+    if (!priv) return null
+    const mine = envelope?.xonly || account?.xonly
+    const sigs = {}
+    for (const ts of toSign || []) {
+      if (ts.pubkey && ts.pubkey !== mine) {
+        throw new Error('This transfer asks for a signature from a key you do not hold. Nothing was signed.')
+      }
+      sigs[String(ts.input)] = signSighash(priv, ts.sighash)
+    }
+    return sigs
+  }
+
   // ── in-memory simulation (portal drafts, subscriptions, servicing) ──
   // The latest chain-watch event for an issuance, or undefined until the SSE
   // stream delivers one (the surface then shows a distinct "awaiting" chip
@@ -310,6 +330,7 @@ export function StoreProvider({ children }) {
     signDoc,
     signMandateStmt,
     signCloseStmt,
+    signTransferSigs,
     xonly: envelope?.xonly || account?.xonly,
     hasKey: !!priv,
     watch,

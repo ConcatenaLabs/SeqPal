@@ -40,6 +40,7 @@ type m5pendingTransfer struct {
 	recipient   string
 	atoms       uint64
 	senderXOnly string
+	burn        bool // M8: an OA-5 burn build (send to a provably-unspendable output)
 }
 
 type m5Stub struct {
@@ -52,7 +53,7 @@ type m5Stub struct {
 	nAsset   int
 
 	pending       map[string]*m5pendingTransfer
-	transferCount int              // successful /complete calls (deliveries)
+	transferCount int // successful /complete calls (deliveries)
 	deliveries    []m5pendingTransfer
 	rulesWritten  map[string]json.RawMessage // asset -> last rules posted
 
@@ -83,17 +84,38 @@ type m5Stub struct {
 	clawbacks     int
 	gateAsset     string
 	gateCat       string
+
+	// M8 instrumentation (additive; all inert by default so the M5/M6/M7 suite is
+	// byte-identical). reissues maps a DR-mint request_id to its reissue txid, so a
+	// retry is idempotent; reblindLeft makes POST /v1/issuer/reissue answer 202
+	// "reblinding" a set number of times before it broadcasts (the reissuance-token
+	// re-blinding retry loop). completeRefuse maps a pending transfer's recipient AID
+	// to a policy-refusal reason so POST /v1/transfers/{id}/complete returns a real
+	// 403 at co-sign (the first-class P2P refusal path). broadcastThenFailOnce makes
+	// the next /complete settle on chain (deliver + append the transparency-log
+	// entry) but then return 500, so a lost-write reconciliation is exercised. txLog
+	// is the settled transfer / burn transparency log the P2P + DR reconcilers scan;
+	// logSeq numbers those entries for the wallet-transfer poller cursor.
+	reissues              map[string]string
+	reblindLeft           map[string]int
+	completeRefuse        map[string]string
+	broadcastThenFailOnce bool
+	txLog                 []map[string]any
+	logSeq                uint64
 }
 
 func newM5Stub(t *testing.T) *m5Stub {
 	t.Helper()
 	f := &m5Stub{
-		users:         map[string]*m5User{},
-		assets:        map[string]map[string]any{},
-		balances:      map[string]map[string]uint64{},
-		pending:       map[string]*m5pendingTransfer{},
-		rulesWritten:  map[string]json.RawMessage{},
-		holdersHeight: 250000,
+		users:          map[string]*m5User{},
+		assets:         map[string]map[string]any{},
+		balances:       map[string]map[string]uint64{},
+		pending:        map[string]*m5pendingTransfer{},
+		rulesWritten:   map[string]json.RawMessage{},
+		holdersHeight:  250000,
+		reissues:       map[string]string{},
+		reblindLeft:    map[string]int{},
+		completeRefuse: map[string]string{},
 	}
 	mux := http.NewServeMux()
 
@@ -305,15 +327,49 @@ func newM5Stub(t *testing.T) *m5Stub {
 			writeJSON(w, 404, map[string]any{"error": "unknown transfer"})
 			return
 		}
+		// M8 first-class refusal at co-sign: an ineligible recipient, a resale inside
+		// the lockup window, or a Reg S distribution-compliance window. The pending is
+		// consumed (openampd co-signs once) and a real 403 with the reason is returned.
+		if reason := f.completeRefuse[pt.recipient]; reason != "" && !pt.burn {
+			delete(f.pending, id)
+			f.mu.Unlock()
+			writeJSON(w, 403, map[string]any{"error": reason})
+			return
+		}
 		delete(f.pending, id)
 		f.transferCount++
 		f.deliveries = append(f.deliveries, *pt)
-		if f.balances[pt.recipient] == nil {
-			f.balances[pt.recipient] = map[string]uint64{}
-		}
-		f.balances[pt.recipient][pt.asset] += pt.atoms
-		f.mu.Unlock()
 		txid, _ := randHex(32)
+		f.logSeq++
+		if pt.burn {
+			// OA-5 burn: the holder's units go to a provably-unspendable output, so the
+			// holder balance drops and the chain-derived supply falls with it.
+			if m := f.balances[pt.sender]; m != nil && m[pt.asset] >= pt.atoms {
+				m[pt.asset] -= pt.atoms
+			}
+			f.txLog = append(f.txLog, map[string]any{
+				"seq": f.logSeq, "action": "burn",
+				"data": map[string]any{"asset": pt.asset, "sender": pt.sender, "atoms": pt.atoms, "txid": txid},
+			})
+		} else {
+			if f.balances[pt.recipient] == nil {
+				f.balances[pt.recipient] = map[string]uint64{}
+			}
+			f.balances[pt.recipient][pt.asset] += pt.atoms
+			f.txLog = append(f.txLog, map[string]any{
+				"seq": f.logSeq, "action": "transfer",
+				"data": map[string]any{"asset": pt.asset, "sender": pt.sender, "atoms": pt.atoms, "txid": txid},
+			})
+		}
+		// Broadcast-then-lost-response: the tx settled and was logged, but the caller
+		// sees a 500. seqpald must reconcile from the log, never re-broadcast.
+		fail := f.broadcastThenFailOnce
+		f.broadcastThenFailOnce = false
+		f.mu.Unlock()
+		if fail {
+			writeJSON(w, 500, map[string]any{"error": "connection reset after broadcast"})
+			return
+		}
 		writeJSON(w, 200, map[string]any{"txid": txid})
 	})
 
@@ -399,11 +455,14 @@ func newM5Stub(t *testing.T) *m5Stub {
 		writeJSON(w, 200, map[string]any{"txid": txid, "atoms": atoms})
 	})
 
-	// M7: the public transparency log as newline-delimited JSON, scanned by
-	// findClawbackInLog.
+	// M7/M8: the public transparency log as newline-delimited JSON, scanned by
+	// findClawbackInLog (action "clawback") and the M8 reconcilers / wallet poller
+	// (actions "transfer" and "burn"). Every consumer filters by action, so the two
+	// families never cross.
 	mux.HandleFunc("GET /v1/log", func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		entries := append([]map[string]any{}, f.clawbackLog...)
+		entries = append(entries, f.txLog...)
 		f.mu.Unlock()
 		w.WriteHeader(200)
 		for _, e := range entries {
@@ -411,6 +470,84 @@ func newM5Stub(t *testing.T) *m5Stub {
 			w.Write(b)
 			w.Write([]byte("\n"))
 		}
+	})
+
+	// M8 OA-6 DR mint (reissuance): idempotent by request_id; optionally answers
+	// "reblinding" a set number of times first (the reissuance-token re-blinding
+	// retry loop). A broadcast lands the minted units in the target enclave, raising
+	// the chain-derived supply.
+	mux.HandleFunc("POST /v1/issuer/reissue", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-issuer-token" {
+			writeJSON(w, 401, map[string]any{"error": "bad token"})
+			return
+		}
+		var req struct {
+			Asset     string `json:"asset"`
+			TargetAID string `json:"target_aid"`
+			Atoms     uint64 `json:"atoms"`
+			RequestID string `json:"request_id"`
+		}
+		raw, _ := readAllLimited(r.Body, 1<<20)
+		json.Unmarshal(raw, &req)
+		f.mu.Lock()
+		if txid, ok := f.reissues[req.RequestID]; ok {
+			f.mu.Unlock()
+			writeJSON(w, 200, map[string]any{"reissue_txid": txid, "status": "done", "idempotent": true})
+			return
+		}
+		if n := f.reblindLeft[req.RequestID]; n > 0 {
+			f.reblindLeft[req.RequestID] = n - 1
+			f.mu.Unlock()
+			writeJSON(w, 202, map[string]any{"status": "reblinding", "reblind_txid": fmt.Sprintf("%064x", 800000+n)})
+			return
+		}
+		if f.balances[req.TargetAID] == nil {
+			f.balances[req.TargetAID] = map[string]uint64{}
+		}
+		f.balances[req.TargetAID][req.Asset] += req.Atoms
+		txid := fmt.Sprintf("%064x", 810000+len(f.reissues)+1)
+		f.reissues[req.RequestID] = txid
+		f.mu.Unlock()
+		writeJSON(w, 200, map[string]any{"reissue_txid": txid, "status": "broadcast", "target_aid": req.TargetAID, "atoms": req.Atoms})
+	})
+
+	// M8 OA-5 burn build: returns the holder-side sighash to sign (pubkey empty, so
+	// the custodian signs with its enclave key). Completion runs through the shared
+	// /v1/transfers/{id}/complete path, which recognizes the burn pending.
+	mux.HandleFunc("POST /v1/issuer/burn", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-issuer-token" {
+			writeJSON(w, 401, map[string]any{"error": "bad token"})
+			return
+		}
+		var req struct {
+			Asset     string `json:"asset"`
+			HolderAID string `json:"holder_aid"`
+			Atoms     uint64 `json:"atoms"`
+		}
+		raw, _ := readAllLimited(r.Body, 1<<20)
+		json.Unmarshal(raw, &req)
+		f.mu.Lock()
+		id, _ := randHex(8)
+		f.pending[id] = &m5pendingTransfer{asset: req.Asset, sender: req.HolderAID, atoms: req.Atoms, burn: true}
+		f.mu.Unlock()
+		writeJSON(w, 200, map[string]any{
+			"id": id, "burn_atoms": req.Atoms,
+			"to_sign": []map[string]any{{"input": 0, "sighash": strings.Repeat("22", 32), "pubkey": ""}},
+		})
+	})
+
+	// M8 chain-derived circulating supply: the holders sum (never a stored counter),
+	// so a burn lowers it and a reissue raises it as the balances move.
+	mux.HandleFunc("GET /v1/supply", func(w http.ResponseWriter, r *http.Request) {
+		asset := r.URL.Query().Get("asset")
+		f.mu.Lock()
+		var total uint64
+		for _, m := range f.balances {
+			total += m[asset]
+		}
+		h := f.holdersHeight
+		f.mu.Unlock()
+		writeJSON(w, 200, map[string]any{"asset": asset, "circulating_atoms": total, "height": h})
 	})
 
 	f.srv = httptest.NewServer(mux)
@@ -549,15 +686,66 @@ func (f *m5Stub) rulesFor(asset string) json.RawMessage {
 	return f.rulesWritten[asset]
 }
 
+// --- M8 stub helpers ---------------------------------------------------------
+
+// supplyOf is the chain-derived circulating supply GET /v1/supply reports: the
+// sum of every holder's balance for the asset.
+func (f *m5Stub) supplyOf(asset string) uint64 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var total uint64
+	for _, m := range f.balances {
+		total += m[asset]
+	}
+	return total
+}
+
+// setRefusal makes the policy server refuse a co-sign for a recipient AID with a
+// given reason (the first-class P2P refusal: ineligible / lockup / Reg S).
+func (f *m5Stub) setRefusal(recipientAID, reason string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.completeRefuse[recipientAID] = reason
+}
+
+// injectWalletTransfer appends a settled, wallet-initiated secondary transfer to
+// the public transparency log, as the live wallet's own policy co-signature would.
+// The M8 poller captures it and joins it to registered identities server-side.
+func (f *m5Stub) injectWalletTransfer(asset, sender string, atoms uint64, txid string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logSeq++
+	f.txLog = append(f.txLog, map[string]any{
+		"seq": f.logSeq, "action": "transfer",
+		"data": map[string]any{"asset": asset, "sender": sender, "atoms": atoms, "txid": txid},
+	})
+}
+
+// burnLogCount counts settled burn entries in the transparency log for an asset,
+// so a test can prove a redeem burned exactly once (no double-burn).
+func (f *m5Stub) burnLogCount(asset string) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n := 0
+	for _, e := range f.txLog {
+		if e["action"] == "burn" {
+			if d, ok := e["data"].(map[string]any); ok && d["asset"] == asset {
+				n++
+			}
+		}
+	}
+	return n
+}
+
 // ---------------------------------------------------------------------------
 // JSON-RPC node stub (plays the Sequentia escrow node AND the testnet4 node)
 // ---------------------------------------------------------------------------
 
 type nodeDeposit struct {
-	txid   string
-	atoms  uint64
-	confs  int64
-	asset  string
+	txid  string
+	atoms uint64
+	confs int64
+	asset string
 }
 
 type nodeSend struct {
