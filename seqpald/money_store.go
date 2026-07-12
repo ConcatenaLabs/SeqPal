@@ -561,6 +561,77 @@ func (s *Store) GateRecord(aid, issuanceID, kind string) (*GateRecord, error) {
 	return &g, nil
 }
 
+// --- reorged-BTC-deposit holds (M6) ------------------------------------------
+
+// ReorgHold records a global account freeze applied because a settled native-BTC
+// subscription's deposit was reorged out post-delivery. state: active (frozen) |
+// cleared (re-confirmed, unfrozen) | clawed (resolved by clawback).
+type ReorgHold struct {
+	SubscriptionID string `json:"subscription_id"`
+	IssuanceID     string `json:"issuance_id"`
+	InvestorAID    string `json:"investor_aid"`
+	DepositTxid    string `json:"deposit_txid"`
+	State          string `json:"state"`
+	Reason         string `json:"reason,omitempty"`
+	CreatedAt      int64  `json:"created_at"`
+	UpdatedAt      int64  `json:"updated_at"`
+}
+
+// UpsertReorgHold inserts or updates the hold for a subscription, refreshing its
+// state, reason and updated_at while preserving created_at on the first write.
+func (s *Store) UpsertReorgHold(h *ReorgHold) error {
+	now := time.Now().Unix()
+	if h.CreatedAt == 0 {
+		h.CreatedAt = now
+	}
+	_, err := s.db.Exec(
+		`INSERT INTO reorg_holds (subscription_id, issuance_id, investor_aid, deposit_txid, state, reason, created_at, updated_at)
+         VALUES (?,?,?,?,?,?,?,?)
+         ON CONFLICT(subscription_id) DO UPDATE SET
+            state=excluded.state, reason=excluded.reason, deposit_txid=excluded.deposit_txid, updated_at=excluded.updated_at`,
+		h.SubscriptionID, h.IssuanceID, h.InvestorAID, h.DepositTxid, h.State, h.Reason, h.CreatedAt, now)
+	return err
+}
+
+func (s *Store) ReorgHoldBySub(subID string) (*ReorgHold, error) {
+	var h ReorgHold
+	err := s.db.QueryRow(
+		`SELECT subscription_id, issuance_id, investor_aid, deposit_txid, state, reason, created_at, updated_at
+         FROM reorg_holds WHERE subscription_id = ?`, subID).
+		Scan(&h.SubscriptionID, &h.IssuanceID, &h.InvestorAID, &h.DepositTxid, &h.State, &h.Reason, &h.CreatedAt, &h.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &h, nil
+}
+
+func (s *Store) ActiveReorgHolds() ([]*ReorgHold, error) {
+	rows, err := s.db.Query(
+		`SELECT subscription_id, issuance_id, investor_aid, deposit_txid, state, reason, created_at, updated_at
+         FROM reorg_holds WHERE state = 'active' ORDER BY created_at`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []*ReorgHold{}
+	for rows.Next() {
+		var h ReorgHold
+		if err := rows.Scan(&h.SubscriptionID, &h.IssuanceID, &h.InvestorAID, &h.DepositTxid,
+			&h.State, &h.Reason, &h.CreatedAt, &h.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, &h)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) UpdateReorgHoldFields(subID string, fields map[string]any) error {
+	return s.updateFields("reorg_holds", "subscription_id", subID, fields)
+}
+
 // --- generic partial update (shared by the M5 tables) ------------------------
 
 // updateFields applies a partial update to one row of a table by a key column.

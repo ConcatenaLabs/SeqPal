@@ -56,8 +56,20 @@ type m5Stub struct {
 	deliveries    []m5pendingTransfer
 	rulesWritten  map[string]json.RawMessage // asset -> last rules posted
 
+	// M6 instrumentation (additive; unused by M5 tests): the raw body of every
+	// POST /v1/transfers build (so a test can assert whether seqpald attached an
+	// OA-4 "payment" leg) and a count of POST /v1/issuer/freeze calls (so a test
+	// can assert whether a reorg triggered the global account freeze).
+	transferBodies []map[string]any
+	freezeCalls    int
+
 	failTransfers bool // /v1/transfers returns 500
 	failComplete  bool // /v1/transfers/{id}/complete returns 500
+
+	// M6: simulate a pre-OA-4 policy server that rejects the unknown "payment"
+	// field (DisallowUnknownFields), the runtime capability signal that makes
+	// closing fall back to the v1 two-transaction path.
+	rejectPaymentField bool
 }
 
 func newM5Stub(t *testing.T) *m5Stub {
@@ -140,6 +152,18 @@ func newM5Stub(t *testing.T) *m5Stub {
 	})
 
 	mux.HandleFunc("POST /v1/issuer/freeze", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			AID    string `json:"aid"`
+			Frozen bool   `json:"frozen"`
+		}
+		raw, _ := readAllLimited(r.Body, 1<<20)
+		json.Unmarshal(raw, &req)
+		f.mu.Lock()
+		f.freezeCalls++
+		if u, ok := f.users[req.AID]; ok {
+			u.Frozen = req.Frozen
+		}
+		f.mu.Unlock()
 		writeJSON(w, 200, map[string]any{"ok": true})
 	})
 
@@ -198,6 +222,18 @@ func newM5Stub(t *testing.T) *m5Stub {
 		}
 		raw, _ := readAllLimited(r.Body, 1<<20)
 		json.Unmarshal(raw, &body)
+		var rawBody map[string]any
+		json.Unmarshal(raw, &rawBody)
+		f.mu.Lock()
+		f.transferBodies = append(f.transferBodies, rawBody)
+		reject := f.rejectPaymentField
+		f.mu.Unlock()
+		if _, hasPay := rawBody["payment"]; hasPay && reject {
+			// A pre-OA-4 policy server rejects the unknown field, exactly as
+			// DisallowUnknownFields would; seqpald reads this as "no payment leg".
+			writeJSON(w, 400, map[string]any{"error": `json: unknown field "payment"`})
+			return
+		}
 		f.mu.Lock()
 		senderXOnly := ""
 		if u, ok := f.users[body.SenderAID]; ok && len(u.Pubkeys) > 0 {
@@ -210,12 +246,21 @@ func newM5Stub(t *testing.T) *m5Stub {
 		}
 		f.mu.Unlock()
 		sighash := strings.Repeat("11", 32)
-		writeJSON(w, 200, map[string]any{
+		out := map[string]any{
 			"id": id,
 			"to_sign": []map[string]any{
 				{"input": 0, "sighash": sighash, "pubkey": senderXOnly},
 			},
-		})
+		}
+		// M6 OA-4 payment leg: when the build carries a "payment" object, answer the
+		// atomic shape (assembled tx hex + the ordinary payment input indices seqpald
+		// signs itself). The enclave input is 0, the payment input is 1, the fee input
+		// is 2 (openampd's own). A build WITHOUT a payment object keeps the M5 shape.
+		if _, ok := rawBody["payment"]; ok {
+			out["tx"] = "0200000000" + id // a non-empty placeholder tx body
+			out["payment_inputs"] = []int{1}
+		}
+		writeJSON(w, 200, out)
 	})
 
 	mux.HandleFunc("POST /v1/transfers/{id}/complete", func(w http.ResponseWriter, r *http.Request) {
@@ -281,6 +326,68 @@ func (f *m5Stub) transfers() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.transferCount
+}
+
+// freezes reports how many POST /v1/issuer/freeze calls the stub has seen (M6:
+// a BTC-reorg-out post delivery must trigger the global account freeze).
+func (f *m5Stub) freezes() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.freezeCalls
+}
+
+// frozen reports whether the given AID is currently frozen at the policy server
+// (M6 reorg watcher: frozen on reorg-out, unfrozen on re-confirmation).
+func (f *m5Stub) frozen(aid string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if u, ok := f.users[aid]; ok {
+		return u.Frozen
+	}
+	return false
+}
+
+// anyTransferCarriedPayment reports whether ANY POST /v1/transfers build body
+// carried an OA-4 "payment" leg (the atomic-DvP marker). If no build ever
+// carried one, closing ran the M5 two-transaction v1 path (delivery + a
+// separate release send), not atomic single-tx DvP.
+func (f *m5Stub) anyTransferCarriedPayment() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, b := range f.transferBodies {
+		if b == nil {
+			continue
+		}
+		if _, ok := b["payment"]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// transferBuildCount reports how many POST /v1/transfers builds were requested.
+func (f *m5Stub) transferBuildCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.transferBodies)
+}
+
+// lastPaymentLeg returns the "payment" object from the most recent transfer build
+// that carried one (the OA-4 atomic leg: asset, atoms, from_address, to_address),
+// or nil if no build carried a payment leg.
+func (f *m5Stub) lastPaymentLeg() map[string]any {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i := len(f.transferBodies) - 1; i >= 0; i-- {
+		b := f.transferBodies[i]
+		if b == nil {
+			continue
+		}
+		if p, ok := b["payment"].(map[string]any); ok {
+			return p
+		}
+	}
+	return nil
 }
 
 func (f *m5Stub) rulesFor(asset string) json.RawMessage {
@@ -423,6 +530,29 @@ func (n *fakeNode) dispatch(method string, params []json.RawMessage) (any, int, 
 			})
 		}
 		return out, 0, ""
+	case "gettransaction":
+		// M6 reorg watcher: report a deposit tx's confirmation count. A reorged-out
+		// deposit stays in the wallet with confs 0 (back in the mempool) or negative
+		// (conflicted). Unknown txid -> RPC error so btcTxConfirmations takes no action.
+		var txid string
+		if len(params) > 0 {
+			json.Unmarshal(params[0], &txid)
+		}
+		for _, d := range n.deposits {
+			if d.txid == txid {
+				return map[string]any{"confirmations": d.confs, "txid": txid}, 0, ""
+			}
+		}
+		return nil, -5, "Invalid or non-wallet transaction id"
+	case "signrawtransactionwithwallet":
+		// M6 atomic close: the escrow wallet partially signs its own USDX payment
+		// inputs over the built tx. The body is returned unchanged (complete=false:
+		// the enclave + fee inputs remain for openampd to finish).
+		var txHex string
+		if len(params) > 0 {
+			json.Unmarshal(params[0], &txHex)
+		}
+		return map[string]any{"hex": txHex, "complete": false}, 0, ""
 	default:
 		return nil, -32601, "method not found: " + method
 	}

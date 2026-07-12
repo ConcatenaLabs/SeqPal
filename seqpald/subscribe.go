@@ -186,11 +186,20 @@ func (s *server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, 500, "could not record the subscription")
 			return
 		}
-		s.st.Audit(acct.AID, "subscribe.btc", map[string]any{"issuance_id": iss.ID, "sub": sub.ID, "deposit_address": addr, "pay_sats": sub.PayAmount, "rate": btcUSD})
+		// The BTC rail is registrar-style, so a post-delivery testnet4 reorg is a
+		// residual risk. Clawback is the resolution if a reorged deposit does not
+		// re-confirm; an offering without clawback carries the residual risk, stated
+		// here and in the audit so it is never silent.
+		reorgNote := "if this BTC deposit is reorged out after delivery, the account is frozen and, if the deposit does not re-confirm, the tokens are clawed back with reason"
+		if !iss.Clawback {
+			reorgNote = "this offering was issued WITHOUT clawback: if this BTC deposit is reorged out after delivery, the account is frozen but the delivered tokens cannot be clawed back, a residual reorg risk you accept on the native-BTC rail"
+		}
+		s.st.Audit(acct.AID, "subscribe.btc", map[string]any{"issuance_id": iss.ID, "sub": sub.ID, "deposit_address": addr, "pay_sats": sub.PayAmount, "rate": btcUSD, "clawback": iss.Clawback})
 		writeJSON(w, 200, map[string]any{
 			"subscription": sub, "deposit_address": addr, "pay_amount": sub.PayAmount, "pay_ccy": "BTC",
 			"quoted_rate_usd_btc": btcUSD, "confs_required": s.cfg.escrowConfs,
 			"registrar_note": "cross-chain registrar settlement: this BTC payment is confirmed on testnet4, then delivery is co-signed on Sequentia; it is not atomic",
+			"reorg_note":     reorgNote,
 		})
 
 	case "card", "bank":
