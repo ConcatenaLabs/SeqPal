@@ -16,7 +16,7 @@ export default function IdFooter() {
           erasure rights (subject to AML retention) via the privacy contact.
         </p>
         <p className="mt-4 text-xs text-ink-700/50">
-          © {new Date().getFullYear()} SeqPal ID · id.seqpal.io —{' '}
+          © {new Date().getFullYear()} SeqPal ID · id.seqpal.io ·{' '}
           <span className="text-btc/80">demo preview</span>. Not investment advice; nothing
           here is an offer to sell or a solicitation to buy any security.
         </p>

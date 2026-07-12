@@ -20,6 +20,7 @@ seqpald/seqpald
 seqpald/*.db
 seqpald/*.db-shm
 seqpald/*.db-wal
+seqpald/sanctions-cache/
 *.env
 
 # vendored deps (139MB modernc.org/sqlite); box builds from the module cache

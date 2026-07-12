@@ -31,7 +31,7 @@ const products = [
   {
     icon: Icon.id,
     name: 'SeqPal ID',
-    body: 'A consolidated KYC/KYB and accreditation passport — and your login. Established once, it whitelists the holder for every SeqPal-issued asset their profile is eligible to hold.',
+    body: 'A consolidated KYC/KYB and accreditation passport for anyone, not an issuer login. One role-neutral flow; verified once, it whitelists the holder for every SeqPal-managed asset their profile is eligible to hold.',
   },
   {
     icon: Icon.exchange,

@@ -19,13 +19,13 @@ const products = [
   {
     icon: Icon.id,
     name: 'SeqPal ID',
-    tagline: 'A universal compliance passport.',
-    body: 'A consolidated KYC/KYB and accreditation passport that, once established, automatically whitelists the holder for every SeqPal-issued asset for which their profile is compliant. The passport’s claims are enforced on every transfer of the issued tokens via OpenAMP.',
+    tagline: 'A universal compliance passport, for anyone.',
+    body: 'The identity and compliance passport for the whole SeqPal-on-Sequentia world, not an issuer login. One role-neutral registration flow: it never asks whether you intend to issue or invest. Once verified, it carries the eligibility categories the policy server enforces on every transfer, so the holder is whitelisted for every SeqPal-managed asset their profile is eligible to hold, and needs it to hold or trade one anywhere on Sequentia at all.',
     points: [
+      'One flow for everyone, no user-type question',
       'KYC / KYB and accreditation in one profile',
-      'Sanctions screening every 24 hours; PEP & adverse-media at least monthly',
-      'Jurisdiction-aware accreditation logic',
-      'Cryptographic eligibility claims consumed on-chain',
+      'Real sanctions screening on a daily schedule; PEP and adverse-media labeled-simulated',
+      'Eligibility categories consumed on-chain, honored by venues that list SeqPal assets',
     ],
     cta: { to: '/id', label: 'Create a SeqPal ID' },
   },
@@ -91,7 +91,7 @@ function Architecture() {
             <span className="font-bold text-ink-900">SeqPal ID</span>
             <span className="text-ink-700/80">
               {' '}
-              — identity & eligibility, verified once and read on every transfer
+              · identity and eligibility, verified once and read on every transfer
             </span>
           </div>
         </div>

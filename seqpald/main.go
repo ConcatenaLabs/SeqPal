@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -34,18 +35,48 @@ type config struct {
 	network      string
 	webroot      string   // built SPA to serve at / (empty = API only)
 	devOrigins   []string // extra allowed CORS origins for local development
+
+	// M2 compliance engine.
+	screenDir string          // cache dir for downloaded sanctions lists
+	adminAIDs map[string]bool // AIDs allowed to use the manual-review surface
+
+	// Chain-derived compile inputs. The real chain watcher lands in M3; until
+	// then tip height comes from the node RPC when configured, else assumedTip.
+	blocksPerDay int64
+	assumedTip   int64
+	nodeURL      string
+	nodeUser     string
+	nodePass     string
+
+	// Cron cadences (fast defaults so a demo runs unattended).
+	screenRefresh   time.Duration // re-download the lists
+	screenInterval  time.Duration // re-screen all identities
+	expiryInterval  time.Duration // category expiry sweep
+	autoReviewEvery time.Duration // auto-reviewer poll
+	autoReviewDelay time.Duration // grace before the auto-reviewer acts
 }
 
 type server struct {
-	cfg  config
-	st   *Store
-	http *http.Client
-	rl   *rateLimiter
+	cfg    config
+	st     *Store
+	http   *http.Client
+	rl     *rateLimiter
+	catMu  *keyedMutex // serializes openampd category writes per AID
+	screen *screener   // sanctions lists
 }
 
 func env(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
+	}
+	return def
+}
+
+func envInt(key string, def int64) int64 {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			return n
+		}
 	}
 	return def
 }
@@ -62,8 +93,22 @@ func main() {
 	flag.BoolVar(&cfg.confidential, "confidential", confDefault, "node supports confidential issuance")
 	flag.StringVar(&cfg.webroot, "webroot", env("SEQPALD_WEBROOT", ""), "built SPA directory to serve at / (empty = API only)")
 	flag.StringVar(&devOrigins, "devorigins", env("SEQPALD_DEV_ORIGINS", ""), "comma-separated extra CORS origins for local development")
+	var adminAIDs string
+	flag.StringVar(&adminAIDs, "adminaids", env("SEQPALD_ADMIN_AIDS", ""), "comma-separated AIDs allowed to use the manual-review surface")
+	flag.StringVar(&cfg.screenDir, "screendir", env("SEQPALD_SCREEN_DIR", "./sanctions-cache"), "cache directory for downloaded sanctions lists")
+	flag.Int64Var(&cfg.blocksPerDay, "blocksperday", envInt("SEQPALD_BLOCKS_PER_DAY", 144), "assumed Sequentia blocks per day for lockup height conversion")
+	flag.Int64Var(&cfg.assumedTip, "tipheight", envInt("SEQPALD_TIP_HEIGHT", 0), "fallback tip height when no node RPC is configured")
+	flag.StringVar(&cfg.nodeURL, "nodeurl", env("SEQPALD_NODE_URL", ""), "Sequentia node JSON-RPC URL for the tip height (optional)")
+	flag.StringVar(&cfg.nodeUser, "nodeuser", env("SEQPALD_NODE_USER", ""), "node RPC username")
+	flag.StringVar(&cfg.nodePass, "nodepass", env("SEQPALD_NODE_PASS", ""), "node RPC password")
 	flag.Parse()
 
+	cfg.adminAIDs = adminSet(adminAIDs)
+	cfg.screenRefresh = 24 * time.Hour
+	cfg.screenInterval = 24 * time.Hour
+	cfg.expiryInterval = time.Hour
+	cfg.autoReviewEvery = 5 * time.Second
+	cfg.autoReviewDelay = 10 * time.Second
 	cfg.openampURL = strings.TrimRight(cfg.openampURL, "/")
 	for _, o := range strings.Split(devOrigins, ",") {
 		if o = strings.TrimSpace(o); o != "" {
@@ -84,14 +129,17 @@ func main() {
 	}
 
 	s := &server{
-		cfg:  cfg,
-		st:   st,
-		http: &http.Client{Timeout: 60 * time.Second},
-		rl:   newRateLimiter(),
+		cfg:    cfg,
+		st:     st,
+		http:   &http.Client{Timeout: 60 * time.Second},
+		rl:     newRateLimiter(),
+		catMu:  newKeyedMutex(),
+		screen: newScreener(cfg.screenDir),
 	}
+	s.startWorkers()
 
-	log.Printf("seqpald listening on %s, OpenAMP at %s (db=%s, confidential=%v, webroot=%q)",
-		cfg.listen, cfg.openampURL, cfg.dbPath, cfg.confidential, cfg.webroot)
+	log.Printf("seqpald listening on %s, OpenAMP at %s (db=%s, confidential=%v, webroot=%q, admins=%d)",
+		cfg.listen, cfg.openampURL, cfg.dbPath, cfg.confidential, cfg.webroot, len(cfg.adminAIDs))
 	log.Fatal(http.ListenAndServe(cfg.listen, s.handler()))
 }
 
@@ -106,6 +154,7 @@ func (s *server) handler() http.Handler {
 	mux.HandleFunc("POST /api/auth/challenge", s.handleChallenge)
 	mux.HandleFunc("POST /api/auth/register", s.handleRegister)
 	mux.HandleFunc("POST /api/auth/login", s.handleLogin)
+	mux.HandleFunc("GET /api/eligibility", s.handleEligibility) // advisory preflight, public (serves the SeqDEX handover)
 
 	// Session required.
 	mux.HandleFunc("POST /api/auth/logout", s.requireSession(s.handleLogout))
@@ -114,7 +163,17 @@ func (s *server) handler() http.Handler {
 	mux.HandleFunc("GET /api/issuances", s.requireSession(s.handleListIssuances))
 	mux.HandleFunc("POST /api/issuances", s.requireSession(s.handleCreateIssuance))
 	mux.HandleFunc("PATCH /api/issuances/{id}", s.requireSession(s.handlePatchIssuance))
+	mux.HandleFunc("POST /api/issuances/{id}/compile", s.requireSession(s.handleCompile))
 	mux.HandleFunc("POST /api/deploy", s.requireSession(s.handleDeploy))
+
+	// SeqPal ID surface.
+	mux.HandleFunc("POST /api/id/verify", s.requireSession(s.handleIDVerify))
+	mux.HandleFunc("GET /api/id/passport", s.requireSession(s.handleIDPassport))
+	mux.HandleFunc("POST /api/id/entities/{id}/verify", s.requireSession(s.handleEntityVerify))
+
+	// Manual-review surface (session + admin).
+	mux.HandleFunc("GET /api/admin/review-queue", s.requireSession(s.requireAdmin(s.handleReviewQueue)))
+	mux.HandleFunc("POST /api/admin/review/{id}", s.requireSession(s.requireAdmin(s.handleReviewDecide)))
 
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodOptions {

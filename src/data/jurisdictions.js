@@ -62,15 +62,57 @@ export const JURISDICTIONS = [
   { code: 'SD', name: 'Sudan', tier: 'blocked', basis: 'OFAC / FATF-aligned restrictions', cap: 'n/a' },
 ]
 
-// Appendix C closes with a catch-all: jurisdictions not listed above are
-// Standard — local-law screening at investment time, with local-law
-// applicability the issuer's responsibility at admission.
+// The compiled policy is catch-all EXCLUDED by default: only a jurisdiction the
+// issuer explicitly admits contributes eligibility categories, so a resident of
+// an unlisted jurisdiction matches no category and is refused by the policy
+// server. Admitting a jurisdiction not in the list is done by adding it to the
+// matrix, never by a permissive default.
 export const CATCH_ALL_ROW = {
   name: 'All other jurisdictions',
-  tier: 'standard',
-  basis: 'Local-law screening at investment time (issuer’s responsibility at admission)',
-  cap: 'Per offering terms',
+  tier: 'excluded',
+  basis: 'Excluded by default until the issuer admits the jurisdiction explicitly',
+  cap: 'n/a',
 }
+
+// The eligibility categories a SeqPal ID can carry within a jurisdiction. These
+// are the elig half of the j:<ISO2>:<elig> category tokens the policy server
+// gates on. hnw and soph are UK statutory investor statements.
+export const ELIG_CATEGORIES = [
+  { key: 'ret', label: 'Retail', hint: 'Non-qualified individuals' },
+  { key: 'acc', label: 'Accredited', hint: 'Documented accredited / qualified investor' },
+  { key: 'pro', label: 'Professional', hint: 'Professional / institutional client' },
+  { key: 'hnw', label: 'High-net-worth', hint: 'UK FSMA high-net-worth statement', gbOnly: true },
+  { key: 'soph', label: 'Sophisticated', hint: 'UK FSMA sophisticated-investor statement', gbOnly: true },
+]
+
+// What each access level admits, mirroring the seqpald compiler. The catch-all
+// (a jurisdiction not admitted) admits nothing.
+export const ACCESS_ADMITS = {
+  standard: ['ret', 'acc', 'pro'],
+  restricted: ['acc', 'pro'],
+  excluded: [],
+}
+
+// EU member states, for the per-member-state offeree caps (the sub-150
+// prospectus-exemption count). Compiled into holder_caps_by_category as
+// j:<state>:ret. The EU-wide matrix row governs baseline access; a cap here
+// bounds retail offerees in that specific member state.
+export const EU_MEMBER_STATES = [
+  { code: 'DE', name: 'Germany' },
+  { code: 'FR', name: 'France' },
+  { code: 'IT', name: 'Italy' },
+  { code: 'ES', name: 'Spain' },
+  { code: 'NL', name: 'Netherlands' },
+  { code: 'IE', name: 'Ireland' },
+  { code: 'BE', name: 'Belgium' },
+  { code: 'AT', name: 'Austria' },
+  { code: 'PT', name: 'Portugal' },
+  { code: 'FI', name: 'Finland' },
+  { code: 'LU', name: 'Luxembourg' },
+  { code: 'SE', name: 'Sweden' },
+  { code: 'DK', name: 'Denmark' },
+  { code: 'PL', name: 'Poland' },
+]
 
 // Jurisdiction options offered at SeqPal ID registration, with the qualified-
 // investor basis SeqPal applies for that residence.

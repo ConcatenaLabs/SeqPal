@@ -8,7 +8,11 @@ import Home from './pages/Home'
 import Products from './pages/Products'
 import Structures from './pages/Structures'
 import Pricing from './pages/Pricing'
-import SeqPalId from './pages/SeqPalId'
+import IdLanding from './pages/id/IdLanding'
+import IdRegister from './pages/id/IdRegister'
+import IdPassport from './pages/id/IdPassport'
+import IdEntities from './pages/id/IdEntities'
+import IdReview from './pages/id/IdReview'
 import Dashboard from './pages/Dashboard'
 import Holdings from './pages/Holdings'
 import IssuanceDetail from './pages/IssuanceDetail'
@@ -23,6 +27,10 @@ const TITLES = {
   '/structures': 'Issuance Structures · SeqPal',
   '/pricing': 'Pricing · SeqPal',
   '/id': 'SeqPal ID',
+  '/id/register': 'Register · SeqPal ID',
+  '/id/passport': 'Passport · SeqPal ID',
+  '/id/entities': 'Companies · SeqPal ID',
+  '/id/review': 'Sanctions review · SeqPal ID',
   '/holdings': 'My holdings · SeqPal ID',
   '/dashboard': 'Issuer Dashboard · SeqPal',
   '/onboarding': 'New issuance · SeqPal',
@@ -57,7 +65,7 @@ export default function App() {
     pathname.startsWith('/onboarding') ||
     pathname.startsWith('/portal/') ||
     /^\/issuance\/[^/]+\/portal$/.test(pathname)
-  const isIdSite = pathname === '/id' || pathname === '/holdings'
+  const isIdSite = pathname === '/id' || pathname.startsWith('/id/') || pathname === '/holdings'
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -69,7 +77,11 @@ export default function App() {
           <Route path="/products" element={<Products />} />
           <Route path="/structures" element={<Structures />} />
           <Route path="/pricing" element={<Pricing />} />
-          <Route path="/id" element={<SeqPalId />} />
+          <Route path="/id" element={<IdLanding />} />
+          <Route path="/id/register" element={<IdRegister />} />
+          <Route path="/id/passport" element={<IdPassport />} />
+          <Route path="/id/entities" element={<IdEntities />} />
+          <Route path="/id/review" element={<IdReview />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/holdings" element={<Holdings />} />
           <Route path="/issuance/:id" element={<IssuanceDetail />} />

@@ -61,6 +61,15 @@ export function signChallenge(privHex, challenge) {
   return bytesToHex(schnorr.sign(msg, hexToBytes(privHex), NO_AUX))
 }
 
+// Sign an application statement under a domain-separation tag (never a raw
+// external digest, for the same signing-oracle reason as signChallenge). Used
+// for the UBO declaration that binds a corporate entity to the controlling
+// personal ID (tag seqpal-ubo-v1), which seqpald verifies against this key.
+export function signStatement(privHex, tag, statement) {
+  const msg = taggedHash(tag, enc.encode(statement))
+  return bytesToHex(schnorr.sign(msg, hexToBytes(privHex), NO_AUX))
+}
+
 // ── Encrypted key envelope ─────────────────────────────────────────────
 // AES-GCM under PBKDF2-SHA256 (200k iterations, 16-byte salt). The envelope is
 // what localStorage holds and what the user exports as a backup file.
