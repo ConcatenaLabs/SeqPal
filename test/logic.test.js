@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import { computeSetupCost } from '../src/data/pricing.js'
-import { completedCount, milestonesFor, nextStatus, MILESTONES } from '../src/lib/lifecycle.js'
+import { STATUS, OFF_PLATFORM_STEPS, offPlatformSteps } from '../src/lib/lifecycle.js'
 import { isEligible, tierFor } from '../src/lib/policy.js'
 import {
   parseMoney,
@@ -11,14 +11,206 @@ import {
   ownershipPct,
   escrowSettlementFee,
 } from '../src/lib/economics.js'
+import { slugify } from '../src/lib/util.js'
+import { toTerms, view } from '../src/lib/issuance.js'
+import { canonicalJSON, termsHash } from '../src/lib/openamp.js'
 import {
-  slugify,
-  addBusinessDays,
-  fakeHex,
-  fakeIdNumber,
-} from '../src/lib/util.js'
-import { ownsIssuance, ownedIssuances } from '../src/lib/account.js'
-import { generateEnclaveKey, computeAID, xonlyOf } from '../src/lib/keys.js'
+  generateEnclaveKey,
+  computeAID,
+  xonlyOf,
+  taggedHash,
+  signChallenge,
+  encryptKey,
+  decryptKey,
+  passphraseStrength,
+} from '../src/lib/keys.js'
+import { schnorr } from '@noble/curves/secp256k1'
+import { bytesToHex, hexToBytes } from '@noble/curves/abstract/utils'
+import { sha256 } from '@noble/hashes/sha256'
+
+// ── Conformance vectors ──────────────────────────────────────────────────
+// The same fixed values seqpald asserts in seqpald/vectors_test.go. The AIDs are
+// ground truth from openampd's own store.AID (openamp repo,
+// openampd/internal/store/store.go): they are the one crypto seam between this
+// browser code and the policy server, so they are pinned, not recomputed.
+const VEC = {
+  priv: 'b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef',
+  xonly: 'dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659',
+  aid: '51738ef8815e1590eba576eef1ac714f9e969d52',
+  priv2: 'c90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b14e5c9',
+  xonly2: 'dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8',
+  aid2: '29dae194e3b97260d4797713ab11f9a9f9b3e54d',
+  aidSet: '309533c797997e92f0a73caa81093cab6192a17a',
+  challenge: '2f0ee2f6a1cfbd0c4a3f1f8a7a4bbf6d5e2c19d84a0fbb1c7d6e5f4a3b2c1d0e',
+  taggedDigest: 'c516dcf501fdf1271f950104a6663a53b303be25f604b601185521d150a54e25',
+  challengeSig:
+    '41c1aebb8689dba894f4cdc3d2c093929246f15a3e3ecfbc724f81997eb9411f' +
+    'ab4cbae14aac412f1ff1c724d708ab4da2a336cc0717df13c9206cc02e04be5d',
+  rawDigest: 'd84c1c8b63b45e8a91de7d506cdeda0656c4c166e6d1e5f832b899f2fcb66dff',
+  termsHash: '995980cacb0fa2b0a2e27639d962f1666fab212c982895a5036a2741c3fdfe64',
+  termsCanonical:
+    '{"clawback":true,"jurisdiction":"HN-PROSPERA","note":"Terms & conditions <v1>",' +
+    '"raise":{"amount":5000000,"unit":"USD"},"structure":"native-equity",' +
+    '"transfer_restrictions":{"accredited_only":true,"blocked":["KP","IR"],"lockup_days":365}}',
+}
+
+const TERMS = {
+  structure: 'native-equity',
+  jurisdiction: 'HN-PROSPERA',
+  transfer_restrictions: { lockup_days: 365, accredited_only: true, blocked: ['KP', 'IR'] },
+  raise: { amount: 5000000, unit: 'USD' },
+  clawback: true,
+  note: 'Terms & conditions <v1>',
+}
+
+test('vector: AID matches openampd store.AID', () => {
+  assert.equal(computeAID([VEC.xonly]), VEC.aid)
+  assert.equal(computeAID([VEC.xonly2]), VEC.aid2)
+  // The AID hashes the SORTED key set: presentation order cannot change it, and
+  // a second key makes a different account.
+  assert.equal(computeAID([VEC.xonly, VEC.xonly2]), VEC.aidSet)
+  assert.equal(computeAID([VEC.xonly2, VEC.xonly]), VEC.aidSet)
+  assert.notEqual(VEC.aidSet, VEC.aid)
+
+  // The keys themselves are pinned too, so a change in the curve library that
+  // moved the pubkey encoding could not silently move every AID.
+  assert.equal(xonlyOf(VEC.priv), VEC.xonly)
+  assert.equal(xonlyOf(VEC.priv2), VEC.xonly2)
+
+  // And it is a real derivation, not a lookup.
+  const k = generateEnclaveKey()
+  assert.match(k.priv, /^[0-9a-f]{64}$/)
+  assert.equal(xonlyOf(k.priv), k.xonly)
+  assert.match(computeAID([k.xonly]), /^[0-9a-f]{40}$/)
+  assert.equal(computeAID([k.xonly]), computeAID([k.xonly]))
+})
+
+test('vector: the login challenge is signed TAGGED, never raw', () => {
+  const digest = taggedHash('openamp-challenge-v1', new TextEncoder().encode(VEC.challenge))
+  assert.equal(bytesToHex(digest), VEC.taggedDigest)
+
+  // signChallenge is deterministic (zero aux-rand), so the signature is a fixed
+  // vector the Go verifier accepts (seqpald/vectors_test.go asserts the same
+  // bytes).
+  const sig = signChallenge(VEC.priv, VEC.challenge)
+  assert.equal(sig, VEC.challengeSig)
+  assert.ok(schnorr.verify(hexToBytes(sig), digest, hexToBytes(VEC.xonly)))
+
+  // The anti-oracle property: what the enclave key signs is the tagged digest,
+  // and that is NOT the raw hash of the challenge the server handed us. If these
+  // two were ever equal, a hostile "challenge" could be a spendable sighash.
+  const raw = sha256(new TextEncoder().encode(VEC.challenge))
+  assert.equal(bytesToHex(raw), VEC.rawDigest)
+  assert.notEqual(bytesToHex(raw), VEC.taggedDigest)
+  assert.ok(!schnorr.verify(hexToBytes(sig), raw, hexToBytes(VEC.xonly)))
+
+  // A different challenge, or a different key, produces a different signature.
+  assert.notEqual(signChallenge(VEC.priv, VEC.challenge.slice(0, 63) + 'f'), sig)
+  assert.notEqual(signChallenge(VEC.priv2, VEC.challenge), sig)
+})
+
+test('vector: terms_hash canonicalization ignores key order and whitespace', async () => {
+  assert.equal(canonicalJSON(TERMS), VEC.termsCanonical)
+  assert.equal(await termsHash(TERMS), VEC.termsHash)
+
+  // Same data, every object's keys reordered and nested values shuffled: the
+  // hash the browser cross-checks against seqpald must not move.
+  const shuffled = {
+    note: 'Terms & conditions <v1>',
+    clawback: true,
+    raise: { unit: 'USD', amount: 5000000 },
+    transfer_restrictions: {
+      blocked: ['KP', 'IR'],
+      accredited_only: true,
+      lockup_days: 365,
+    },
+    jurisdiction: 'HN-PROSPERA',
+    structure: 'native-equity',
+  }
+  assert.equal(canonicalJSON(shuffled), VEC.termsCanonical)
+  assert.equal(await termsHash(shuffled), VEC.termsHash)
+
+  // Array order IS data (a blocked-jurisdiction list is ordered on the wire),
+  // and any change of value changes the hash.
+  const reversedArray = {
+    ...TERMS,
+    transfer_restrictions: { ...TERMS.transfer_restrictions, blocked: ['IR', 'KP'] },
+  }
+  assert.notEqual(await termsHash(reversedArray), VEC.termsHash)
+  assert.notEqual(await termsHash({ ...TERMS, clawback: false }), VEC.termsHash)
+})
+
+// ── Encrypted key envelope ───────────────────────────────────────────────
+
+test('enclave key envelope — AES-GCM under a passphrase, never plaintext', async () => {
+  const env = await encryptKey(VEC.priv, 'correct horse battery staple')
+  assert.equal(env.v, 1)
+  assert.match(env.salt, /^[0-9a-f]{32}$/) // 16-byte salt
+  assert.match(env.iv, /^[0-9a-f]{24}$/) // 12-byte GCM iv
+  assert.ok(!JSON.stringify(env).includes(VEC.priv), 'the envelope must not contain the private key')
+
+  assert.equal(await decryptKey({ ...env, xonly: VEC.xonly }, 'correct horse battery staple'), VEC.priv)
+  await assert.rejects(() => decryptKey(env, 'wrong passphrase'), /Wrong passphrase/)
+  await assert.rejects(() => decryptKey({ v: 1 }, 'x'), /not a SeqPal ID backup/)
+  // A backup whose declared public key does not match its key is refused.
+  await assert.rejects(
+    () => decryptKey({ ...env, xonly: VEC.xonly2 }, 'correct horse battery staple'),
+    /inconsistent/
+  )
+
+  // Fresh salt and iv per encryption, so two envelopes of the same key differ.
+  const env2 = await encryptKey(VEC.priv, 'correct horse battery staple')
+  assert.notEqual(env2.salt, env.salt)
+  assert.notEqual(env2.ct, env.ct)
+
+  assert.equal(passphraseStrength('short').level, 'weak')
+  assert.equal(passphraseStrength('alllowercase').level, 'weak') // one character class
+  assert.equal(passphraseStrength('correct horse battery staple').level, 'fair')
+  assert.equal(passphraseStrength('Correct horse battery staple 9').level, 'strong')
+})
+
+// ── Issuance record shape ────────────────────────────────────────────────
+
+test('issuance — terms round-trip through the shape seqpald stores', () => {
+  const draft = {
+    structureId: 'native-equity',
+    isPublic: true,
+    unit: 'BTC',
+    entityName: 'Aurora Holdings Ltd',
+    raise: '5,000,000',
+    fields: { premoney: '20,000,000' },
+    policy: { US: 'restricted' },
+    principal: { type: 'individual' },
+    mintTarget: 'enclave',
+  }
+  const terms = toTerms(draft)
+  assert.equal(terms.structure_id, 'native-equity')
+  assert.equal(terms.is_public, true)
+  assert.equal(terms.unit, 'BTC')
+
+  // view() reads back what the server stored, and the chain fields come from the
+  // server's record alone.
+  const v = view({
+    id: 'abc',
+    owner_aid: VEC.aid,
+    name: 'Aurora Ventures Fund I',
+    ticker: 'AURA',
+    structure_id: 'native-equity',
+    status: 'live',
+    terms,
+    asset_id: 'aa'.repeat(32),
+    txid: 'bb'.repeat(32),
+  })
+  assert.equal(v.structureId, 'native-equity')
+  assert.equal(v.entityName, 'Aurora Holdings Ltd')
+  assert.equal(v.unit, 'BTC')
+  assert.equal(v.assetId, 'aa'.repeat(32))
+  assert.equal(v.live, true)
+  assert.equal(view({ id: 'x', status: 'draft', terms: {} }).live, false)
+  assert.equal(view(null), null)
+})
+
+// ── Pricing, policy, economics, lifecycle ────────────────────────────────
 
 test('computeSetupCost — Native Equity tiers, surcharge, secured, DR', () => {
   // standard private placement
@@ -32,7 +224,7 @@ test('computeSetupCost — Native Equity tiers, surcharge, secured, DR', () => {
   assert.equal(c.base, 7500)
   assert.equal(c.simple, true)
 
-  // BTC-denominated raise: the $500K threshold is USD — a 100-BTC raise (~$6M)
+  // BTC-denominated raise: the $500K threshold is USD, so a 100-BTC raise (~$6M)
   // must NOT trigger the Simple tier just because 100 < 500000.
   c = computeSetupCost('native-equity', false, { raise: '₿100', unit: 'BTC' })
   assert.equal(c.simple, false)
@@ -63,20 +255,17 @@ test('computeSetupCost — Native Equity tiers, surcharge, secured, DR', () => {
   assert.equal(dr.total, 22500)
 })
 
-test('lifecycle — completedCount, milestones, nextStatus', () => {
-  assert.equal(completedCount('awaiting_incorporation'), 1)
-  assert.equal(completedCount('deploying'), 2)
-  assert.equal(completedCount('live', 'native-equity'), MILESTONES.length)
+test('lifecycle — only the two statuses seqpald actually records', () => {
+  // The browser no longer advances an issuance through invented states: there is
+  // draft, and there is what the chain says.
+  assert.deepEqual(Object.keys(STATUS).sort(), ['draft', 'live'])
+  assert.equal(STATUS.live.label, 'Deployed')
 
-  // DR has an extra brokerage-custody milestone
-  const drMs = milestonesFor('depository-receipt')
-  assert.equal(drMs.length, MILESTONES.length + 1)
-  assert.ok(drMs.some((m) => m.key === 'custody'))
-  assert.equal(completedCount('live', 'depository-receipt'), drMs.length)
-
-  assert.equal(nextStatus('awaiting_incorporation'), 'deploying')
-  assert.equal(nextStatus('deploying'), 'live')
-  assert.equal(nextStatus('live'), 'live')
+  // Off-platform preparation is a checklist, not progress, and DR adds custody.
+  assert.equal(offPlatformSteps('native-equity').length, OFF_PLATFORM_STEPS.length)
+  const dr = offPlatformSteps('depository-receipt')
+  assert.equal(dr.length, OFF_PLATFORM_STEPS.length + 1)
+  assert.ok(dr.some((s) => s.key === 'custody'))
 })
 
 test('policy.isEligible — standard / restricted / excluded / blocked', () => {
@@ -107,19 +296,18 @@ test('economics — money, post-money ownership, platform fee', () => {
   assert.equal(ownershipDenominator('debt-yield', {}, 5000000), 5000000)
   assert.equal(ownershipPct('debt-yield', {}, 5000000, 250000).toFixed(2), '5.00')
 
-  // Escrow & Settlement Fee (plan v0.72): 0.25%/mo on escrowed funds, accrued
-  // over the holding period; $5K minimum; capped at 3% of funds held.
-  // Plan's worked example: $5M raise over the typical ~4 months ≈ $50K (~1%).
+  // Escrow and settlement fee: 0.25%/mo on escrowed funds, accrued over the
+  // holding period; $5K minimum; capped at 3% of funds held.
   assert.equal(escrowSettlementFee(5000000), 50000)
-  assert.equal(escrowSettlementFee(750000), 7500) // ≈1% typical window
+  assert.equal(escrowSettlementFee(750000), 7500)
   assert.equal(escrowSettlementFee(100000), 5000) // $5K minimum binds
   assert.equal(escrowSettlementFee(0), 5000)
-  // long holding periods hit the 3% cap: 20 months on $1M accrues $50K → capped $30K
+  // long holding periods hit the 3% cap: 20 months on $1M accrues $50K, capped $30K
   assert.equal(escrowSettlementFee(1000000, 20), 30000)
   // BTC-denominated raises: the US$5,000 minimum is a dollar-equivalent and is
-  // not netted against the ₿ amount — fee is the raw accrual within the cap.
-  assert.equal(escrowSettlementFee(100, 4, 'BTC'), 1) // ₿1 ≈ 1% of ₿100
-  assert.equal(escrowSettlementFee(100, 20, 'BTC'), 3) // capped at 3% = ₿3
+  // not netted against the ₿ amount.
+  assert.equal(escrowSettlementFee(100, 4, 'BTC'), 1)
+  assert.equal(escrowSettlementFee(100, 20, 'BTC'), 3)
 
   // unit-of-account formatting (USD default; BTC election)
   assert.equal(fmtAmount(7500), '$7,500')
@@ -127,61 +315,9 @@ test('economics — money, post-money ownership, platform fee', () => {
   assert.equal(fmtAmount(12, 'BTC'), '₿12')
 })
 
-test('account — issuance ownership by SeqPal ID number', () => {
-  const acct = {
-    individual: { name: 'Issuer Ida', idNumber: 'SQID-I-AAA' },
-    corporates: [{ entity: 'Acme Holdings Ltd', idNumber: 'SQID-C-XYZ' }],
-  }
-  const asIndividual = { principal: { type: 'individual', idNumber: 'SQID-I-AAA' } }
-  const asCorporate = { principal: { type: 'corporate', idNumber: 'SQID-C-XYZ' } }
-  const someoneElse = { principal: { type: 'individual', idNumber: 'SQID-I-BBB' } }
-
-  assert.equal(ownsIssuance(acct, asIndividual), true)
-  assert.equal(ownsIssuance(acct, asCorporate), true)
-  assert.equal(ownsIssuance(acct, someoneElse), false)
-  assert.equal(ownsIssuance(acct, { principal: {} }), false)
-  assert.equal(ownsIssuance({ individual: null, corporates: [] }, asIndividual), false)
-  assert.equal(ownsIssuance(null, asIndividual), false)
-
-  assert.deepEqual(ownedIssuances(acct, [asIndividual, someoneElse, asCorporate]), [
-    asIndividual,
-    asCorporate,
-  ])
-  assert.deepEqual(ownedIssuances(acct, undefined), [])
-})
-
-test('util — slugify, addBusinessDays, id/hash formats', () => {
+test('util — slugify', () => {
   assert.equal(slugify('Aurora Ventures Fund I'), 'aurora-ventures-fund-i')
   assert.equal(slugify('  Helvetia Digital AG!! '), 'helvetia-digital-ag')
   assert.equal(slugify('a'.repeat(40)).length, 24) // capped
   assert.equal(slugify(''), '')
-
-  // Fri 2026-06-05 + 1 business day = Mon 2026-06-08 (skips the weekend)
-  const fri = new Date('2026-06-05T12:00:00Z')
-  const next = addBusinessDays(fri, 1)
-  assert.equal(next.getUTCDay(), 1) // Monday
-  // 5 business days never lands on a weekend
-  const d = addBusinessDays(new Date('2026-06-01T12:00:00Z'), 5)
-  assert.ok(d.getUTCDay() !== 0 && d.getUTCDay() !== 6)
-
-  assert.equal(fakeHex(64).length, 64)
-  assert.match(fakeHex(64), /^[0-9a-f]{64}$/)
-  assert.match(fakeIdNumber('SQID-I'), /^SQID-I-[A-Z0-9]+-[A-Z0-9]+$/)
-})
-
-test('enclave keys — real x-only key + deterministic AID', () => {
-  const k = generateEnclaveKey()
-  assert.match(k.priv, /^[0-9a-f]{64}$/)
-  assert.match(k.xonly, /^[0-9a-f]{64}$/)
-  // x-only pubkey is reproducible from the private key.
-  assert.equal(xonlyOf(k.priv), k.xonly)
-  // AID matches the policy server's derivation (sha256("openamp-aid-v1"||pk),
-  // first 20 bytes) and is deterministic for the same key.
-  const aid1 = computeAID([k.xonly])
-  const aid2 = computeAID([k.xonly])
-  assert.match(aid1, /^[0-9a-f]{40}$/)
-  assert.equal(aid1, aid2)
-  // Known vector: AID of the all-zero... well, a fixed key.
-  const fixed = 'a'.repeat(64)
-  assert.equal(computeAID([fixed]).length, 40)
 })

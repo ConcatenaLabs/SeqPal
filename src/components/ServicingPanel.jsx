@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { Icon } from './icons'
 import { Badge } from './ui'
 import Modal from './Modal'
-import { useStore } from '../lib/store'
 
 const DIST_LABEL = {
   'native-equity': 'Dividend',
@@ -31,9 +30,12 @@ function uid() {
 }
 
 export default function ServicingPanel({ iss }) {
-  const { updateIssuance } = useStore()
   const [modal, setModal] = useState(null) // 'dist' | 'corp' | 'mint' | 'redeem' | null
   const [toast, setToast] = useState(null)
+  // Servicing actions are simulated: none of them touches the chain or the
+  // server, so their record is component state and disappears with the page.
+  // Writing them down as if they were an immutable registry log would be a lie.
+  const [activity, setActivity] = useState([])
 
   const distLabel = DIST_LABEL[iss.structureId] || 'Distribution'
   const corpActions = CORP_ACTIONS[iss.structureId] || ['Corporate action']
@@ -50,12 +52,8 @@ export default function ServicingPanel({ iss }) {
   const [mint, setMint] = useState({ qty: '', mandate: 'Direct deposit of securities' })
   const [redeem, setRedeem] = useState({ qty: '' })
 
-  const activity = iss.activity || []
-
   const pushActivity = (entry) => {
-    updateIssuance(iss.id, (i) => ({
-      activity: [{ id: uid(), at: new Date().toISOString(), ...entry }, ...(i.activity || [])],
-    }))
+    setActivity((a) => [{ id: uid(), at: new Date().toISOString(), ...entry }, ...a])
     setModal(null)
     setToast(entry.summary)
     setTimeout(() => setToast(null), 3200)
@@ -66,10 +64,14 @@ export default function ServicingPanel({ iss }) {
       <div className="flex items-center gap-2">
         <Icon.exchange width={18} height={18} className="text-ink-700" />
         <h2 className="font-bold text-ink-900">Automated Transfer Agent</h2>
+        <Badge color="amber" className="ml-auto">
+          Simulated
+        </Badge>
       </div>
-      <p className="mt-1 text-sm text-ink-700/70">
-        The blockchain is the official Registry of Members. Schedule distributions and
-        process corporate actions — all logged immutably.
+      <p className="mt-1 text-sm leading-relaxed text-ink-700/70">
+        Where distributions and corporate actions will be run once the servicing rails exist.
+        Every action below is simulated: nothing is scheduled, nothing is paid, and nothing
+        reaches the chain or the server.
       </p>
 
       {/* action buttons */}
@@ -126,7 +128,7 @@ export default function ServicingPanel({ iss }) {
       {activity.length > 0 && (
         <div className="mt-5">
           <div className="text-xs font-semibold uppercase tracking-wide text-ink-700/60">
-            Recent activity
+            Recent activity (simulated, this page only)
           </div>
           <div className="mt-2 space-y-2">
             {activity.slice(0, 4).map((a) => (

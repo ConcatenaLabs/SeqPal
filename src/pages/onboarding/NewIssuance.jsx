@@ -24,10 +24,10 @@ const STEPS = [
 
 export default function NewIssuance() {
   const navigate = useNavigate()
-  const { isLoggedIn } = useStore()
+  const { loading, isSignedIn } = useStore()
   const [step, setStep] = useState(1)
   const [data, setData] = useState({
-    principal: null, // { type:'individual'|'corporate', name, idNumber }
+    principal: null, // { kind:'individual'|'entity', name, entity_id }
     structureId: null,
     isPublic: false,
     entityName: '', // the new Próspera LLC's name (set before formation docs)
@@ -58,7 +58,7 @@ export default function NewIssuance() {
     return true
   }
 
-  if (!isLoggedIn) {
+  if (loading || !isSignedIn) {
     return (
       <div className="min-h-screen bg-ink-900/[0.03]">
         <header className="border-b border-ink-900/10 bg-white">
@@ -71,10 +71,16 @@ export default function NewIssuance() {
             </Link>
           </div>
         </header>
-        <SignInGate
-          title="Sign in to start an issuance"
-          body="Issuing requires a verified SeqPal ID — it’s your login and the identity that signs your issuance. Create one and we’ll bring you straight back."
-        />
+        {loading ? (
+          <div className="flex justify-center py-24">
+            <span className="h-8 w-8 animate-spin rounded-full border-4 border-btc/20 border-t-btc" />
+          </div>
+        ) : (
+          <SignInGate
+            title="Sign in to start an issuance"
+            body="Issuing needs a SeqPal ID. The ID is the identity and compliance passport for SeqPal-managed assets on Sequentia, and it is the identity your issuance is recorded against. Create one and we will bring you straight back."
+          />
+        )}
       </div>
     )
   }

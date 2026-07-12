@@ -3,29 +3,13 @@ import { Link } from 'react-router-dom'
 import { Icon, StructureIcon } from '../../components/icons'
 import { Badge, DemoNote } from '../../components/ui'
 import Modal from '../../components/Modal'
-import {
-  useStore,
-  fakeIdNumber,
-  addBusinessDays,
-} from '../../lib/store'
+import { useStore } from '../../lib/store'
+import { toTerms } from '../../lib/issuance'
+import { termsHash } from '../../lib/openamp'
 import { STRUCTURES, getStructure } from '../../data/structures'
 import { JURISDICTIONS, CATCH_ALL_ROW } from '../../data/jurisdictions'
 import { computeSetupCost } from '../../data/pricing'
 import { parseMoney } from '../../lib/economics'
-
-// Target time-to-live in business days, [private, public]. Public offerings take
-// materially longer (extra RFSA disclosure, audited financials, per-jurisdiction
-// filings) per the plan's deploy-time table.
-const DEPLOY_DAYS = {
-  'native-equity': [3, 10],
-  'equity-spv': [5, 12],
-  'debt-yield': [6, 12],
-  'depository-receipt': [9, 9],
-}
-const deployDays = (structureId, isPublic) => {
-  const [priv, pub] = DEPLOY_DAYS[structureId] || [3, 10]
-  return isPublic ? pub : priv
-}
 
 function StepHeader({ n, title, sub }) {
   return (
@@ -44,46 +28,44 @@ function StepHeader({ n, title, sub }) {
 /* ──────────────────── Step 1 — Identity & principal ──────────────────── */
 
 export function Step1Identity({ data, update }) {
-  const { account, addCorporate } = useStore()
+  const { account, entities, createEntity } = useStore()
   const [adding, setAdding] = useState(false)
-  const [form, setForm] = useState({ entity: '', jurisdiction: 'United Arab Emirates' })
-  const [verifying, setVerifying] = useState(false)
+  const [form, setForm] = useState({ name: '', jurisdiction: 'United Arab Emirates' })
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
 
-  // The principal is named throughout the generated documents — changing it
+  // The principal is named throughout the generated documents, so changing it
   // after e-signing voids the signature.
   const setPrincipal = (principal) =>
     update(
-      data.principal?.idNumber === principal.idNumber
+      data.principal?.entity_id === principal.entity_id
         ? { principal }
         : { principal, docsSigned: false }
     )
 
   const selectIndividual = () =>
-    setPrincipal({
-      type: 'individual',
-      name: account.individual.name,
-      idNumber: account.individual.idNumber,
-    })
+    setPrincipal({ kind: 'individual', name: account.display_name, entity_id: null })
 
-  const selectCorporate = (c) =>
-    setPrincipal({ type: 'corporate', name: c.entity, idNumber: c.idNumber, corpId: c.id })
+  const selectEntity = (e) =>
+    setPrincipal({ kind: 'entity', name: e.name, entity_id: e.id })
 
-  const addEntity = (e) => {
-    e.preventDefault()
-    setVerifying(true)
-    setTimeout(() => {
-      const corp = {
-        id: 'corp_' + Math.random().toString(36).slice(2, 9),
-        entity: form.entity || 'Acme Holdings Ltd',
+  const addEntity = async (ev) => {
+    ev.preventDefault()
+    setErr(null)
+    setBusy(true)
+    try {
+      const entity = await createEntity({
+        name: form.name.trim(),
         jurisdiction: form.jurisdiction,
-        idNumber: fakeIdNumber('SQID-C'),
-        verifiedAt: new Date().toISOString(),
-      }
-      addCorporate(corp)
-      selectCorporate(corp)
-      setVerifying(false)
+        profile: { kyb: 'simulated', verified_at: new Date().toISOString() },
+      })
+      selectEntity(entity)
       setAdding(false)
-    }, 1300)
+    } catch (e) {
+      setErr(e.message)
+    } finally {
+      setBusy(false)
+    }
   }
 
   const isSel = (pred) => data.principal && pred(data.principal)
@@ -93,15 +75,15 @@ export function Step1Identity({ data, update }) {
       <StepHeader
         n={1}
         title="Who is forming this issuance?"
-        sub="Choose who applies for and will own the new Próspera LLC. On every issuance that newly-formed LLC is the issuer of record — the principal legally responsible for the offering — and SeqPal acts only as enforcement agent for the configuration it signs off on."
+        sub="Choose who applies for and will own the new Próspera LLC. On every issuance that newly formed LLC is the issuer of record, the principal legally responsible for the offering, and SeqPal acts only as enforcement agent for the configuration it signs off on."
       />
 
       <div className="space-y-3">
-        {/* Individual */}
+        {/* The person themselves */}
         <button
           onClick={selectIndividual}
           className={`card flex w-full items-start gap-4 p-5 text-left transition-all ${
-            isSel((p) => p.type === 'individual')
+            isSel((p) => p.kind === 'individual')
               ? 'ring-2 ring-btc shadow-glow'
               : 'hover:shadow-card'
           }`}
@@ -112,32 +94,30 @@ export function Step1Identity({ data, update }) {
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-2">
               <span className="font-bold text-ink-900">Issue as myself</span>
-              <span className="font-mono text-xs text-ink-700/60">
-                {account.individual.name}
-              </span>
+              <span className="font-mono text-xs text-ink-700/60">{account.display_name}</span>
             </span>
             <span className="mt-1 block text-sm text-ink-700/80">
-              For forming a brand-new Próspera LLC. You become the founder of the new
-              entity — the LLC itself is the business.
+              For forming a brand-new Próspera LLC. You become the founder of the new entity,
+              and the LLC itself is the business.
             </span>
             <span className="mt-2 inline-block">
               <Badge color="btc">Native Equity only</Badge>
             </span>
           </span>
-          {isSel((p) => p.type === 'individual') && (
+          {isSel((p) => p.kind === 'individual') && (
             <span className="flex h-6 w-6 items-center justify-center rounded-full bg-btc text-white">
               <Icon.check width={14} height={14} />
             </span>
           )}
         </button>
 
-        {/* Corporates */}
-        {account.corporates.map((c) => (
+        {/* Linked entities */}
+        {entities.map((c) => (
           <button
             key={c.id}
-            onClick={() => selectCorporate(c)}
+            onClick={() => selectEntity(c)}
             className={`card flex w-full items-start gap-4 p-5 text-left transition-all ${
-              isSel((p) => p.corpId === c.id)
+              isSel((p) => p.entity_id === c.id)
                 ? 'ring-2 ring-seq shadow-glow'
                 : 'hover:shadow-card'
             }`}
@@ -147,19 +127,19 @@ export function Step1Identity({ data, update }) {
             </span>
             <span className="min-w-0 flex-1">
               <span className="flex items-center gap-2">
-                <span className="font-bold text-ink-900">{c.entity}</span>
-                <span className="font-mono text-xs text-ink-700/60">{c.idNumber}</span>
+                <span className="font-bold text-ink-900">{c.name}</span>
+                <span className="font-mono text-xs text-ink-700/60">{c.jurisdiction}</span>
               </span>
               <span className="mt-1 block text-sm text-ink-700/80">
-                Issue on behalf of this verified entity (KYB). Unlocks all four structures.
+                Issue on behalf of this entity (KYB). Unlocks all four structures.
               </span>
               <span className="mt-2 inline-block">
                 <Badge color="emerald">
-                  <Icon.check width={12} height={12} /> KYB verified
+                  <Icon.check width={12} height={12} /> KYB simulated
                 </Badge>
               </span>
             </span>
-            {isSel((p) => p.corpId === c.id) && (
+            {isSel((p) => p.entity_id === c.id) && (
               <span className="flex h-6 w-6 items-center justify-center rounded-full bg-seq text-white">
                 <Icon.check width={14} height={14} />
               </span>
@@ -167,12 +147,12 @@ export function Step1Identity({ data, update }) {
           </button>
         ))}
 
-        {/* Add corporate */}
+        {/* Add an entity */}
         {adding ? (
           <form onSubmit={addEntity} className="card p-6">
             <div className="mb-4 flex items-center justify-between">
               <span className="text-sm font-semibold text-ink-900">
-                Add a corporate SeqPal ID (KYB)
+                Add a corporate entity (KYB)
               </span>
               <button
                 type="button"
@@ -192,8 +172,8 @@ export function Step1Identity({ data, update }) {
                   id="oc-entity"
                   className="input"
                   placeholder="Acme Holdings Ltd"
-                  value={form.entity}
-                  onChange={(e) => setForm({ ...form, entity: e.target.value })}
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
                 />
               </div>
               <div>
@@ -220,17 +200,25 @@ export function Step1Identity({ data, update }) {
               </div>
             </div>
             <DemoNote className="mt-4">
-              KYB verification is mocked. The $150 corporate ID fee is not charged.
+              KYB verification is SIMULATED. The entity is recorded against your SeqPal ID on
+              the server, and it carries no enclave key of its own yet, so the asset is still
+              held by your personal AID.
             </DemoNote>
-            <button disabled={verifying} className="btn-primary mt-4 w-full">
-              {verifying ? (
+            {err && (
+              <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{err}</p>
+            )}
+            <button
+              disabled={busy || !form.name.trim()}
+              className="btn-primary mt-4 w-full disabled:opacity-50"
+            >
+              {busy ? (
                 <>
                   <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                  Running KYB verification…
+                  Recording the entity
                 </>
               ) : (
                 <>
-                  Verify & select entity
+                  Add and select entity
                   <Icon.arrowRight width={16} height={16} />
                 </>
               )}
@@ -252,7 +240,7 @@ export function Step1Identity({ data, update }) {
 /* ─────────────────────── Step 2 — Architecture Routing ─────────────────────── */
 
 export function Step2Structure({ data, update }) {
-  const isCorp = data.principal?.type === 'corporate'
+  const isCorp = data.principal?.kind === 'entity'
 
   // If the selected structure became invalid (e.g. principal switched to
   // individual), clear it.
@@ -1131,123 +1119,121 @@ export function Step5Compliance({ data, update }) {
 /* ──────────────────── Step 6 — Checkout & Deployment ──────────────────── */
 
 export function Step6Checkout({ data, onDeployed }) {
-  const { addIssuance } = useStore()
+  // Both create and deploy go through the store so its issuance list refreshes
+  // before we navigate to the new issuance page.
+  const { createIssuance, deployIssuance } = useStore()
   const s = getStructure(data.structureId)
   const cost = computeSetupCost(data.structureId, data.isPublic, {
     raise: data.raise,
     collateral: data.fields?.collateral,
     unit: data.unit,
   })
-  const [phase, setPhase] = useState('summary') // summary | processing | submitted
-  const [eta, setEta] = useState(null)
-  const [issuanceId, setIssuanceId] = useState(null)
+  const [phase, setPhase] = useState('summary') // summary | working | live
+  const [result, setResult] = useState(null) // { issuance, deploy }
+  const [err, setErr] = useState(null)
 
-  const isRaise = data.structureId !== 'depository-receipt'
-  // Plan §3.3 Step 6: the initial supply mints to the issuer's wallet for DRs
-  // and public offerings, or to the placement-portal escrow address for
-  // private placements that haven't yet collected investor subscriptions.
-  const mintTarget =
-    isRaise && !data.isPublic ? 'placement-portal escrow address' : 'issuer wallet'
-  // Initial token supply for the OpenAMP mint (see pay()): one token per unit of
-  // the target raise, defaulting to 1,000,000 for structures without a raise.
+  // The initial supply mints to the issuer's own enclave (the issuer-of-record
+  // treasury). Distribution to investors is a later OpenAMP transfer, so any
+  // "mints to a placement-portal escrow address" claim would be false today.
+  const mintTarget = 'issuer enclave'
+  // One whole token per unit of the target raise, defaulting to 1,000,000 for
+  // structures without a raise.
   const supply = Math.max(1, Math.round(parseMoney(data.raise) || 1_000_000))
+  const precision = 8
 
-  const pay = () => {
-    setPhase('processing')
-    setTimeout(() => {
-      const created = new Date()
-      const etaDate = addBusinessDays(created, deployDays(data.structureId, data.isPublic))
-      const issuance = {
-        id: 'iss_' + Math.random().toString(36).slice(2, 9),
+  // Deploy is real: create the issuance record on the server, then mint the
+  // OpenAMP restricted asset. The terms object is what the on-chain contract
+  // commits to, and seqpald recomputes its canonical hash; the value sent is a
+  // cross-check that refuses on mismatch rather than minting the wrong thing.
+  const deploy = async () => {
+    setErr(null)
+    setPhase('working')
+    try {
+      const terms = toTerms({ ...data, mintTarget })
+      const issuance = await createIssuance({
         name: data.name,
         ticker: data.ticker,
-        entityName: data.entityName,
-        unit: data.unit || 'USD',
-        structureId: data.structureId,
-        principal: data.principal,
-        isPublic: data.isPublic,
-        raise: data.raise,
-        fields: data.fields,
-        policy: data.policy,
-        mintTarget,
+        structure_id: data.structureId,
+        entity_id: data.principal?.entity_id || undefined,
+        terms,
+      })
+      const dep = await deployIssuance({
+        issuance_id: issuance.id,
         supply,
-        precision: 8,
+        precision,
+        clawback: true,
         confidential: !!data.confidential,
-        // assetId / txid are assigned by the OpenAMP policy server when the
-        // issuance is deployed (status -> live), not at checkout.
-        assetId: null,
-        txid: null,
-        status: 'awaiting_incorporation',
-        createdAt: created.toISOString(),
-        incorporationEta: etaDate.toISOString(),
-        portal: { configured: false, published: false },
-      }
-      addIssuance(issuance)
-      setIssuanceId(issuance.id)
-      setEta(etaDate)
-      setPhase('submitted')
-    }, 1600)
+        fee_convert_atoms: 100,
+        terms,
+        terms_hash: await termsHash(terms),
+      })
+      setResult({ issuance, deploy: dep })
+      setPhase('live')
+    } catch (e) {
+      setErr({ message: e.message, status: e.status })
+      setPhase('summary')
+    }
   }
 
-  if (phase === 'processing') {
+  if (phase === 'working') {
     return (
       <div>
-        <StepHeader n={6} title="Processing payment" />
+        <StepHeader n={6} title="Deploying on Sequentia" />
         <div className="card p-10 text-center">
           <span className="mx-auto block h-10 w-10 animate-spin rounded-full border-4 border-btc/20 border-t-btc" />
-          <p className="mt-5 font-medium text-ink-900">Confirming your setup-fee payment…</p>
+          <p className="mt-5 font-medium text-ink-900">Minting on Sequentia…</p>
+          <p className="mt-1 text-sm text-ink-700/70">
+            Registering the enclave key and issuing the restricted asset through the policy
+            server.
+          </p>
         </div>
       </div>
     )
   }
 
-  if (phase === 'submitted') {
+  if (phase === 'live') {
+    const d = result.deploy
     return (
       <div>
-        <StepHeader n={6} title="Submitted for incorporation" />
+        <StepHeader n={6} title="Deployed on Sequentia" />
         <div className="card p-8">
           <div className="flex items-center gap-4">
             <span className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500 text-white">
               <Icon.check width={26} height={26} />
             </span>
             <div>
-              <h3 className="font-bold text-ink-900">Payment received</h3>
+              <h3 className="font-bold text-ink-900">Asset minted</h3>
               <p className="text-sm text-ink-700/80">
-                Your signed documents have been submitted and your Próspera LLC is being
-                incorporated.
+                {data.name} ({data.ticker}) is a real OpenAMP restricted asset on the
+                Sequentia testnet.
               </p>
             </div>
           </div>
 
-          <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4">
-            <div className="flex items-center gap-2 text-sm font-semibold text-amber-800">
-              <Icon.clock width={16} height={16} />
-              Próspera incorporation in progress
-            </div>
-            <p className="mt-1 text-sm text-amber-800/90">
-              Entity registration on the Próspera e-registry typically takes 1–3 business
-              days. Estimated completion:{' '}
-              <span className="font-semibold">
-                {eta?.toLocaleDateString(undefined, {
-                  weekday: 'short',
-                  month: 'short',
-                  day: 'numeric',
-                })}
-              </span>
-              . We’ll then file with the RFSA (where applicable), deploy the OpenAMP asset, and
-              mint the initial supply to the {mintTarget}.
-            </p>
+          <dl className="mt-6 divide-y divide-ink-900/10 text-sm">
+            {[
+              ['Asset id', d.asset],
+              ['Issuance txid', d.txid],
+              ['Contract hash', d.contract_hash],
+              ['Holder account (AID)', d.aid],
+              ['Enclave address', d.address],
+            ].map(([k, v]) => (
+              <div key={k} className="flex items-center justify-between gap-4 py-2.5">
+                <dt className="shrink-0 text-ink-700/70">{k}</dt>
+                <dd className="break-all text-right font-mono text-xs text-ink-900">
+                  {v || 'not returned'}
+                </dd>
+              </div>
+            ))}
+          </dl>
+
+          <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-900">
+            The transaction is broadcast. SeqPal does not yet track confirmations or Bitcoin
+            anchor depth, so this is not final at 0 confirmations. Verify the identifiers on a
+            Sequentia explorer.
           </div>
 
-          <DemoNote className="mt-5">
-            In the demo you can fast-forward incorporation and deployment from the
-            issuance page.
-          </DemoNote>
-
-          <button
-            onClick={() => onDeployed(issuanceId)}
-            className="btn-primary mt-6 w-full"
-          >
+          <button onClick={() => onDeployed(result.issuance.id)} className="btn-primary mt-6 w-full">
             Go to my issuance
             <Icon.arrowRight width={16} height={16} />
           </button>
@@ -1260,8 +1246,8 @@ export function Step6Checkout({ data, onDeployed }) {
     <div>
       <StepHeader
         n={6}
-        title="Checkout & deployment"
-        sub="Review the final summary and pay the fixed setup fee. SeqPal then registers the entity on the Próspera e-registry, files with the RFSA where applicable, and deploys the OpenAMP asset on Sequentia."
+        title="Checkout and deployment"
+        sub="Review the summary and deploy. The setup fee is simulated in this build; the deploy is real and mints the OpenAMP restricted asset on Sequentia."
       />
 
       <div className="grid gap-5 lg:grid-cols-5">
@@ -1279,13 +1265,14 @@ export function Step6Checkout({ data, onDeployed }) {
                     : 'New Próspera LLC',
               ],
               ['Structure', s?.name],
-              ['Asset name', data.name || '—'],
-              ['Ticker', data.ticker || '—'],
+              ['Asset name', data.name || 'not set'],
+              ['Ticker', data.ticker || 'not set'],
               ['Offering type', data.isPublic ? 'Public offering' : 'Private placement'],
               ['Unit of account', data.unit === 'BTC' ? 'BTC (₿)' : 'USD ($)'],
-              ['Target raise', data.raise || '—'],
+              ['Target raise', data.raise || 'not set'],
               ['Initial mint to', mintTarget],
               ['Initial supply', supply.toLocaleString() + ' ' + (data.ticker || 'tokens')],
+              ['Confidentiality', data.confidential ? 'Confidential (opt-in)' : 'Transparent'],
               ['Network', 'Sequentia · OpenAMP'],
             ].map(([k, v]) => (
               <div key={k} className="flex items-center justify-between py-2.5">
@@ -1318,35 +1305,38 @@ export function Step6Checkout({ data, onDeployed }) {
               </div>
             )}
             <div className="flex justify-between border-t border-ink-900/10 pt-2.5 text-base">
-              <dt className="font-semibold text-ink-900">Due today</dt>
-              <dd className="font-mono font-bold text-ink-900">
-                ${cost.total.toLocaleString()}
-              </dd>
+              <dt className="font-semibold text-ink-900">Setup fee</dt>
+              <dd className="font-mono font-bold text-ink-900">${cost.total.toLocaleString()}</dd>
             </div>
           </dl>
           <div className="mt-4 space-y-1.5 text-xs text-ink-700/60">
             <p>
               + ${s?.annual.toLocaleString()}/yr support
               {data.isPublic && data.structureId !== 'depository-receipt'
-                ? ' + $6,000/yr public-reporting'
+                ? ' + $6,000/yr public reporting'
                 : ''}
               , billed after launch.
             </p>
             <p>
-              + Escrow &amp; Settlement Fee: 0.25%/mo on subscription funds held in
-              escrow ($5K min, 3% cap — typically ≈1% of the raise).
+              + Escrow and Settlement Fee: 0.25%/mo on subscription funds held in escrow ($5K
+              min, 3% cap, typically about 1% of the raise).
             </p>
-            {cost.secured > 0 && (
-              <p>Secured add-on is quoted $5K–$15K by collateral complexity.</p>
-            )}
-            {data.isPublic && (
-              <p>+ Issuer-borne audit & per-jurisdiction local-counsel costs (outside SeqPal).</p>
-            )}
           </div>
-          <DemoNote className="mt-5">Payment is mocked — nothing is charged.</DemoNote>
-          <button onClick={pay} className="btn-primary mt-5 w-full">
+          <DemoNote className="mt-5">
+            The setup fee is SIMULATED and nothing is charged. The deploy below is real and
+            mints on the Sequentia testnet.
+          </DemoNote>
+          {err && (
+            <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm">
+              <p className="font-medium text-rose-700">{err.message}</p>
+              {DEPLOY_HINT[err.status] && (
+                <p className="mt-1 text-xs text-rose-700/80">{DEPLOY_HINT[err.status]}</p>
+              )}
+            </div>
+          )}
+          <button onClick={deploy} className="btn-primary mt-5 w-full">
             <Icon.bolt width={16} height={16} />
-            Pay ${cost.total.toLocaleString()} & submit
+            Deploy on Sequentia
           </button>
           <Link
             to="/pricing"
@@ -1358,4 +1348,17 @@ export function Step6Checkout({ data, onDeployed }) {
       </div>
     </div>
   )
+}
+
+// What the server's deploy refusal means. The server's own message is shown
+// verbatim above; this only adds context the server cannot know.
+const DEPLOY_HINT = {
+  400: 'The mint parameters were refused. Fix the issuance and try again: nothing was minted.',
+  403: 'This issuance belongs to another SeqPal ID.',
+  404: 'The issuance record could not be found on the server.',
+  409: 'Choose a different ticker. Tickers are checked against the assets already live on the policy server.',
+  429: 'The deploy rate limit is per account and per platform over a rolling hour. Wait and try again.',
+  501: 'This deployment runs against a node that is not confidentiality-enabled. Turn off confidential holdings to deploy transparently, which is the Sequentia default.',
+  502: 'The policy server refused or could not be reached. Nothing was minted.',
+  503: 'The platform has no issuer token configured, so no deployment can be made from here right now.',
 }

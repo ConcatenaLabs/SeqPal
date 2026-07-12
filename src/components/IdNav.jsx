@@ -1,11 +1,10 @@
 import { Link, NavLink } from 'react-router-dom'
 import { Icon } from './icons'
 import { useStore } from '../lib/store'
-import { ownedIssuances } from '../lib/account'
 
 // Header for the standalone SeqPal ID subsite (conceptually id.seqpal.io).
-// Carries no issuance-business navigation for investors — the only issuer
-// cross-link appears for accounts that are themselves principals of issuances.
+// It carries no issuance-business navigation: the only issuer cross-link appears
+// for an identity that actually owns an issuance on the server.
 function IdWordmark() {
   return (
     <span className="inline-flex items-center gap-2.5">
@@ -27,11 +26,12 @@ function IdWordmark() {
 }
 
 export default function IdNav() {
-  const { isLoggedIn, account, signOut, issuances } = useStore()
-  // Cross-link to the issuance platform only when this SeqPal ID is the
-  // principal of at least one issuance — a pure investor never sees a path
-  // to the issuer business from here.
-  const isIssuer = isLoggedIn && ownedIssuances(account, issuances).length > 0
+  const { isSignedIn, account, signOut, issuances } = useStore()
+  // Cross-link to the issuance platform only when this SeqPal ID owns at least
+  // one issuance: someone who only holds assets never sees a path to the issuer
+  // business from here.
+  const isIssuer = isSignedIn && issuances.length > 0
+  const isLoggedIn = isSignedIn
   return (
     <header className="sticky top-0 z-40 border-b border-ink-900/10 bg-white/80 backdrop-blur-lg">
       <div className="container-x flex h-16 items-center justify-between gap-4">
@@ -73,7 +73,7 @@ export default function IdNav() {
               )}
               <button onClick={signOut} className="btn-ghost gap-2 px-2 text-ink-700 sm:ml-1 sm:px-4">
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-btc-50 text-xs font-bold text-btc-700">
-                  {account.individual.name.slice(0, 1).toUpperCase()}
+                  {(account.display_name || '?').slice(0, 1).toUpperCase()}
                 </span>
                 <span className="hidden sm:inline">Sign out</span>
               </button>

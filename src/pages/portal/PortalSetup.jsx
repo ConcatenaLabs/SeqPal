@@ -5,7 +5,7 @@ import { Icon } from '../../components/icons'
 import { Badge, DemoNote } from '../../components/ui'
 import SignInGate from '../../components/SignInGate'
 import { useStore, slugify } from '../../lib/store'
-import { ownsIssuance } from '../../lib/account'
+import { view } from '../../lib/issuance'
 import { unitSymbol } from '../../lib/economics'
 import { getStructure } from '../../data/structures'
 
@@ -86,42 +86,47 @@ function Notice({ title, body }) {
 export default function PortalSetup() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { account, isLoggedIn, issuances, updateIssuance } = useStore()
-  const iss = issuances.find((i) => i.id === id)
+  const { loading, isSignedIn, issuances, simFor, updateSim } = useStore()
+  const found = issuances.find((i) => i.id === id)
+  const iss = found ? view(found) : null
 
-  // Hooks must run before any early return (Rules of Hooks). Initialise the
-  // form defensively in case `iss` is absent at mount.
-  const existing = iss?.portal || {}
+  // Hooks must run before any early return (Rules of Hooks). The portal config
+  // is a browser-session simulation, not a server record: it lives in the store
+  // sim, so a page refresh clears it and nothing is written down as if it were
+  // a real deployed portal.
+  const existing = simFor(id).portal || {}
   const [cfg, setCfg] = useState(() => ({
     brandName: existing.brandName || iss?.entityName || iss?.name || '',
     headline: existing.headline || (iss ? `Invest in ${iss.name}` : ''),
     accent: existing.accent || 'btc',
     slug: existing.slug || slugify(iss?.entityName || iss?.name || ''),
     docs: existing.docs || dataRoomDocs(iss?.structureId),
-    // The minimum is in the raise's unit of account — a sensible BTC default,
+    // The minimum is in the raise's unit of account: a sensible BTC default,
     // not a USD figure shown with a ₿ symbol.
     minInvestment: existing.minInvestment || (iss?.unit === 'BTC' ? '0.5' : '25,000'),
     escrowRequested: existing.escrowRequested || false,
     tosAccepted: existing.tosAccepted || false,
   }))
 
-  if (!isLoggedIn) return <SignInGate />
-  // A non-owned issuance is indistinguishable from a missing one — portal
-  // setup is the owner's surface only.
-  if (!iss || !ownsIssuance(account, iss)) return <Notice title="Issuance not found." />
-  // A placement portal is a capital-raise surface; DRs are minted/redeemed directly.
+  if (loading) return <Notice title="Loading" />
+  if (!isSignedIn) return <SignInGate />
+  // GET /me is scoped to the owner, so a missing issuance is either gone or not
+  // this SeqPal ID's.
+  if (!iss) return <Notice title="Issuance not found." />
+  // A placement portal is a capital-raise surface; DRs are minted and redeemed
+  // directly.
   if (iss.structureId === 'depository-receipt')
     return (
       <Notice
-        title="Depository Receipts don’t use a placement portal"
-        body="DRs are minted and redeemed directly from the asset’s transfer-agent controls rather than raised through a subscription portal."
+        title="Depository Receipts do not use a placement portal"
+        body="DRs are minted and redeemed directly from the asset's transfer-agent controls rather than raised through a subscription portal."
       />
     )
-  if (iss.status !== 'live')
+  if (!iss.live)
     return (
       <Notice
-        title="Available once your issuance is live"
-        body="Set up your placement portal after incorporation and deployment complete."
+        title="Available once the asset is deployed"
+        body="Set up your placement portal after the OpenAMP asset is minted on Sequentia."
       />
     )
 
@@ -133,9 +138,7 @@ export default function PortalSetup() {
   const canPublish = cfg.brandName && cfg.slug && cfg.escrowRequested && cfg.tosAccepted
 
   const publish = () => {
-    updateIssuance(iss.id, {
-      portal: { ...cfg, configured: true, published: true },
-    })
+    updateSim(iss.id, { portal: { ...cfg, configured: true, published: true } })
     navigate(`/portal/${iss.id}`)
   }
 

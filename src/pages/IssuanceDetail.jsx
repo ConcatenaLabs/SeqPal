@@ -5,172 +5,276 @@ import { Badge, DemoNote } from '../components/ui'
 import SignInGate from '../components/SignInGate'
 import ServicingPanel from '../components/ServicingPanel'
 import { useStore } from '../lib/store'
-import { ownsIssuance } from '../lib/account'
+import { view } from '../lib/issuance'
 import { getStructure } from '../data/structures'
 import { JURISDICTIONS } from '../data/jurisdictions'
-import { STATUS, milestonesFor, completedCount, nextStatus } from '../lib/lifecycle'
-import { deployIssuance, termsHash } from '../lib/openamp'
-import {
-  parseMoney,
-  fmtAmount,
-  ownershipPct,
-  ownershipDenominator,
-  escrowSettlementFee,
-} from '../lib/economics'
+import { STATUS, offPlatformSteps } from '../lib/lifecycle'
+import { termsHash } from '../lib/openamp'
+import { parseMoney, fmtAmount, ownershipPct, ownershipDenominator } from '../lib/economics'
 
-
-function Truncate({ value }) {
-  if (!value) return <span className="text-ink-700/50">—</span>
+function Mono({ value }) {
+  if (!value) return <span className="text-ink-700/50">not minted</span>
   return (
-    <span className="font-mono text-xs text-ink-700">
-      {value.slice(0, 10)}…{value.slice(-8)}
+    <span className="break-all font-mono text-xs text-ink-700" title={value}>
+      {value.length > 24 ? `${value.slice(0, 10)}…${value.slice(-8)}` : value}
     </span>
   )
 }
 
-function Timeline({ iss, onAdvance, busy, error }) {
-  const milestones = milestonesFor(iss.structureId)
-  const done = completedCount(iss.status, iss.structureId)
-  const eta = iss.incorporationEta ? new Date(iss.incorporationEta) : null
+// What the server's refusal means, in one line. The server's own message is
+// always shown verbatim above this: this only adds context it cannot know.
+const DEPLOY_HINT = {
+  400: 'The mint parameters were refused. Fix them here and try again: nothing was minted.',
+  403: 'This issuance belongs to another SeqPal ID.',
+  404: 'This issuance no longer exists on the server.',
+  409: 'Pick a different ticker. Tickers are checked against the assets already live on the policy server.',
+  429: 'The deploy rate limit is per account and per platform, over a rolling hour. Wait and try again.',
+  501: 'This deployment runs against a node that is not confidentiality-enabled. Turn off confidential holdings to deploy transparently, which is the Sequentia default.',
+  502: 'The policy server refused or could not be reached. Nothing was minted.',
+  503: 'The platform has no issuer token configured, so no deployment can be made from here right now.',
+}
+
+function DeployCard({ iss, onDeployed }) {
+  const { deployIssuance } = useStore()
+  const [form, setForm] = useState({
+    supply: iss.supply > 0 ? String(iss.supply) : '1000000',
+    precision: iss.precision >= 1 && iss.precision <= 8 ? iss.precision : 8,
+    clawback: iss.clawback !== false,
+    confidential: !!iss.confidential,
+  })
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+
+  const steps = offPlatformSteps(iss.structureId)
+
+  const deploy = async () => {
+    setErr(null)
+    setBusy(true)
+    try {
+      // The terms object is what the on-chain contract commits to. seqpald
+      // recomputes the canonical hash server-side; the value sent here is a
+      // cross-check, and a mismatch refuses the deploy rather than minting
+      // something the issuer never saw.
+      const terms = iss.terms && typeof iss.terms === 'object' ? iss.terms : {}
+      const res = await deployIssuance({
+        issuance_id: iss.id,
+        supply: Number(form.supply.replace(/[^0-9]/g, '')) || 0,
+        precision: Number(form.precision),
+        clawback: form.clawback,
+        confidential: form.confidential,
+        fee_convert_atoms: 100,
+        terms,
+        terms_hash: await termsHash(terms),
+      })
+      onDeployed?.(res)
+    } catch (e) {
+      setErr({ message: e.message, status: e.status })
+    } finally {
+      setBusy(false)
+    }
+  }
 
   return (
     <div className="card p-6">
       <div className="flex items-center justify-between">
-        <h2 className="font-bold text-ink-900">Issuance lifecycle</h2>
-        <Badge color={STATUS[iss.status]?.color}>
-          {iss.status === 'live' && (
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-          )}
-          {STATUS[iss.status]?.label}
-        </Badge>
+        <h2 className="font-bold text-ink-900">Deploy on Sequentia</h2>
+        <Badge color={STATUS.draft.color}>{STATUS.draft.label}</Badge>
       </div>
 
-      <ol className="mt-5 space-y-1">
-        {milestones.map((m, i) => {
-          const state = i < done ? 'done' : i === done ? 'active' : 'todo'
-          return (
-            <li key={m.key} className="flex gap-3">
-              <div className="flex flex-col items-center">
-                <span
-                  className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${
-                    state === 'done'
-                      ? 'bg-emerald-500 text-white'
-                      : state === 'active'
-                        ? 'bg-btc text-white'
-                        : 'bg-ink-900/10 text-ink-600'
-                  }`}
-                >
-                  {state === 'done' ? (
-                    <Icon.check width={14} height={14} />
-                  ) : state === 'active' ? (
-                    <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-white" />
-                  ) : (
-                    i + 1
-                  )}
-                </span>
-                {i < milestones.length - 1 && (
-                  <span
-                    className={`my-0.5 w-0.5 flex-1 ${
-                      i < done ? 'bg-emerald-500/40' : 'bg-ink-900/10'
-                    }`}
-                  />
-                )}
-              </div>
-              <div className={`pb-4 ${state === 'todo' ? 'opacity-55' : ''}`}>
-                <div className="text-sm font-semibold text-ink-900">{m.label}</div>
-                <div className="text-xs text-ink-700/70">{m.detail}</div>
-                {m.key === 'incorporation' && state === 'active' && eta && (
-                  <div className="mt-1 text-xs font-medium text-amber-700">
-                    Est. completion{' '}
-                    {eta.toLocaleDateString(undefined, {
-                      weekday: 'short',
-                      month: 'short',
-                      day: 'numeric',
-                    })}{' '}
-                    · 1–3 business days
-                  </div>
-                )}
-              </div>
+      <div className="mt-4 rounded-xl border border-ink-900/10 bg-ink-900/[0.02] px-4 py-3">
+        <div className="text-xs font-semibold uppercase tracking-wide text-ink-700/60">
+          Before you deploy, off the platform
+        </div>
+        <ul className="mt-2 space-y-1.5">
+          {steps.map((m) => (
+            <li key={m.key} className="text-sm">
+              <span className="font-medium text-ink-900">{m.label}</span>
+              <span className="block text-xs text-ink-700/70">{m.detail}</span>
             </li>
-          )
-        })}
-      </ol>
+          ))}
+        </ul>
+        <p className="mt-2 text-xs text-ink-700/60">
+          SeqPal does not observe these steps yet, so it does not claim to track them. The
+          deploy below is the part that is real.
+        </p>
+      </div>
 
-      {iss.status !== 'live' && (
-        <div className="mt-2 rounded-xl border border-dashed border-btc/30 bg-btc-50 p-4">
-          <div className="flex items-center gap-2 text-sm font-semibold text-btc-700">
-            <Icon.spark width={16} height={16} /> Demo fast-forward
-          </div>
-          <p className="mt-1 text-xs text-btc-700/80">
-            In production the incorporation and filing steps complete over 1–3 business
-            days. The deploy step is real: it mints the OpenAMP restricted asset on the
-            Sequentia testnet through the live policy server.
-          </p>
-          <button
-            onClick={() => onAdvance(nextStatus(iss.status))}
-            disabled={busy}
-            className="btn-primary mt-3 w-full py-2 disabled:opacity-60"
+      <div className="mt-5 grid gap-4 sm:grid-cols-2">
+        <div>
+          <label className="label" htmlFor="dep-supply">
+            Initial supply (whole tokens)
+          </label>
+          <input
+            id="dep-supply"
+            className="input"
+            inputMode="numeric"
+            value={form.supply}
+            onChange={(e) => setForm({ ...form, supply: e.target.value })}
+          />
+        </div>
+        <div>
+          <label className="label" htmlFor="dep-precision">
+            Precision (decimals)
+          </label>
+          <select
+            id="dep-precision"
+            className="select"
+            value={form.precision}
+            onChange={(e) => setForm({ ...form, precision: Number(e.target.value) })}
           >
-            {busy ? (
-              <>
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                Minting on Sequentia…
-              </>
-            ) : (
-              <>
-                {iss.status === 'awaiting_incorporation'
-                  ? 'Complete incorporation'
-                  : iss.structureId === 'depository-receipt'
-                    ? 'Contract custody & deploy'
-                    : 'Deploy on Sequentia'}
-                <Icon.arrowRight width={15} height={15} />
-              </>
-            )}
-          </button>
-          {error && (
-            <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">
-              Deployment failed: {error}
-            </p>
+            {[1, 2, 3, 4, 5, 6, 7, 8].map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="mt-4 space-y-2">
+        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-ink-900/10 px-4 py-3">
+          <input
+            type="checkbox"
+            className="mt-1 h-4 w-4 accent-btc"
+            checked={form.clawback}
+            onChange={(e) => setForm({ ...form, clawback: e.target.checked })}
+          />
+          <span className="text-sm">
+            <span className="font-medium text-ink-900">Clawback enabled</span>
+            <span className="block text-xs leading-relaxed text-ink-700/70">
+              The asset can be recovered from a holder by the issuer of record. On this
+              deployment the clawback key is held by the platform, not by you.
+            </span>
+          </span>
+        </label>
+        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-ink-900/10 px-4 py-3">
+          <input
+            type="checkbox"
+            className="mt-1 h-4 w-4 accent-seq-600"
+            checked={form.confidential}
+            onChange={(e) => setForm({ ...form, confidential: e.target.checked })}
+          />
+          <span className="text-sm">
+            <span className="font-medium text-ink-900">Confidential holdings (opt-in)</span>
+            <span className="block text-xs leading-relaxed text-ink-700/70">
+              Blind amounts and the asset tag on chain. Sequentia is transparent by default,
+              so this is opt-in per asset, and it needs a confidentiality-enabled node: if
+              this one is not, the deploy is refused rather than silently downgraded.
+            </span>
+          </span>
+        </label>
+      </div>
+
+      {err && (
+        <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm">
+          <p className="font-medium text-rose-700">{err.message}</p>
+          {DEPLOY_HINT[err.status] && (
+            <p className="mt-1 text-xs text-rose-700/80">{DEPLOY_HINT[err.status]}</p>
           )}
         </div>
       )}
+
+      <button onClick={deploy} disabled={busy} className="btn-primary mt-5 w-full disabled:opacity-60">
+        {busy ? (
+          <>
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+            Minting on Sequentia…
+          </>
+        ) : (
+          <>
+            Deploy on Sequentia
+            <Icon.arrowRight width={15} height={15} />
+          </>
+        )}
+      </button>
+      <p className="mt-2 text-center text-xs leading-relaxed text-ink-700/60">
+        This mints a real OpenAMP restricted asset on the Sequentia testnet. A repeat of the
+        same terms returns the same asset instead of minting a second one.
+      </p>
     </div>
   )
 }
 
-function PortalCard({ iss }) {
+function AssetCard({ iss }) {
+  const live = iss.live
+  return (
+    <div className="card p-6">
+      <h2 className="font-bold text-ink-900">Asset</h2>
+      {live ? (
+        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-900">
+          The mint is broadcast and the identifiers below are real. SeqPal does not yet track
+          confirmations or Bitcoin anchor depth, so nothing here should be read as final at 0
+          confirmations. Check the identifiers on a Sequentia explorer.
+        </div>
+      ) : (
+        <div className="mt-3 rounded-xl border border-ink-900/10 bg-ink-900/[0.02] px-4 py-3 text-xs text-ink-700/70">
+          Nothing is minted yet, so there is no asset id and no txid. They appear here, from
+          the policy server, the moment the deploy succeeds.
+        </div>
+      )}
+      <dl className="mt-4 divide-y divide-ink-900/10 text-sm">
+        {[
+          ['Issuer of record', `${iss.entityName || iss.name} LLC · Próspera`],
+          ['Network', 'Sequentia (a Bitcoin sidechain)'],
+          ['Issuance layer', 'OpenAMP · transfer-restricted enclave'],
+          ['Confidentiality', iss.confidential ? 'Confidential (opt-in)' : 'Transparent'],
+          ['Asset id', <Mono key="a" value={iss.assetId} />],
+          ['Issuance txid', <Mono key="t" value={iss.txid} />],
+          ['Contract hash', <Mono key="c" value={iss.contractHash} />],
+          ['Holder account (AID)', <Mono key="h" value={iss.holderAid} />],
+          ['Enclave address', <Mono key="e" value={iss.enclaveAddress} />],
+          [
+            'Initial supply',
+            iss.supply ? `${iss.supply.toLocaleString()} ${iss.ticker}` : 'not set',
+          ],
+          ['Precision', iss.precision || 'not set'],
+          ['Target raise', iss.raise || 'not set'],
+          ['Offering type', iss.isPublic ? 'Public offering' : 'Private placement'],
+        ].map(([k, v]) => (
+          <div key={k} className="flex items-center justify-between gap-4 py-3">
+            <dt className="shrink-0 text-ink-700/70">{k}</dt>
+            <dd className="text-right font-medium text-ink-900">{v}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  )
+}
+
+function PortalCard({ iss, portal }) {
   const isRaise = iss.structureId !== 'depository-receipt'
-  const live = iss.status === 'live'
-  const published = iss.portal?.published
+  const published = portal?.published
 
   return (
     <div className="card p-6">
       <div className="flex items-center gap-2">
         <Icon.globe width={18} height={18} className="text-seq-600" />
         <h2 className="font-bold text-ink-900">Placement Portal</h2>
-        {published && <Badge color="emerald" className="ml-auto">Published</Badge>}
+        {published && (
+          <Badge color="amber" className="ml-auto">
+            Preview
+          </Badge>
+        )}
       </div>
-      <p className="mt-1.5 text-sm text-ink-700/70">
+      <p className="mt-1.5 text-sm leading-relaxed text-ink-700/70">
         {isRaise
-          ? 'Your own branded fundraising portal, operated on your domain. Investors clear the SeqPal ID gate, sign the subscription agreement, and wire into escrow.'
+          ? 'A branded fundraising portal on your own domain, where an investor clears the SeqPal ID gate, signs the subscription agreement, and funds escrow.'
           : 'Depository Receipts are minted and redeemed directly rather than raised through a subscription portal.'}
       </p>
 
       {!isRaise ? (
         <div className="mt-4 rounded-lg bg-ink-900/[0.03] px-4 py-3 text-sm text-ink-700/80">
-          Mint and redemption are handled from the asset’s transfer-agent controls.
+          Mint and redemption are handled from the asset's transfer-agent controls.
         </div>
-      ) : !live ? (
+      ) : !iss.live ? (
         <div className="mt-4 rounded-lg bg-ink-900/[0.03] px-4 py-3 text-sm text-ink-700/70">
-          Available once your issuance is live.
+          Available once the asset is deployed.
         </div>
       ) : published ? (
         <div className="mt-4 space-y-3">
           <div className="flex items-center justify-between rounded-lg bg-ink-900/[0.03] px-4 py-2.5 text-sm">
-            <span className="text-ink-700">Live at</span>
-            <span className="font-mono text-xs text-seq-600">
-              invest.{iss.portal.slug}.com
-            </span>
+            <span className="text-ink-700">Preview at</span>
+            <span className="font-mono text-xs text-seq-600">invest.{portal.slug}.com</span>
           </div>
           <div className="flex gap-2">
             <Link to={`/portal/${iss.id}`} className="btn-primary flex-1">
@@ -186,26 +290,39 @@ function PortalCard({ iss }) {
           <Icon.spark width={16} height={16} /> Set up your placement portal
         </Link>
       )}
+      {isRaise && (
+        <p className="mt-3 text-[11px] leading-relaxed text-ink-700/55">
+          The portal, its subscriptions, and escrow are SIMULATED in this build and live in
+          this browser session only. Nothing is stored on the server and no money or token
+          moves.
+        </p>
+      )}
     </div>
   )
 }
 
 export default function IssuanceDetail() {
   const { id } = useParams()
-  const { account, isLoggedIn, issuances, updateIssuance } = useStore()
-  const [deploying, setDeploying] = useState(false)
-  const [deployErr, setDeployErr] = useState(null)
+  const { loading, isSignedIn, issuances, simFor, updateSim } = useStore()
 
-  if (!isLoggedIn) return <SignInGate />
+  if (loading) {
+    return (
+      <section className="container-x flex justify-center py-24">
+        <span className="h-8 w-8 animate-spin rounded-full border-4 border-btc/20 border-t-btc" />
+      </section>
+    )
+  }
+  if (!isSignedIn) return <SignInGate />
 
-  // Treat another principal's issuance as not found — the management console
-  // must not reveal or expose control of a deal this SeqPal ID doesn't own.
+  // GET /me returns only the session AID's issuances, so an issuance owned by
+  // another SeqPal ID is simply not here.
   const found = issuances.find((i) => i.id === id)
-  const iss = found && ownsIssuance(account, found) ? found : null
-  if (!iss) {
+  if (!found) {
     return (
       <section className="container-x py-24 text-center">
-        <p className="text-ink-700">Issuance not found.</p>
+        <p className="text-ink-700">
+          Issuance not found. It does not exist, or it belongs to another SeqPal ID.
+        </p>
         <Link to="/dashboard" className="btn-outline mt-6">
           Back to dashboard
         </Link>
@@ -213,91 +330,26 @@ export default function IssuanceDetail() {
     )
   }
 
+  const iss = view(found)
   const s = getStructure(iss.structureId)
   const Ic = StructureIcon[s?.icon] || Icon.layers
-  const live = iss.status === 'live'
+  const sim = simFor(iss.id)
 
-  const advance = async (status) => {
-    // Deploying to live is the real moment: mint the OpenAMP restricted asset
-    // on Sequentia through the policy server. Everything before it is the
-    // simulated incorporation/filing timeline.
-    if (status === 'live' && !iss.assetId) {
-      const key = account.individual?.enclaveKey
-      if (!key) {
-        setDeployErr('This SeqPal ID has no enclave key; re-register your SeqPal ID.')
-        return
-      }
-      setDeployErr(null)
-      setDeploying(true)
-      try {
-        // Bind SeqPal's compliance configuration to the on-chain asset.
-        const terms = await termsHash({
-          structureId: iss.structureId,
-          isPublic: iss.isPublic,
-          policy: iss.policy || {},
-          raise: iss.raise || '',
-          unit: iss.unit || 'USD',
-          fields: iss.fields || {},
-        })
-        const res = await deployIssuance({
-          name: iss.name,
-          ticker: iss.ticker,
-          issuer_pubkey: key.xonly,
-          supply: iss.supply || 1_000_000,
-          precision: iss.precision || 8,
-          clawback: true,
-          confidential: !!iss.confidential,
-          fee_convert_atoms: 100,
-          terms_hash: terms,
-        })
-        updateIssuance(iss.id, {
-          status: 'live',
-          liveAt: new Date().toISOString(),
-          assetId: res.asset,
-          txid: res.txid,
-          contractHash: res.contract_hash,
-          holderAid: res.aid,
-          enclaveAddress: res.address,
-        })
-      } catch (e) {
-        setDeployErr(e.message || String(e))
-      } finally {
-        setDeploying(false)
-      }
-      return
-    }
-    const patch = { status }
-    if (status === 'live') patch.liveAt = new Date().toISOString()
-    updateIssuance(iss.id, patch)
-  }
-
-  // Fundraising — derived from portal subscriptions.
-  const isRaise = iss.structureId !== 'depository-receipt'
-  const subs = iss.subscriptions || []
-  const escrowSubs = subs.filter((s) => s.status === 'in_escrow')
-  const settledSubs = subs.filter((s) => s.status === 'settled')
+  // Simulated raise, in memory for this browser session only.
+  const subs = sim.subscriptions
+  const escrowSubs = subs.filter((x) => x.status === 'in_escrow')
+  const settledSubs = subs.filter((x) => x.status === 'settled')
   const raiseNum = parseMoney(iss.raise)
-  const escrowTotal = escrowSubs.reduce((a, s) => a + s.amount, 0)
-  const settledTotal = settledSubs.reduce((a, s) => a + s.amount, 0)
-  // Ownership basis differs by structure (see lib/economics): Native Equity
-  // holders own a slice of the post-money company; SPV/Debt holders share the
-  // funded position / note principal. DRs are not subscription-based.
+  const escrowTotal = escrowSubs.reduce((a, x) => a + x.amount, 0)
+  const settledTotal = settledSubs.reduce((a, x) => a + x.amount, 0)
   const denom = ownershipDenominator(iss.structureId, iss.fields, raiseNum)
   const ownerPct = (amt) => ownershipPct(iss.structureId, iss.fields, raiseNum, amt)
-  const ownBasis =
-    iss.structureId === 'native-equity'
-      ? 'post-money'
-      : iss.structureId === 'equity-spv'
-        ? '% of SPV'
-        : iss.structureId === 'debt-yield'
-          ? '% of principal'
-          : 'live'
-  const treasuryPct = Math.max(0, 100 - (ownerPct(settledTotal) || 0))
+  const isRaise = iss.structureId !== 'depository-receipt'
 
   const closeRound = () =>
-    updateIssuance(iss.id, (i) => ({
-      subscriptions: (i.subscriptions || []).map((s) =>
-        s.status === 'in_escrow' ? { ...s, status: 'settled' } : s
+    updateSim(iss.id, (cur) => ({
+      subscriptions: cur.subscriptions.map((x) =>
+        x.status === 'in_escrow' ? { ...x, status: 'settled' } : x
       ),
     }))
 
@@ -317,79 +369,38 @@ export default function IssuanceDetail() {
         <div className="flex items-center gap-4">
           <div
             className={`flex h-14 w-14 items-center justify-center rounded-2xl ${
-              s?.accent === 'seq'
-                ? 'bg-seq/10 text-seq-600'
-                : 'bg-btc-50 text-btc-600'
+              s?.accent === 'seq' ? 'bg-seq/10 text-seq-600' : 'bg-btc-50 text-btc-600'
             }`}
           >
             <Ic width={28} height={28} />
           </div>
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-extrabold tracking-tight text-ink-900">
-                {iss.name}
-              </h1>
+              <h1 className="text-2xl font-extrabold tracking-tight text-ink-900">{iss.name}</h1>
               <span className="font-mono text-sm text-ink-700/60">{iss.ticker}</span>
             </div>
             <div className="mt-1 text-sm text-ink-700/80">
-              {s?.name} · owned by {iss.principal?.name}
+              {s?.name || 'Structure not set'}
+              {iss.principal?.name ? ` · ${iss.principal.name}` : ''}
             </div>
           </div>
         </div>
-        <Badge color={STATUS[iss.status]?.color}>
-          {live && <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />}
-          {STATUS[iss.status]?.label}
+        <Badge color={(STATUS[iss.status] || STATUS.draft).color}>
+          {iss.live && <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />}
+          {(STATUS[iss.status] || STATUS.draft).label}
         </Badge>
       </div>
 
       <div className="mt-8 grid gap-6 lg:grid-cols-3">
-        {/* left: lifecycle + portal */}
         <div className="space-y-6">
-          <Timeline iss={iss} onAdvance={advance} busy={deploying} error={deployErr} />
-          <PortalCard iss={iss} />
+          {!iss.live && <DeployCard iss={iss} />}
+          <PortalCard iss={iss} portal={sim.portal} />
         </div>
 
-        {/* right: asset + servicing */}
         <div className="space-y-6 lg:col-span-2">
-          <div className="card p-6">
-            <h2 className="font-bold text-ink-900">Asset</h2>
-            {!live && (
-              <DemoNote className="mt-3">
-                The OpenAMP asset is minted once incorporation and RFSA filing complete.
-                Asset identifiers appear here when the issuance goes live.
-              </DemoNote>
-            )}
-            <dl className="mt-4 divide-y divide-ink-900/10 text-sm">
-              {[
-                ['Issuer of record', `${iss.entityName || iss.name} LLC · Próspera`],
-                ['Applicant / owner', iss.principal?.name],
-                ['Network', 'Sequentia (Bitcoin sidechain)'],
-                ['Issuance layer', 'OpenAMP · transfer-restricted enclave'],
-                ['Confidentiality', iss.confidential ? 'Confidential (opt-in)' : 'Transparent'],
-                ['Asset id', live ? <Truncate key="a" value={iss.assetId} /> : 'pending'],
-                ['Issuance txid', live ? <Truncate key="t" value={iss.txid} /> : 'pending'],
-                ['Contract hash', live ? <Truncate key="c" value={iss.contractHash} /> : 'pending'],
-                ['Issuer AID', live && iss.holderAid ? <Truncate key="h" value={iss.holderAid} /> : 'pending'],
-                ['Initial supply', iss.supply ? `${iss.supply.toLocaleString()} ${iss.ticker || ''}` : '—'],
-                ['Initial mint to', iss.mintTarget],
-                ['Target raise', iss.raise || '—'],
-                ['Offering type', iss.isPublic ? 'Public offering' : 'Private placement'],
-                ...(iss.structureId === 'depository-receipt'
-                  ? [
-                      ['Underlying', iss.fields?.asset || '—'],
-                      ['NAV reporting', iss.fields?.nav || 'Daily'],
-                    ]
-                  : []),
-              ].map(([k, v]) => (
-                <div key={k} className="flex items-center justify-between py-3">
-                  <dt className="text-ink-700/70">{k}</dt>
-                  <dd className="font-medium text-ink-900">{v}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
+          <AssetCard iss={iss} />
 
-          {live && (
+          {iss.live && (
             <>
               <ServicingPanel iss={iss} />
 
@@ -398,37 +409,16 @@ export default function IssuanceDetail() {
                   <Icon.exchange width={18} height={18} className="text-seq-600" />
                   <h2 className="font-bold text-ink-900">Secondary market</h2>
                 </div>
-                <p className="mt-1.5 text-sm text-ink-700/70">
-                  Because eligibility is enforced by the OpenAMP policy server on
-                  every transfer, the asset moves between whitelisted holders without a
-                  proprietary trading system.
+                <p className="mt-1.5 text-sm leading-relaxed text-ink-700/70">
+                  Because the policy server co-signs every transfer, the asset can only move
+                  between holders it recognises. That is what makes a venue listing possible
+                  without a proprietary trading system, and it is also the limit: a venue can
+                  check eligibility, never grant it.
                 </p>
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-lg border border-ink-900/10 bg-ink-900/[0.02] px-4 py-3">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-ink-900">
-                      <span className="h-2 w-2 rounded-full bg-emerald-500" /> Protocol-level
-                      transferability
-                    </div>
-                    <p className="mt-1 text-xs text-ink-700/70">
-                      Whitelisted holders can transfer peer-to-peer, and the asset can be
-                      listed on Sequentia-native venues such as SeqDEX with asset-level KYC.
-                    </p>
-                  </div>
-                  <div className="rounded-lg border border-ink-900/10 bg-ink-900/[0.02] px-4 py-3">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-ink-900">
-                      <Icon.shield width={15} height={15} className="text-seq-600" />{' '}
-                      Eligibility on every transfer
-                    </div>
-                    <p className="mt-1 text-xs text-ink-700/70">
-                      Before the policy server co-signs, OpenAMP checks the recipient
-                      against your policy via SeqPal ID, approving or rejecting each
-                      transfer.
-                    </p>
-                  </div>
-                </div>
                 <p className="mt-3 text-[11px] leading-relaxed text-ink-700/55">
-                  Secondary-market depth on Sequentia is still building; this describes
-                  transferability, not guaranteed trading volume.
+                  Eligibility rules are not yet compiled into this asset, and no venue
+                  integration exists today. Secondary-market depth on Sequentia is still
+                  building: this describes transferability, not trading volume.
                 </p>
               </div>
 
@@ -439,23 +429,25 @@ export default function IssuanceDetail() {
                       <Icon.coins width={18} height={18} className="text-btc-600" />
                       <h2 className="font-bold text-ink-900">Fundraising</h2>
                     </div>
-                    <span className="text-xs text-ink-700/60">
-                      via {iss.portal?.published ? `invest.${iss.portal.slug}.com` : 'placement portal'}
-                    </span>
+                    <Badge color="amber">Simulated</Badge>
                   </div>
+                  <p className="mt-1.5 text-xs leading-relaxed text-ink-700/60">
+                    Subscriptions, escrow, and settlement are simulated and held in this
+                    browser session only. No money moves and no token is delivered.
+                  </p>
 
                   {subs.length === 0 ? (
                     <div className="mt-4 rounded-lg bg-ink-900/[0.03] px-4 py-3 text-sm text-ink-700/70">
-                      No subscriptions yet.{' '}
-                      {iss.portal?.published ? (
+                      No subscriptions.{' '}
+                      {sim.portal?.published ? (
                         <Link
                           to={`/portal/${iss.id}`}
                           className="font-semibold text-btc-600 hover:underline"
                         >
-                          Open your investor portal
+                          Open the investor portal
                         </Link>
                       ) : (
-                        'Publish your placement portal to start raising.'
+                        'Set up the placement portal to walk the investor flow.'
                       )}
                     </div>
                   ) : (
@@ -478,44 +470,6 @@ export default function IssuanceDetail() {
                           <div className="mt-0.5 font-bold text-ink-900">{subs.length}</div>
                         </div>
                       </div>
-                      {raiseNum > 0 && (
-                        <div className="mt-3">
-                          <div className="h-2 w-full overflow-hidden rounded-full bg-ink-900/10">
-                            <div
-                              className="h-full rounded-full bg-btc"
-                              style={{
-                                width: `${Math.min(100, ((escrowTotal + settledTotal) / raiseNum) * 100)}%`,
-                              }}
-                            />
-                          </div>
-                          <div className="mt-1 text-xs text-ink-700/60">
-                            {fmtAmount(escrowTotal + settledTotal, iss.unit)} of {iss.raise} target
-                          </div>
-                        </div>
-                      )}
-                      <div className="mt-3 flex items-center justify-between rounded-lg bg-ink-900/[0.03] px-3 py-2 text-xs">
-                        <span className="text-ink-700/70">
-                          Escrow &amp; Settlement Fee · 0.25%/mo ·{' '}
-                          {iss.unit === 'BTC' ? 'US$5K-equiv. min' : '$5K min'} · 3% cap
-                        </span>
-                        <span className="font-mono font-semibold text-ink-900">
-                          ~
-                          {fmtAmount(
-                            escrowSettlementFee(
-                              escrowTotal + settledTotal,
-                              undefined,
-                              iss.unit
-                            ),
-                            iss.unit
-                          )}
-                        </span>
-                      </div>
-                      <p className="mt-1 text-[11px] text-ink-700/55">
-                        Accrues daily on funds held in escrow (est. shown at a typical
-                        4-month window, ≈1% of the raise). Charged for custody and
-                        on-chain settlement, payable whether or not the offering closes —
-                        not a placement commission.
-                      </p>
                       {escrowSubs.length > 0 && (
                         <>
                           <div className="mt-3 divide-y divide-ink-900/5 rounded-lg border border-ink-900/10">
@@ -535,103 +489,86 @@ export default function IssuanceDetail() {
                               </div>
                             ))}
                           </div>
-                          <button onClick={closeRound} className="btn-primary mt-4 w-full">
+                          <button onClick={closeRound} className="btn-outline mt-4 w-full">
                             <Icon.check width={16} height={16} />
-                            Closing conditions met · release escrow & deliver tokens
+                            Simulate closing: mark escrow settled
                           </button>
-                          <p className="mt-1.5 text-center text-[11px] text-ink-700/55">
-                            Escrow is released only against the offering’s closing
-                            conditions; tokens settle to whitelisted wallets.
-                          </p>
                         </>
+                      )}
+                      {settledSubs.length > 0 && (
+                        <div className="mt-4">
+                          <div className="text-xs font-semibold uppercase tracking-wide text-ink-700/60">
+                            Settled (simulated)
+                          </div>
+                          <div className="mt-2 divide-y divide-ink-900/5 rounded-lg border border-ink-900/10">
+                            {settledSubs.map((su) => (
+                              <div
+                                key={su.id}
+                                className="flex items-center justify-between px-3 py-2 text-sm"
+                              >
+                                <span className="font-medium text-ink-900">{su.name}</span>
+                                <span className="font-mono text-ink-800">
+                                  {denom
+                                    ? `${ownerPct(su.amount).toFixed(2)}%`
+                                    : fmtAmount(su.amount, iss.unit)}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                          <p className="mt-2 text-[11px] leading-relaxed text-ink-700/55">
+                            No token has been delivered to any of these holders. Real delivery
+                            is an OpenAMP transfer and is not built yet.
+                          </p>
+                        </div>
                       )}
                     </>
                   )}
                 </div>
               )}
 
-              <div className="grid gap-6 sm:grid-cols-2">
-                <div className="card overflow-hidden">
-                  <div className="flex items-center justify-between border-b border-ink-900/10 px-5 py-3.5">
-                    <h2 className="font-bold text-ink-900">Registry of Members</h2>
-                    <span className="text-xs text-ink-700/60">{ownBasis}</span>
-                  </div>
-                  <div className="divide-y divide-ink-900/10">
-                    <div className="flex items-center justify-between px-5 py-3">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-ink-900">
-                          {isRaise ? 'Treasury / escrow' : 'Issuer treasury'}
-                        </span>
-                        <Badge color="slate">HN</Badge>
-                      </div>
-                      <span className="font-mono text-sm text-ink-800">
-                        {treasuryPct.toFixed(1)}%
-                      </span>
-                    </div>
-                    {settledSubs.map((s) => (
-                      <div
-                        key={s.id}
-                        className="flex items-center justify-between px-5 py-3"
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-ink-900">{s.name}</span>
-                          <Badge color="slate">{s.jur}</Badge>
-                        </div>
-                        <span className="font-mono text-sm text-ink-800">
-                          {denom ? `${ownerPct(s.amount).toFixed(2)}%` : fmtAmount(s.amount, iss.unit)}
-                        </span>
-                      </div>
-                    ))}
-                    {settledSubs.length === 0 && (
-                      <div className="px-5 py-3 text-xs text-ink-700/55">
-                        Holders appear here once subscriptions settle on closing.
-                      </div>
-                    )}
-                  </div>
+              <div className="card overflow-hidden">
+                <div className="border-b border-ink-900/10 px-5 py-3.5">
+                  <h2 className="font-bold text-ink-900">Compliance policy</h2>
                 </div>
-
-                <div className="card overflow-hidden">
-                  <div className="border-b border-ink-900/10 px-5 py-3.5">
-                    <h2 className="font-bold text-ink-900">Compliance policy</h2>
-                  </div>
-                  <div className="space-y-4 px-5 py-4 text-sm">
-                    <div>
-                      <div className="text-xs font-semibold uppercase tracking-wide text-ink-700/60">
-                        Standard jurisdictions
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {openJ.length ? (
-                          openJ.map((j) => (
-                            <Badge key={j.code} color="emerald">
-                              {j.code}
-                            </Badge>
-                          ))
-                        ) : (
-                          <span className="text-ink-700/60">None</span>
-                        )}
-                      </div>
+                <div className="space-y-4 px-5 py-4 text-sm">
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-wide text-ink-700/60">
+                      Standard jurisdictions
                     </div>
-                    <div>
-                      <div className="text-xs font-semibold uppercase tracking-wide text-ink-700/60">
-                        Qualified / accredited only
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {restrictedJ.length ? (
-                          restrictedJ.map((j) => (
-                            <Badge key={j.code} color="amber">
-                              {j.code}
-                            </Badge>
-                          ))
-                        ) : (
-                          <span className="text-ink-700/60">None</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="rounded-lg bg-ink-900/[0.03] px-3 py-2.5 text-xs text-ink-700/80">
-                      Mandatory floors enforced on every transfer: SeqPal ID verification,
-                      sanctions screening, and OFAC/FATF-aligned blocks.
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {openJ.length ? (
+                        openJ.map((j) => (
+                          <Badge key={j.code} color="emerald">
+                            {j.code}
+                          </Badge>
+                        ))
+                      ) : (
+                        <span className="text-ink-700/60">None</span>
+                      )}
                     </div>
                   </div>
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-wide text-ink-700/60">
+                      Qualified / accredited only
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {restrictedJ.length ? (
+                        restrictedJ.map((j) => (
+                          <Badge key={j.code} color="amber">
+                            {j.code}
+                          </Badge>
+                        ))
+                      ) : (
+                        <span className="text-ink-700/60">None</span>
+                      )}
+                    </div>
+                  </div>
+                  <DemoNote>
+                    This policy is committed to the asset's contract through its terms hash,
+                    and the terms hash is real. It is not yet compiled into rules the policy
+                    server enforces on a transfer: that is the next milestone, and until then
+                    no eligibility check runs on this asset.
+                  </DemoNote>
                 </div>
               </div>
             </>

@@ -13,7 +13,7 @@ const links = [
 
 export default function Navbar() {
   const [open, setOpen] = useState(false)
-  const { isLoggedIn, account } = useStore()
+  const { isSignedIn: isLoggedIn, account } = useStore()
 
   return (
     <header className="sticky top-0 z-40 border-b border-ink-900/10 bg-white/80 backdrop-blur-lg">
@@ -44,7 +44,7 @@ export default function Navbar() {
           {isLoggedIn ? (
             <Link to="/dashboard" className="btn-ghost gap-2">
               <span className="flex h-6 w-6 items-center justify-center rounded-full bg-btc-50 text-xs font-bold text-btc-700">
-                {account.individual.name.slice(0, 1).toUpperCase()}
+                {(account.display_name || '?').slice(0, 1).toUpperCase()}
               </span>
               Dashboard
             </Link>

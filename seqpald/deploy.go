@@ -1,0 +1,346 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"regexp"
+	"strings"
+	"sync"
+	"time"
+)
+
+const (
+	deploysPerAccountPerHour = 5
+	deploysGlobalPerHour     = 20
+)
+
+// Reserved tickers: the Sequence token and the tickers already carried by the
+// live Sequentia testnet assets and the parent chain's unit.
+var reservedTickers = map[string]bool{
+	"SEQ": true, "TSEQ": true, "BTC": true, "TBTC": true,
+	"USDX": true, "EURX": true, "GOLD": true, "SILVR": true, "OILX": true,
+}
+
+var tickerRE = regexp.MustCompile(`^[A-Z0-9]{2,8}$`)
+
+func validateTicker(ticker string) error {
+	if !tickerRE.MatchString(ticker) {
+		return fmt.Errorf("ticker must be 2 to 8 characters, uppercase letters and digits only")
+	}
+	if reservedTickers[ticker] {
+		return fmt.Errorf("ticker %s is reserved", ticker)
+	}
+	return nil
+}
+
+// rateLimiter is an in-memory sliding window over deploy attempts. M1 runs a
+// single seqpald process, so process-local counters are the whole population;
+// refusals are recorded in the audit log either way.
+type rateLimiter struct {
+	mu      sync.Mutex
+	perAID  map[string][]time.Time
+	global  []time.Time
+	nowFunc func() time.Time
+}
+
+func newRateLimiter() *rateLimiter {
+	return &rateLimiter{perAID: map[string][]time.Time{}, nowFunc: time.Now}
+}
+
+// allow records an attempt and reports whether it is within both budgets. The
+// window is one hour.
+func (rl *rateLimiter) allow(aid string) (bool, string) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	now := rl.nowFunc()
+	cutoff := now.Add(-time.Hour)
+	mine := prune(rl.perAID[aid], cutoff)
+	rl.global = prune(rl.global, cutoff)
+	if len(mine) >= deploysPerAccountPerHour {
+		rl.perAID[aid] = mine
+		return false, "account deploy rate limit reached (5 per hour)"
+	}
+	if len(rl.global) >= deploysGlobalPerHour {
+		rl.perAID[aid] = mine
+		return false, "platform deploy rate limit reached (20 per hour)"
+	}
+	rl.perAID[aid] = append(mine, now)
+	rl.global = append(rl.global, now)
+	return true, ""
+}
+
+func prune(ts []time.Time, cutoff time.Time) []time.Time {
+	out := ts[:0]
+	for _, t := range ts {
+		if t.After(cutoff) {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// deployReq is what the SPA sends. The issuance's owner, ticker, and name come
+// from the stored record, never from this body: only the mint parameters do.
+type deployReq struct {
+	IssuanceID     string          `json:"issuance_id"`
+	Supply         uint64          `json:"supply"`
+	Precision      int             `json:"precision"`
+	Clawback       *bool           `json:"clawback"`
+	Confidential   bool            `json:"confidential"`
+	FeeConvertAtom uint64          `json:"fee_convert_atoms"`
+	Terms          json.RawMessage `json:"terms"`
+	TermsHash      string          `json:"terms_hash"` // cross-check only; the server computes its own
+}
+
+func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
+	acct := principal(r)
+	var req deployReq
+	if err := readJSON(r, &req); err != nil {
+		writeErr(w, 400, "bad request body")
+		return
+	}
+	iss := s.ownedIssuance(w, acct, req.IssuanceID)
+	if iss == nil {
+		return
+	}
+
+	refuse := func(code int, reason string) {
+		s.st.Audit(acct.AID, "deploy.refused", map[string]any{
+			"issuance_id": iss.ID, "status": code, "reason": reason,
+		})
+		writeErr(w, code, "%s", reason)
+	}
+
+	if req.Supply < 1 {
+		refuse(400, "supply must be at least 1 token")
+		return
+	}
+	if req.Precision < 1 || req.Precision > 8 {
+		refuse(400, "precision must be between 1 and 8")
+		return
+	}
+	if err := validateTicker(iss.Ticker); err != nil {
+		refuse(400, err.Error())
+		return
+	}
+	// atoms = supply * 10^precision, guarded against uint64 overflow.
+	atoms, ok := atomsFor(req.Supply, req.Precision)
+	if !ok {
+		refuse(400, "supply is too large for the chosen precision")
+		return
+	}
+	if req.Confidential && !s.cfg.confidential {
+		refuse(501, "confidential issuance is not available on this deployment; the node is not confidentiality-enabled")
+		return
+	}
+
+	// The canonical terms hash is a server-side fact. The browser's value is only
+	// a cross-check: if the two disagree, the terms the user saw are not the terms
+	// that would be committed to on chain, so nothing is minted.
+	terms := req.Terms
+	if len(terms) == 0 {
+		terms = iss.Terms
+	}
+	var termsObj any
+	if err := json.Unmarshal(rawOrEmpty(terms), &termsObj); err != nil {
+		refuse(400, "terms must be a JSON object")
+		return
+	}
+	canonical, err := canonicalJSON(termsObj)
+	if err != nil {
+		refuse(400, "terms could not be canonicalized: "+err.Error())
+		return
+	}
+	termsHash := sha256Hex(canonical)
+	if req.TermsHash != "" && !strings.EqualFold(req.TermsHash, termsHash) {
+		refuse(400, "terms_hash mismatch: the terms the browser hashed are not the terms it sent")
+		return
+	}
+
+	// Idempotency: a given issuance minted under a given key and terms mints exactly
+	// once, whatever the network did to the first response. The issuance id MUST be in
+	// the key: without it, two distinct drafts by one account with equal terms (the
+	// default case, both terms {}) would collide, so deploying the second returns the
+	// first's asset and silently strands the second at draft forever.
+	idem := sha256Hex([]byte(acct.XOnly + "\x00" + iss.ID + "\x00" + termsHash))
+	if prev, err := s.st.DeployByIdem(idem); err != nil {
+		writeErr(w, 500, "store error")
+		return
+	} else if prev != nil {
+		s.st.Audit(acct.AID, "deploy.replay", map[string]any{"issuance_id": prev.IssuanceID, "asset": prev.AssetID})
+		writeJSON(w, 200, deployResponse(prev))
+		return
+	}
+
+	// The token check precedes the rate limit so a platform misconfiguration does
+	// not silently spend the caller's deploy budget.
+	if s.cfg.issuerToken == "" {
+		refuse(503, "the deployment backend is not configured with an issuer token")
+		return
+	}
+	if allowed, reason := s.rl.allow(acct.AID); !allowed {
+		refuse(429, reason)
+		return
+	}
+
+	clawback := true
+	if req.Clawback != nil {
+		clawback = *req.Clawback
+	}
+	s.st.Audit(acct.AID, "deploy.attempt", map[string]any{
+		"issuance_id": iss.ID, "ticker": iss.Ticker, "supply": req.Supply,
+		"precision": req.Precision, "confidential": req.Confidential,
+		"clawback": clawback, "terms_hash": termsHash, "idem_key": idem,
+	})
+
+	// Ticker collision against the live assets. The residual race inside openampd
+	// (two mints of the same ticker in flight) is disclosed, not closed.
+	if taken, err := s.tickerTaken(iss.Ticker); err != nil {
+		refuse(502, "could not check the ticker against the live assets: "+err.Error())
+		return
+	} else if taken {
+		refuse(409, "ticker "+iss.Ticker+" is already used by a live asset")
+		return
+	}
+
+	// 1. Register the issuer's enclave key as an OpenAMP account. The AID is
+	//    recomputed locally and asserted: a policy server answering with a
+	//    different AID would silently mint into an account we do not control.
+	aid, err := s.registerUser(acct.XOnly)
+	if err != nil {
+		refuse(502, "register account with the policy server: "+err.Error())
+		return
+	}
+	if aid != acct.AID {
+		refuse(502, "the policy server returned an unexpected account id for this key")
+		return
+	}
+
+	// 2. Mint the restricted asset into that account's enclave. The issuer is also
+	//    the initial holder (the issuer-of-record treasury); distribution to
+	//    investors happens later through OpenAMP transfers.
+	issueBody := map[string]any{
+		"name":         iss.Name,
+		"ticker":       iss.Ticker,
+		"precision":    req.Precision,
+		"atoms":        atoms,
+		"holder_aid":   aid,
+		"issuer_aid":   aid,
+		"clawback":     clawback,
+		"burn_allowed": false,
+		"confidential": req.Confidential,
+		"terms_hash":   termsHash,
+		"rules":        map[string]any{"fee_convert_atoms": req.FeeConvertAtom},
+	}
+	var issued struct {
+		Asset        string `json:"asset"`
+		Txid         string `json:"txid"`
+		ContractHash string `json:"contract_hash"`
+	}
+	if err := s.callOpenAMP("POST", "/v1/issuer/assets", s.cfg.issuerToken, issueBody, &issued); err != nil {
+		refuse(502, "issue: "+err.Error())
+		return
+	}
+
+	// 3. Best-effort: fetch the enclave receive address for display.
+	var addr struct {
+		Address string `json:"address"`
+	}
+	_ = s.callOpenAMP("GET", "/v1/users/"+aid+"/address?asset="+issued.Asset, "", nil, &addr)
+
+	rec := &DeployRecord{
+		IdemKey:      idem,
+		IssuanceID:   iss.ID,
+		AssetID:      issued.Asset,
+		Txid:         issued.Txid,
+		ContractHash: issued.ContractHash,
+		AID:          aid,
+		Address:      addr.Address,
+		CreatedAt:    time.Now().Unix(),
+	}
+	if err := s.st.InsertDeploy(rec); err != nil {
+		// The asset exists on chain; losing the record would let a retry mint a
+		// second one, so the failure is reported rather than swallowed.
+		s.st.Audit(acct.AID, "deploy.record_failed", map[string]any{
+			"issuance_id": iss.ID, "asset": issued.Asset, "txid": issued.Txid, "error": err.Error(),
+		})
+		writeErr(w, 500, "the asset was minted (%s) but the record could not be stored; do not retry, contact support", issued.Asset)
+		return
+	}
+	if err := s.st.UpdateIssuanceFields(iss.ID, map[string]any{
+		"status":          "live",
+		"terms":           string(canonical),
+		"supply":          req.Supply,
+		"precision":       req.Precision,
+		"confidential":    boolInt(req.Confidential),
+		"clawback":        boolInt(clawback),
+		"asset_id":        issued.Asset,
+		"txid":            issued.Txid,
+		"contract_hash":   issued.ContractHash,
+		"holder_aid":      aid,
+		"enclave_address": addr.Address,
+	}); err != nil {
+		writeErr(w, 500, "store error")
+		return
+	}
+	s.st.Audit(acct.AID, "deploy.success", map[string]any{
+		"issuance_id": iss.ID, "asset": issued.Asset, "txid": issued.Txid,
+		"contract_hash": issued.ContractHash, "atoms": atoms, "idem_key": idem,
+	})
+	writeJSON(w, 200, deployResponse(rec))
+}
+
+func deployResponse(d *DeployRecord) map[string]any {
+	return map[string]any{
+		"asset":         d.AssetID,
+		"txid":          d.Txid,
+		"contract_hash": d.ContractHash,
+		"aid":           d.AID,
+		"address":       d.Address,
+		"issuance_id":   d.IssuanceID,
+	}
+}
+
+// tickerTaken reports whether a live asset already carries this ticker.
+func (s *server) tickerTaken(ticker string) (bool, error) {
+	var out struct {
+		Assets []struct {
+			Ticker string `json:"ticker"`
+		} `json:"assets"`
+	}
+	if err := s.callOpenAMP("GET", "/v1/assets", "", nil, &out); err != nil {
+		return false, err
+	}
+	for _, a := range out.Assets {
+		if strings.EqualFold(a.Ticker, ticker) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (s *server) registerUser(xonly string) (string, error) {
+	var out struct {
+		AID string `json:"aid"`
+	}
+	if err := s.callOpenAMP("POST", "/v1/users", "", map[string]any{"pubkeys": []string{xonly}}, &out); err != nil {
+		return "", err
+	}
+	if out.AID == "" {
+		return "", fmt.Errorf("no account id returned")
+	}
+	return out.AID, nil
+}
+
+// atomsFor scales whole tokens to atoms, reporting false rather than wrapping.
+func atomsFor(supply uint64, precision int) (uint64, bool) {
+	atoms := supply
+	for i := 0; i < precision; i++ {
+		if atoms > (1<<64-1)/10 {
+			return 0, false
+		}
+		atoms *= 10
+	}
+	return atoms, true
+}
