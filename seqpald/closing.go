@@ -627,7 +627,12 @@ func (s *server) maybeStampVesting(iss *Issuance, sub *Subscription, investor *A
 	}
 	vesting = append(vesting, map[string]any{"aid": sub.InvestorAID, "atoms": sub.TokenAtoms, "until_height": until})
 	rules["vesting"] = vesting
-	if err := s.callOpenAMP("POST", "/v1/issuer/rules", s.cfg.issuerToken, map[string]any{"asset": iss.AssetID, "rules": rules}, nil); err != nil {
+	// Every policy-rules mutation flows through the amendment-chain chokepoint (M7
+	// section 3): it posts the rules AND records an anchored amendment, so the
+	// Rule 144 vesting stamp joins the asset's amendment chain rather than mutating
+	// the on-chain rules silently.
+	basis := fmt.Sprintf("Rule 144 vesting stamp for US-tranche purchaser %s at close (until Sequentia block %d)", sub.InvestorAID, until)
+	if _, err := s.applyRulesMutation(iss, rules, basis, until); err != nil {
 		s.st.Audit(sub.InvestorAID, "vesting.stamp_failed", map[string]any{"issuance_id": iss.ID, "error": err.Error()})
 		return
 	}

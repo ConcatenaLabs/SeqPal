@@ -4,6 +4,8 @@ import { Icon, StructureIcon } from '../components/icons'
 import CopyId from '../components/CopyId'
 import { ChainChip } from '../components/ChainStatus'
 import SignInGate from '../components/SignInGate'
+import InvestorMandateCard from '../components/InvestorMandateCard'
+import NoticesInbox from '../components/NoticesInbox'
 import { useStore } from '../lib/store'
 import { view } from '../lib/issuance'
 import { getBalance } from '../lib/openamp'
@@ -159,6 +161,18 @@ export default function Holdings() {
             </p>
           </div>
         )}
+      </div>
+
+      <div className="mt-10">
+        <h2 className="text-lg font-bold text-ink-900">Distributions and servicing</h2>
+        <p className="mt-1 text-sm text-ink-700/70">
+          Register the ordinary Sequentia address where distributions pay you, and read your
+          servicing notices. Statements and reports link to their anchored document.
+        </p>
+        <div className="mt-4 grid gap-6 lg:grid-cols-2">
+          <InvestorMandateCard />
+          <NoticesInbox />
+        </div>
       </div>
     </section>
   )

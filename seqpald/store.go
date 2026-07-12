@@ -404,6 +404,156 @@ CREATE TABLE reorg_holds (
 );
 CREATE INDEX idx_reorg_holds_state ON reorg_holds(state);
 `,
+	// M7: transfer-agent servicing. The distribution engine (a run funds a
+	// servicing deposit, snapshots the register at a block height, computes
+	// pro-rata + withholding, and pays each holder's registered ordinary mandate
+	// address) and the INVESTOR-side payout mandates. distribution_payments reuses
+	// the M5/M6 settlement idempotency shape: exactly one row per (run, holder),
+	// its txid recorded pre-broadcast so an ambiguous timeout is reconciled by a
+	// chain scan before any retry, never a double-pay. investor_mandates is
+	// distinct from the issuer payout_mandates: keyed by the INVESTOR's AID and
+	// chain, it is the ordinary address a distribution pays. All additive; an M6
+	// database migrates forward in place.
+	`
+CREATE TABLE investor_mandates (
+    investor_aid TEXT    NOT NULL,
+    chain        TEXT    NOT NULL,
+    asset        TEXT    NOT NULL DEFAULT '',
+    address      TEXT    NOT NULL,
+    signature    TEXT    NOT NULL DEFAULT '',
+    signer_xonly TEXT    NOT NULL DEFAULT '',
+    created_at   INTEGER NOT NULL,
+    updated_at   INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (investor_aid, chain)
+);
+CREATE TABLE distributions (
+    id               TEXT PRIMARY KEY,
+    issuance_id      TEXT    NOT NULL,
+    asset_id         TEXT    NOT NULL DEFAULT '',
+    pool_atoms       INTEGER NOT NULL DEFAULT 0,
+    memo             TEXT    NOT NULL DEFAULT '',
+    state            TEXT    NOT NULL DEFAULT 'awaiting_funding',
+    deposit_address  TEXT    NOT NULL DEFAULT '',
+    funded_atoms     INTEGER NOT NULL DEFAULT 0,
+    funded_txid      TEXT    NOT NULL DEFAULT '',
+    snapshot_height  INTEGER NOT NULL DEFAULT 0,
+    total_held       INTEGER NOT NULL DEFAULT 0,
+    dust_atoms       INTEGER NOT NULL DEFAULT 0,
+    gross_total      INTEGER NOT NULL DEFAULT 0,
+    withheld_total   INTEGER NOT NULL DEFAULT 0,
+    net_total        INTEGER NOT NULL DEFAULT 0,
+    dividend_equiv   INTEGER NOT NULL DEFAULT 0,
+    statement_hash   TEXT    NOT NULL DEFAULT '',
+    withholding_hash TEXT    NOT NULL DEFAULT '',
+    crs_hash         TEXT    NOT NULL DEFAULT '',
+    anchor_txid      TEXT    NOT NULL DEFAULT '',
+    created_at       INTEGER NOT NULL,
+    updated_at       INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX idx_distributions_issuance ON distributions(issuance_id);
+CREATE INDEX idx_distributions_state ON distributions(state);
+CREATE TABLE distribution_payments (
+    run_id          TEXT    NOT NULL,
+    holder_aid      TEXT    NOT NULL,
+    balance_atoms   INTEGER NOT NULL DEFAULT 0,
+    gross_atoms     INTEGER NOT NULL DEFAULT 0,
+    withheld_atoms  INTEGER NOT NULL DEFAULT 0,
+    net_atoms       INTEGER NOT NULL DEFAULT 0,
+    treaty_bps      INTEGER NOT NULL DEFAULT 0,
+    tax_status      TEXT    NOT NULL DEFAULT '',
+    mandate_address TEXT    NOT NULL DEFAULT '',
+    state           TEXT    NOT NULL DEFAULT 'pending',
+    txid            TEXT    NOT NULL DEFAULT '',
+    reason          TEXT    NOT NULL DEFAULT '',
+    statement_hash  TEXT    NOT NULL DEFAULT '',
+    created_at      INTEGER NOT NULL,
+    updated_at      INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (run_id, holder_aid)
+);
+CREATE INDEX idx_dist_payments_run ON distribution_payments(run_id);
+`,
+	// M7 (Backend-B): the servicing consoles. rules_mutations is the durable intent
+	// record for the rules-amendment chokepoint (§3): a mutation persists here BEFORE
+	// the openampd rules POST and the anchored amendment, so a half-applied mutation
+	// (rules posted but not anchored, or vice versa) is detectable and retried, never
+	// left inconsistent. clawbacks and redeliveries are the fund-movement idempotency
+	// anchors for the freeze/clawback console (§4) and the stranded-key runbook (§5):
+	// intent persisted before broadcast, reconciled by a chain/log scan before any
+	// retry, never a double-sweep. ownership_snapshots holds the scheduled register
+	// snapshots and annual-report artifacts (§6), each anchored. All additive; an M7
+	// (Backend-A) database migrates forward in place.
+	`
+CREATE TABLE rules_mutations (
+    id               TEXT PRIMARY KEY,
+    issuance_id      TEXT    NOT NULL,
+    asset_id         TEXT    NOT NULL DEFAULT '',
+    prior_rules_hash TEXT    NOT NULL DEFAULT '',
+    new_rules_hash   TEXT    NOT NULL DEFAULT '',
+    basis            TEXT    NOT NULL DEFAULT '',
+    effective_height INTEGER NOT NULL DEFAULT 0,
+    rules_json       TEXT    NOT NULL DEFAULT '',
+    state            TEXT    NOT NULL DEFAULT 'pending',
+    amend_hash       TEXT    NOT NULL DEFAULT '',
+    anchor_txid      TEXT    NOT NULL DEFAULT '',
+    error            TEXT    NOT NULL DEFAULT '',
+    created_at       INTEGER NOT NULL,
+    updated_at       INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX idx_rules_mutations_issuance ON rules_mutations(issuance_id);
+CREATE INDEX idx_rules_mutations_state ON rules_mutations(state);
+CREATE TABLE clawbacks (
+    id          TEXT PRIMARY KEY,
+    issuance_id TEXT    NOT NULL,
+    asset_id    TEXT    NOT NULL DEFAULT '',
+    holder_aid  TEXT    NOT NULL,
+    reason      TEXT    NOT NULL DEFAULT '',
+    state       TEXT    NOT NULL DEFAULT 'sweeping',
+    atoms       INTEGER NOT NULL DEFAULT 0,
+    txid        TEXT    NOT NULL DEFAULT '',
+    by_aid      TEXT    NOT NULL DEFAULT '',
+    context     TEXT    NOT NULL DEFAULT 'console',
+    error       TEXT    NOT NULL DEFAULT '',
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX idx_clawbacks_holder ON clawbacks(asset_id, holder_aid);
+CREATE INDEX idx_clawbacks_state ON clawbacks(state);
+CREATE TABLE redeliveries (
+    id             TEXT PRIMARY KEY,
+    issuance_id    TEXT    NOT NULL,
+    asset_id       TEXT    NOT NULL DEFAULT '',
+    old_aid        TEXT    NOT NULL,
+    new_aid        TEXT    NOT NULL,
+    reason         TEXT    NOT NULL DEFAULT '',
+    state          TEXT    NOT NULL DEFAULT 'created',
+    swept_atoms    INTEGER NOT NULL DEFAULT 0,
+    clawback_id    TEXT    NOT NULL DEFAULT '',
+    clawback_txid  TEXT    NOT NULL DEFAULT '',
+    source_aid     TEXT    NOT NULL DEFAULT '',
+    source_kind    TEXT    NOT NULL DEFAULT '',
+    new_before     INTEGER NOT NULL DEFAULT 0,
+    redeliver_txid TEXT    NOT NULL DEFAULT '',
+    by_aid         TEXT    NOT NULL DEFAULT '',
+    error          TEXT    NOT NULL DEFAULT '',
+    created_at     INTEGER NOT NULL,
+    updated_at     INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(issuance_id, old_aid, new_aid)
+);
+CREATE INDEX idx_redeliveries_issuance ON redeliveries(issuance_id);
+CREATE TABLE ownership_snapshots (
+    id            TEXT PRIMARY KEY,
+    issuance_id   TEXT    NOT NULL,
+    asset_id      TEXT    NOT NULL DEFAULT '',
+    height        INTEGER NOT NULL DEFAULT 0,
+    holders_count INTEGER NOT NULL DEFAULT 0,
+    total_atoms   INTEGER NOT NULL DEFAULT 0,
+    report_hash   TEXT    NOT NULL DEFAULT '',
+    kind          TEXT    NOT NULL DEFAULT 'snapshot',
+    anchor_txid   TEXT    NOT NULL DEFAULT '',
+    created_at    INTEGER NOT NULL
+);
+CREATE INDEX idx_ownership_snapshots_issuance ON ownership_snapshots(issuance_id);
+`,
 }
 
 // Store is seqpald's persistent state. Every financial fact the UI shows is

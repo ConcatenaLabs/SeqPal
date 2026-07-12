@@ -78,6 +78,11 @@ type config struct {
 	autoReviewDelay time.Duration // grace before the auto-reviewer acts
 	watchInterval   time.Duration // chain watcher tick
 	anchorInterval  time.Duration // log-head anchor cron
+
+	// M7 (Backend-B) servicing cadences.
+	rulesReconcile   time.Duration // heal half-applied rules mutations (amendment chain)
+	snapshotInterval time.Duration // scheduled ownership snapshot + anchor
+	reportInterval   time.Duration // labeled-simulated annual report to holders
 }
 
 type server struct {
@@ -96,6 +101,33 @@ type server struct {
 	// M5 money engine.
 	escrow  *escrowState // idempotent escrow-wallet provisioning guard
 	closeMu *keyedMutex  // serializes the closing engine per issuance
+
+	// M7 servicing.
+	distMu       *keyedMutex // serializes the distribution engine per run
+	rulesMu      *keyedMutex // serializes rules mutations per issuance (amendment chain)
+	clawMu       *keyedMutex // serializes clawbacks per (asset, holder)
+	redeliverMu  *keyedMutex // serializes the stranded-key runbook per (issuance, old, new)
+	servicingMu1 sync.Once   // lazily provisions the three servicing mutexes above
+}
+
+// ensureServicingMu lazily provisions the M7 (Backend-B) servicing mutexes so a
+// directly-constructed server (the test harness) needs no extra ceremony; main()
+// still sets them explicitly, in which case this is a no-op.
+func (s *server) ensureServicingMu() {
+	s.servicingMu1.Do(func() {
+		if s.distMu == nil {
+			s.distMu = newKeyedMutex()
+		}
+		if s.rulesMu == nil {
+			s.rulesMu = newKeyedMutex()
+		}
+		if s.clawMu == nil {
+			s.clawMu = newKeyedMutex()
+		}
+		if s.redeliverMu == nil {
+			s.redeliverMu = newKeyedMutex()
+		}
+	})
 }
 
 func env(key, def string) string {
@@ -171,6 +203,12 @@ func main() {
 	cfg.watchInterval = 15 * time.Second
 	cfg.anchorInterval = 24 * time.Hour
 	cfg.fiatSettle = 8 * time.Second
+	// Servicing cadences. Reconcile fast so a half-applied rules mutation heals
+	// within a tick; snapshot daily; annual report yearly. All overridable in
+	// seconds by env so a demo can run them unattended.
+	cfg.rulesReconcile = time.Duration(envInt("SEQPALD_RULES_RECONCILE_SECS", 30)) * time.Second
+	cfg.snapshotInterval = time.Duration(envInt("SEQPALD_SNAPSHOT_SECS", 24*3600)) * time.Second
+	cfg.reportInterval = time.Duration(envInt("SEQPALD_REPORT_SECS", 365*24*3600)) * time.Second
 	cfg.openampURL = strings.TrimRight(cfg.openampURL, "/")
 	cfg.electrsURL = strings.TrimRight(cfg.electrsURL, "/")
 	cfg.registryURL = strings.TrimRight(cfg.registryURL, "/")
@@ -194,14 +232,18 @@ func main() {
 	}
 
 	s := &server{
-		cfg:     cfg,
-		st:      st,
-		http:    &http.Client{Timeout: 60 * time.Second},
-		rl:      newRateLimiter(),
-		catMu:   newKeyedMutex(),
-		screen:  newScreener(cfg.screenDir),
-		escrow:  newEscrowState(),
-		closeMu: newKeyedMutex(),
+		cfg:         cfg,
+		st:          st,
+		http:        &http.Client{Timeout: 60 * time.Second},
+		rl:          newRateLimiter(),
+		catMu:       newKeyedMutex(),
+		screen:      newScreener(cfg.screenDir),
+		escrow:      newEscrowState(),
+		closeMu:     newKeyedMutex(),
+		distMu:      newKeyedMutex(),
+		rulesMu:     newKeyedMutex(),
+		clawMu:      newKeyedMutex(),
+		redeliverMu: newKeyedMutex(),
 	}
 	s.startWorkers()
 
@@ -270,6 +312,27 @@ func (s *server) handler() http.Handler {
 	mux.HandleFunc("POST /api/issuances/{id}/mandate", s.requireSession(s.handleMandate))
 	mux.HandleFunc("POST /api/issuances/{id}/close", s.requireSession(s.handleClose))
 	mux.HandleFunc("GET /api/issuances/{id}/settlements", s.requireSession(s.handleSettlements))
+
+	// M7 transfer-agent servicing: investor payout mandates and the distribution
+	// engine (create run + fund invoice, snapshot the register, execute pro-rata
+	// net payouts to registered mandate addresses, read runs + per-holder txids).
+	mux.HandleFunc("POST /api/mandates/investor", s.requireSession(s.handleInvestorMandate))
+	mux.HandleFunc("GET /api/mandates/investor", s.requireSession(s.handleInvestorMandateGet))
+	mux.HandleFunc("POST /api/issuances/{id}/distributions", s.requireSession(s.handleCreateDistribution))
+	mux.HandleFunc("GET /api/issuances/{id}/distributions", s.requireSession(s.handleListDistributions))
+	mux.HandleFunc("GET /api/issuances/{id}/distributions/{runID}", s.requireSession(s.handleGetDistribution))
+	mux.HandleFunc("POST /api/issuances/{id}/distributions/{runID}/snapshot", s.requireSession(s.handleSnapshotDistribution))
+	mux.HandleFunc("POST /api/issuances/{id}/distributions/{runID}/execute", s.requireSession(s.handleExecuteDistribution))
+
+	// M7 servicing consoles: the freeze/clawback console (owner-scoped, reason
+	// required), the holder notices inbox, and the stranded-key re-delivery runbook
+	// (admin-scoped). The rules-amendment chain is exercised through the existing
+	// POST /api/issuances/{id}/amendments (now a live mutation when new_rules is
+	// supplied) and read, with its head-consistency invariant, at GET .../amendments.
+	mux.HandleFunc("POST /api/issuances/{id}/freeze", s.requireSession(s.handleConsoleFreeze))
+	mux.HandleFunc("POST /api/issuances/{id}/clawback", s.requireSession(s.handleConsoleClawback))
+	mux.HandleFunc("GET /api/id/notices", s.requireSession(s.handleNotices))
+	mux.HandleFunc("POST /api/id/redeliver", s.requireSession(s.requireAdmin(s.handleRedeliver)))
 
 	// SeqPal ID surface.
 	mux.HandleFunc("POST /api/id/verify", s.requireSession(s.handleIDVerify))

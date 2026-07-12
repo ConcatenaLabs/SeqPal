@@ -344,9 +344,25 @@ export default function Verify() {
                     </span>
                     {a.anchor_txid && <CopyId value={a.anchor_txid} kind="tx" label="anchor txid" />}
                   </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5 font-mono text-[11px] text-ink-700/70">
+                    <span title={a.prior_rules_hash || 'genesis'}>
+                      {a.prior_rules_hash ? `${a.prior_rules_hash.slice(0, 8)}…` : 'genesis'}
+                    </span>
+                    <Icon.arrowRight width={11} height={11} className="text-ink-500" />
+                    <span title={a.new_rules_hash || ''}>
+                      {a.new_rules_hash ? `${a.new_rules_hash.slice(0, 8)}…` : '-'}
+                    </span>
+                  </div>
                   {a.basis && <p className="mt-1 text-ink-700/70">{a.basis}</p>}
                 </div>
               ))}
+              {amends?.head && (
+                <p className="pt-1 text-xs text-ink-700/70">
+                  {amends.head.head_consistent
+                    ? 'The live on-chain rules equal the head of this anchored chain: the amendment chain is the current rules, verifiably.'
+                    : 'The on-chain rules and the anchored chain head do not currently match: a mutation is mid-reconciliation.'}
+                </p>
+              )}
             </div>
           ) : (
             <p className="text-xs text-ink-700/60">

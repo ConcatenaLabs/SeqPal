@@ -25,6 +25,7 @@ func (s *server) runMoneyWatcher(interval time.Duration) {
 func (s *server) watchDeposits() {
 	s.watchSubscriptionDeposits()
 	s.watchFeeDeposits()
+	s.watchDistributionDeposits()
 }
 
 func (s *server) watchSubscriptionDeposits() {
