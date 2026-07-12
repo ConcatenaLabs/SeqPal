@@ -409,14 +409,21 @@ func (s *server) handleAmendments(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, "store error")
 		return
 	}
-	writeJSON(w, 200, map[string]any{
+	resp := map[string]any{
 		"issuance_id":        iss.ID,
 		"asset_id":           iss.AssetID,
 		"genesis_terms_hash": genesisTermsHash(iss),
 		"contract_hash":      iss.ContractHash,
 		"amendments":         amends,
 		"note":               "the on-chain commitment is the genesis terms_hash plus this anchored amendment chain",
-	})
+	}
+	// The M7 acceptance-proof invariant: whether the live on-chain rules equal the
+	// head of the anchored amendment chain. Only meaningful once the asset is
+	// deployed; a draft has no rules to compare.
+	if iss.AssetID != "" {
+		resp["head"] = s.amendmentHeadStatus(iss)
+	}
+	writeJSON(w, 200, resp)
 }
 
 // genesisTermsHash reproduces the terms_hash committed at issue from the stored
@@ -475,10 +482,33 @@ func (s *server) handleGenerateAmendment(w http.ResponseWriter, r *http.Request)
 	if amends, _ := s.st.AmendmentsByIssuance(iss.ID); len(amends) > 0 {
 		priorRulesHash = amends[len(amends)-1].NewRulesHash
 	}
-	newRulesHash := strings.TrimSpace(req.NewRulesHash)
-	if newRulesHash == "" && req.NewRules != nil {
-		newRulesHash, _ = rulesHash(*req.NewRules)
+	// M7: when a full new_rules object is supplied, this is a LIVE mutation. It
+	// flows through applyRulesMutation, the single chokepoint that posts the rules
+	// to openampd and records the anchored amendment, so GET /v1/assets/{id} rules
+	// stay equal to the head of the amendment chain. When only a 64-hex hash is
+	// supplied, the artifact-only generator runs (unchanged from M4): it records an
+	// amendment artifact without mutating the on-chain rules, for explainer data.
+	if req.NewRules != nil {
+		m, err := s.applyRulesMutation(iss, *req.NewRules, strings.TrimSpace(req.Basis), req.EffectiveHeight)
+		if err != nil {
+			writeErr(w, 502, "could not apply the rules mutation: %v", err)
+			return
+		}
+		var a *Amendment
+		if amends, _ := s.st.AmendmentsByIssuance(iss.ID); len(amends) > 0 && m.AmendHash != "" {
+			for _, x := range amends {
+				if x.AmendHash == m.AmendHash {
+					a = x
+				}
+			}
+		}
+		writeJSON(w, 200, map[string]any{
+			"amendment": a, "mutation": m, "head": s.amendmentHeadStatus(iss),
+			"note": "rules posted to the policy server and recorded in the anchored amendment chain; GET /v1/assets rules now equal the chain head",
+		})
+		return
 	}
+	newRulesHash := strings.TrimSpace(req.NewRulesHash)
 	if !isHex64(newRulesHash) {
 		writeErr(w, 400, "a new_rules object or a 64-hex new_rules_hash is required")
 		return
@@ -490,7 +520,7 @@ func (s *server) handleGenerateAmendment(w http.ResponseWriter, r *http.Request)
 	}
 	writeJSON(w, 200, map[string]any{
 		"amendment": a,
-		"note":      "amendment artifact generated and anchored; the live policy-rules mutation is M7 and is not performed here",
+		"note":      "amendment artifact generated and anchored; supply a full new_rules object to perform the live policy-rules mutation",
 	})
 }
 

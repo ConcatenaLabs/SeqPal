@@ -70,16 +70,30 @@ type m5Stub struct {
 	// field (DisallowUnknownFields), the runtime capability signal that makes
 	// closing fall back to the v1 two-transaction path.
 	rejectPaymentField bool
+
+	// M7 instrumentation (additive; all inert by default so the M5/M6 suite is
+	// unaffected). holdersHeight is the Sequentia block height GET /v1/issuer/
+	// holders reports; clawbackLog is the public transparency log the clawback
+	// reconciler scans; clawbacks counts POST /v1/issuer/clawback calls. gateAsset
+	// + gateCat model a real policy-server refusal: when set, a transfer to a
+	// recipient lacking gateCat for gateAsset is rejected (the accreditation-expiry
+	// enforcement point).
+	holdersHeight int64
+	clawbackLog   []map[string]any
+	clawbacks     int
+	gateAsset     string
+	gateCat       string
 }
 
 func newM5Stub(t *testing.T) *m5Stub {
 	t.Helper()
 	f := &m5Stub{
-		users:        map[string]*m5User{},
-		assets:       map[string]map[string]any{},
-		balances:     map[string]map[string]uint64{},
-		pending:      map[string]*m5pendingTransfer{},
-		rulesWritten: map[string]json.RawMessage{},
+		users:         map[string]*m5User{},
+		assets:        map[string]map[string]any{},
+		balances:      map[string]map[string]uint64{},
+		pending:       map[string]*m5pendingTransfer{},
+		rulesWritten:  map[string]json.RawMessage{},
+		holdersHeight: 250000,
 	}
 	mux := http.NewServeMux()
 
@@ -234,6 +248,21 @@ func newM5Stub(t *testing.T) *m5Stub {
 			writeJSON(w, 400, map[string]any{"error": `json: unknown field "payment"`})
 			return
 		}
+		// M7 category gate (inert unless a test sets gateCat): a real policy-server
+		// refusal when the recipient lacks a required category for the asset. This is
+		// the enforcement point an expired accreditation trips (the category token is
+		// dropped, so the next transfer is refused).
+		f.mu.Lock()
+		gAsset, gCat := f.gateAsset, f.gateCat
+		var recipCats []string
+		if u, ok := f.users[body.RecipientAID]; ok {
+			recipCats = append([]string{}, u.Categories...)
+		}
+		f.mu.Unlock()
+		if gCat != "" && body.Asset == gAsset && !hasCategory(recipCats, gCat) {
+			writeJSON(w, 403, map[string]any{"error": "recipient lacks the required category " + gCat})
+			return
+		}
 		f.mu.Lock()
 		senderXOnly := ""
 		if u, ok := f.users[body.SenderAID]; ok && len(u.Pubkeys) > 0 {
@@ -308,9 +337,133 @@ func newM5Stub(t *testing.T) *m5Stub {
 		writeJSON(w, 200, map[string]any{"ok": true})
 	})
 
+	// M7: the issuer holder register (confirmed enclave balances per AID at a
+	// Sequentia height), built from the stub's balance ledger.
+	mux.HandleFunc("GET /v1/issuer/holders", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-issuer-token" {
+			writeJSON(w, 401, map[string]any{"error": "bad token"})
+			return
+		}
+		asset := r.URL.Query().Get("asset")
+		f.mu.Lock()
+		holders := map[string]uint64{}
+		var total uint64
+		for aid, m := range f.balances {
+			if bal := m[asset]; bal > 0 {
+				holders[aid] = bal
+				total += bal
+			}
+		}
+		h := f.holdersHeight
+		f.mu.Unlock()
+		writeJSON(w, 200, map[string]any{"asset": asset, "height": h, "holders": holders, "total_atoms": total})
+	})
+
+	// M7: the full-sweep clawback. openampd appends its public transparency-log
+	// entry BEFORE it signs, so a lost seqpald write can be reconciled from the log
+	// (the clawback analogue of escrowFindSend). It seizes ALL of a holder's
+	// confirmed balance for the asset (modeled by zeroing it) into the issuer
+	// enclave. An empty holder is a 409, matching openampd.
+	mux.HandleFunc("POST /v1/issuer/clawback", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-issuer-token" {
+			writeJSON(w, 401, map[string]any{"error": "bad token"})
+			return
+		}
+		var req struct {
+			Asset     string `json:"asset"`
+			HolderAID string `json:"holder_aid"`
+			Reason    string `json:"reason"`
+		}
+		raw, _ := readAllLimited(r.Body, 1<<20)
+		json.Unmarshal(raw, &req)
+		f.mu.Lock()
+		var atoms uint64
+		if m, ok := f.balances[req.HolderAID]; ok {
+			atoms = m[req.Asset]
+		}
+		if atoms == 0 {
+			f.mu.Unlock()
+			writeJSON(w, 409, map[string]any{"error": "holder has no confirmed enclave balance for this asset"})
+			return
+		}
+		txid := fmt.Sprintf("%064x", 900000+len(f.clawbackLog)+1)
+		f.clawbackLog = append(f.clawbackLog, map[string]any{
+			"action": "clawback",
+			"data": map[string]any{
+				"asset": req.Asset, "holder": req.HolderAID, "reason": req.Reason, "txid": txid, "atoms": atoms,
+			},
+		})
+		f.clawbacks++
+		f.balances[req.HolderAID][req.Asset] = 0
+		f.mu.Unlock()
+		writeJSON(w, 200, map[string]any{"txid": txid, "atoms": atoms})
+	})
+
+	// M7: the public transparency log as newline-delimited JSON, scanned by
+	// findClawbackInLog.
+	mux.HandleFunc("GET /v1/log", func(w http.ResponseWriter, r *http.Request) {
+		f.mu.Lock()
+		entries := append([]map[string]any{}, f.clawbackLog...)
+		f.mu.Unlock()
+		w.WriteHeader(200)
+		for _, e := range entries {
+			b, _ := json.Marshal(e)
+			w.Write(b)
+			w.Write([]byte("\n"))
+		}
+	})
+
 	f.srv = httptest.NewServer(mux)
 	t.Cleanup(f.srv.Close)
 	return f
+}
+
+// hasCategory reports whether cats contains cat (the stub's category-gate probe).
+func hasCategory(cats []string, cat string) bool {
+	for _, c := range cats {
+		if c == cat {
+			return true
+		}
+	}
+	return false
+}
+
+// --- M7 stub helpers ---------------------------------------------------------
+
+func (f *m5Stub) setGate(asset, cat string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.gateAsset, f.gateCat = asset, cat
+}
+
+func (f *m5Stub) clawbackCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.clawbacks
+}
+
+func (f *m5Stub) logLen() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.clawbackLog)
+}
+
+func (f *m5Stub) userCategories(aid string) []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if u, ok := f.users[aid]; ok {
+		return append([]string{}, u.Categories...)
+	}
+	return nil
+}
+
+func (f *m5Stub) balanceOf(aid, asset string) uint64 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if m, ok := f.balances[aid]; ok {
+		return m[asset]
+	}
+	return 0
 }
 
 func (f *m5Stub) setBalance(aid, asset string, atoms uint64) {

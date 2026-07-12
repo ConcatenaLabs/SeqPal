@@ -3,13 +3,6 @@ import { Icon } from './icons'
 import { Badge } from './ui'
 import Modal from './Modal'
 
-const DIST_LABEL = {
-  'native-equity': 'Dividend',
-  'equity-spv': 'Dividend',
-  'debt-yield': 'Coupon',
-  'depository-receipt': 'Yield pass-through',
-}
-
 // Structure-specific event fees (plan 4.3.3 / 4.4.3), shown when the issuer
 // initiates the corresponding corporate action.
 const FEE_BY_ACTION = {
@@ -37,17 +30,10 @@ export default function ServicingPanel({ iss }) {
   // Writing them down as if they were an immutable registry log would be a lie.
   const [activity, setActivity] = useState([])
 
-  const distLabel = DIST_LABEL[iss.structureId] || 'Distribution'
   const corpActions = CORP_ACTIONS[iss.structureId] || ['Corporate action']
   const isDR = iss.structureId === 'depository-receipt'
 
   // forms
-  // BTC-denominated issuances pair naturally with BTC distributions (plan 1.3).
-  const [dist, setDist] = useState({
-    amount: '',
-    asset: iss.unit === 'BTC' ? 'BTC' : 'USDX',
-    recordDate: '',
-  })
   const [corp, setCorp] = useState({ type: corpActions[0], note: '' })
   const [mint, setMint] = useState({ qty: '', mandate: 'Direct deposit of securities' })
   const [redeem, setRedeem] = useState({ qty: '' })
@@ -69,20 +55,13 @@ export default function ServicingPanel({ iss }) {
         </Badge>
       </div>
       <p className="mt-1 text-sm leading-relaxed text-ink-700/70">
-        Where distributions and corporate actions will be run once the servicing rails exist.
-        Every action below is simulated: nothing is scheduled, nothing is paid, and nothing
-        reaches the chain or the server.
+        The remaining simulated corporate actions. Real USDX distributions run in the Distribution
+        console above, and real freeze and clawback in the enforcement console above. Every action
+        below is still simulated: nothing is paid and nothing reaches the chain or the server.
       </p>
 
       {/* action buttons */}
       <div className="mt-4 grid gap-2 sm:grid-cols-2">
-        <button
-          onClick={() => setModal('dist')}
-          className="flex items-center gap-2.5 rounded-lg border border-ink-900/10 px-3 py-2.5 text-left text-sm font-medium text-ink-800 hover:bg-ink-900/[0.02]"
-        >
-          <Icon.coins width={18} height={18} className="text-ink-600" />
-          Schedule {distLabel.toLowerCase()}
-        </button>
         <button
           onClick={() => setModal('corp')}
           className="flex items-center gap-2.5 rounded-lg border border-ink-900/10 px-3 py-2.5 text-left text-sm font-medium text-ink-800 hover:bg-ink-900/[0.02]"
@@ -155,91 +134,6 @@ export default function ServicingPanel({ iss }) {
           <Icon.check width={16} height={16} /> {toast}
         </div>
       )}
-
-      {/* ── Distribution modal ── */}
-      <Modal
-        open={modal === 'dist'}
-        onClose={() => setModal(null)}
-        title={`Schedule ${distLabel.toLowerCase()}`}
-        footer={
-          <button
-            onClick={() =>
-              pushActivity({
-                summary: `${distLabel} of $${dist.amount || '0'} in ${dist.asset} scheduled`,
-              })
-            }
-            className="btn-primary w-full"
-          >
-            Confirm &amp; schedule
-          </button>
-        }
-      >
-        <div className="space-y-4">
-          <div>
-            <label className="label" htmlFor="sv-dist-amount">
-              Amount per token-holder pool
-            </label>
-            <div className="relative">
-              <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-ink-700/60">
-                $
-              </span>
-              <input
-                id="sv-dist-amount"
-                className="input pl-7"
-                placeholder="100,000"
-                value={dist.amount}
-                onChange={(e) => setDist({ ...dist, amount: e.target.value })}
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="label" htmlFor="sv-dist-asset">
-                Settlement asset
-              </label>
-              <select
-                id="sv-dist-asset"
-                className="select"
-                value={dist.asset}
-                onChange={(e) => setDist({ ...dist, asset: e.target.value })}
-              >
-                <option>USDX</option>
-                <option>BTC</option>
-              </select>
-            </div>
-            <div>
-              <label className="label" htmlFor="sv-dist-date">
-                Record date
-              </label>
-              <input
-                id="sv-dist-date"
-                type="date"
-                className="input"
-                value={dist.recordDate}
-                onChange={(e) => setDist({ ...dist, recordDate: e.target.value })}
-              />
-            </div>
-          </div>
-          {iss.structureId === 'debt-yield' && (
-            <div className="rounded-lg bg-ink-900/[0.03] px-3 py-2 text-xs text-ink-700/70">
-              Coupons run automatically per the Note’s agreed schedule
-              {iss.fields?.schedule ? ` (${iss.fields.schedule.toLowerCase()}` : ''}
-              {iss.fields?.schedule && iss.fields?.rate
-                ? `, ${iss.fields.rate}% p.a.)`
-                : iss.fields?.schedule
-                  ? ')'
-                  : ''}
-              {'. '}
-              SeqPal acts as Calculation &amp; Paying Agent. Use this for an ad-hoc or
-              catch-up distribution.
-            </div>
-          )}
-          <p className="text-xs text-ink-700/60">
-            Paid pro-rata across the whitelisted holder set as of the record-date snapshot.
-            Mocked in the demo.
-          </p>
-        </div>
-      </Modal>
 
       {/* ── Corporate action modal ── */}
       <Modal

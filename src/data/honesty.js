@@ -17,6 +17,11 @@ export const REAL = [
   'The RFSA filing number, its public lookup, the deploy gate, and the anchored filing hash',
   'USDX and native testnet BTC as settlement assets',
   'Atomic delivery versus payment for USDX: the token and the USDX payment settle in one transaction',
+  'Pro-rata USDX distributions: gross, withholding, and net are computed in atoms from the on-chain register and the net is paid on chain to each holder’s registered mandate address, one payment per holder',
+  'The distribution reconciliation invariant: sum of gross equals sum of net plus sum of withheld, with the pro-rata flooring dust disclosed, never dropped',
+  'Clawback full-sweep seizures, with the reason recorded in the public transparency log alongside the sweep txid',
+  'The rules-amendment chain: the live on-chain rules always equal the anchored chain head, which is the genesis terms_hash plus N anchored amendments',
+  'Category expiry enforced at the policy server, so an expired accreditation becomes a real transfer refusal',
 ]
 
 export const SIMULATED = [
@@ -57,8 +62,13 @@ export const SIMULATED = [
   },
   {
     element: 'Tax forms and remittance',
-    real: 'The withholding math is real and nets are paid on chain. The forms and the remittance are simulated.',
-    label: 'Forms simulated, math real; remittance out of scope',
+    real: 'The withholding math is real and nets are paid on chain in USDX. The per-holder 1042-S-style statement, the issuer withholding summary, and the annual CRS/FATCA artifact are content-addressed and anchored, so their hashes are real. The forms themselves and any remittance to a tax authority are simulated.',
+    label: 'Forms simulated, math and artifact hashes real; remittance out of scope',
+  },
+  {
+    element: 'Annual holder report and ownership-register filing',
+    real: 'The register snapshot, its content address, and the on-chain anchor are real, and a notice is delivered to each current holder. The report is a labeled-simulated regulatory filing: nothing is transmitted to any authority.',
+    label: 'Real anchored artifact, simulated regulatory filing',
   },
   {
     element: 'Licenses and registrations',

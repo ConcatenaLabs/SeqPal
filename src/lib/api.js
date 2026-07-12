@@ -234,6 +234,69 @@ export const close = (id, body) =>
 // Owner: the per-subscription settlement records (delivery/release/refund txids).
 export const settlements = (id) => req(`/issuances/${encodeURIComponent(id)}/settlements`)
 
+// ── M7 transfer-agent servicing ─────────────────────────────────────────────
+// Investor payout mandate (distinct from the issuer mandate above). A
+// distribution pays ONLY a registered ordinary Sequentia address, captured with a
+// BIP340-signed mandate. Two-phase like the issuer mandate: POST with no
+// signature returns { sign_this, tag, note }; resubmit { signature, signer_xonly }
+// → { mandate }. The server validates the address is an ordinary Sequentia
+// address and REJECTS an enclave key-path (2-of-2) address (400). For M7 the
+// only chain is sequentia (USDX distributions); tBTC payouts are the plan's cut.
+export const investorMandate = (body) => req('/mandates/investor', { method: 'POST', body })
+
+// The caller's current investor payout mandate for a chain: { chain, mandate|null }.
+export const investorMandateGet = (chain = 'sequentia') =>
+  req(`/mandates/investor?chain=${encodeURIComponent(chain)}`)
+
+// Owner: open a distribution run in awaiting_funding with a servicing-wallet USDX
+// deposit invoice. Body { pool_atoms? | pool_usd?, memo? }. Returns
+// { distribution, deposit_address, pay_amount, pay_ccy:"USDX", confs_required,
+// note }. The run pays nothing until the deposit confirms and covers the pool.
+export const createDistribution = (id, body) =>
+  req(`/issuances/${encodeURIComponent(id)}/distributions`, { method: 'POST', body })
+
+// Owner: every distribution run for an issuance: { issuance_id, distributions[] }.
+export const listDistributions = (id) =>
+  req(`/issuances/${encodeURIComponent(id)}/distributions`)
+
+// Owner: one run plus its per-holder payment table:
+// { distribution, payments[], label }.
+export const getDistribution = (id, runID) =>
+  req(`/issuances/${encodeURIComponent(id)}/distributions/${encodeURIComponent(runID)}`)
+
+// Owner: take the immutable record-date snapshot (requires state funded). Captures
+// the holder set at a Sequentia block height and computes pro-rata + withholding.
+// Idempotent: { distribution, payments[], label }.
+export const snapshotDistribution = (id, runID) =>
+  req(`/issuances/${encodeURIComponent(id)}/distributions/${encodeURIComponent(runID)}/snapshot`, {
+    method: 'POST',
+    body: {},
+  })
+
+// Owner: pay NET USDX to each holder's registered mandate address, one payment per
+// holder (M5/M6 idempotency). Resumable: { distribution, payments[], label }.
+export const executeDistribution = (id, runID) =>
+  req(`/issuances/${encodeURIComponent(id)}/distributions/${encodeURIComponent(runID)}/execute`, {
+    method: 'POST',
+    body: {},
+  })
+
+// Owner: freeze or unfreeze a holder at the policy server. REASON REQUIRED. Body
+// { holder_aid, frozen, reason } → { holder_aid, frozen, reason, log_url, note }.
+export const consoleFreeze = (id, body) =>
+  req(`/issuances/${encodeURIComponent(id)}/freeze`, { method: 'POST', body })
+
+// Owner: clawback (full sweep) a holder's confirmed enclave UTXOs into the issuer
+// enclave. REASON REQUIRED and it becomes part of the public transparency log.
+// Body { holder_aid, reason } → { clawback, txid, atoms, reason, log_url, note }
+// (or { clawback, note } with state=empty when the holder has no balance).
+export const consoleClawback = (id, body) =>
+  req(`/issuances/${encodeURIComponent(id)}/clawback`, { method: 'POST', body })
+
+// The signed-in holder's portal notices inbox, newest first:
+// { notices:[{id, aid, kind, body, created_at}] }.
+export const notices = () => req('/id/notices')
+
 // ── platform reviewer (admin-session only) ──────────────────────────────────
 export const reviewQueue = () => req('/admin/review-queue')
 

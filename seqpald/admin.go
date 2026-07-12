@@ -289,11 +289,12 @@ func (s *server) runExpiry() {
 	now := time.Now().Unix()
 	warn := int64(expiryWarnWindow.Seconds())
 	for _, c := range claims {
-		if c.Status != "verified" || c.ValidUntil == 0 {
+		if c.Status != "verified" {
 			continue
 		}
-		if now >= c.ValidUntil {
-			// Expired: the projection now yields no categories; write it through.
+		// Identity-window expiry: the projection now yields no categories at all;
+		// write it through so a real transfer refusal follows for every asset.
+		if c.ValidUntil > 0 && now >= c.ValidUntil {
 			if _, err := s.writeCategories(c.AID); err != nil {
 				log.Printf("expiry: strip categories for %s: %v", c.AID, err)
 				continue
@@ -301,11 +302,35 @@ func (s *server) runExpiry() {
 			s.st.Audit(c.AID, "id.category.expired", map[string]any{"valid_until": c.ValidUntil})
 			continue
 		}
-		if c.ValidUntil-now <= warn {
+		if c.ValidUntil > 0 && c.ValidUntil-now <= warn {
 			if seen, _ := s.st.NoticeExists(c.AID, "pre-expiry"); !seen {
 				_ = s.st.InsertNotice(c.AID, "pre-expiry",
 					"Your SeqPal ID eligibility expires soon. Re-verify to keep holding SeqPal-managed assets.")
 				s.st.Audit(c.AID, "id.pre_expiry_notice", map[string]any{"valid_until": c.ValidUntil})
+			}
+		}
+		// Category-window expiry: an accreditation whose artifact has aged out drops
+		// its acc tokens (a real refusal for accredited-only holdings) even while the
+		// identity itself is still valid. projectCategories already excludes a stale
+		// accreditation, so re-writing categories once enforces it at the policy
+		// server. The notice-once guard keeps the cron from re-writing every tick.
+		if c.Accredited && c.AccredValidUntil > 0 && now >= c.AccredValidUntil {
+			if seen, _ := s.st.NoticeExists(c.AID, "accred-expired"); !seen {
+				if _, err := s.writeCategories(c.AID); err != nil {
+					log.Printf("expiry: strip accreditation categories for %s: %v", c.AID, err)
+				} else {
+					_ = s.st.InsertNotice(c.AID, "accred-expired",
+						"Your accredited-investor verification has expired. Re-verify accreditation to keep access to accredited-only holdings.")
+					s.st.Audit(c.AID, "id.accred.expired", map[string]any{"accred_valid_until": c.AccredValidUntil})
+				}
+			}
+			continue
+		}
+		if c.Accredited && c.AccredValidUntil > 0 && c.AccredValidUntil-now <= warn {
+			if seen, _ := s.st.NoticeExists(c.AID, "pre-accred-expiry"); !seen {
+				_ = s.st.InsertNotice(c.AID, "pre-accred-expiry",
+					"Your accredited-investor verification expires soon. Re-verify to keep accredited-only access.")
+				s.st.Audit(c.AID, "id.pre_accred_expiry_notice", map[string]any{"accred_valid_until": c.AccredValidUntil})
 			}
 		}
 	}
@@ -334,6 +359,16 @@ func (s *server) startWorkers() {
 		go s.runBtcReorgWatcher(s.cfg.watchInterval)
 	}
 	go s.runFiatCron(2 * time.Second)
+	// M7 (Backend-B): heal any half-applied rules mutation (amendment chain), and,
+	// once a node/policy server is reachable, take scheduled ownership snapshots and
+	// issue the labeled-simulated annual report. All best-effort and idempotent.
+	if s.cfg.issuerToken != "" {
+		go s.runRulesReconcileCron(s.cfg.rulesReconcile)
+	}
+	if s.cfg.nodeURL != "" {
+		go s.runOwnershipSnapshotCron(s.cfg.snapshotInterval)
+		go s.runAnnualReportCron(s.cfg.reportInterval)
+	}
 }
 
 func adminSet(csv string) map[string]bool {

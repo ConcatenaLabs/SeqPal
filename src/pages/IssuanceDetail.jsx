@@ -15,6 +15,9 @@ import RfsaFilingCard from '../components/RfsaFilingCard'
 import PlatformFeeCard from '../components/PlatformFeeCard'
 import PayoutMandateCard from '../components/PayoutMandateCard'
 import ClosingCard from '../components/ClosingCard'
+import DistributionConsole from '../components/DistributionConsole'
+import FreezeClawbackConsole from '../components/FreezeClawbackConsole'
+import AmendmentChainCard from '../components/AmendmentChainCard'
 import { useStore } from '../lib/store'
 import { view } from '../lib/issuance'
 import { getStructure } from '../data/structures'
@@ -426,6 +429,9 @@ export default function IssuanceDetail() {
           {iss.live && (
             <>
               <HolderRegister iss={iss} />
+              <AmendmentChainCard iss={iss} />
+              <DistributionConsole iss={iss} />
+              <FreezeClawbackConsole iss={iss} />
               <NetworkFees iss={iss} />
               <TransparencyLog iss={iss} />
               <ServicingPanel iss={iss} />
