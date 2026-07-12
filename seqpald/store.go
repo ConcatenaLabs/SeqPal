@@ -172,6 +172,32 @@ CREATE TABLE notices (
 );
 CREATE INDEX idx_notices_aid ON notices(aid);
 `,
+	// M3: the chain watcher's persistent state. One row per live issuance, keyed
+	// by issuance id, holding the last-observed chain status so a restart
+	// reconciles from chain rather than resetting. seqpald's watcher is
+	// authoritative for rendering (openampd re-marks internally but exposes no
+	// read surface). All additive; an M2 database migrates forward in place.
+	`
+CREATE TABLE watch (
+    issuance_id   TEXT PRIMARY KEY REFERENCES issuances(id),
+    owner_aid     TEXT    NOT NULL DEFAULT '',
+    asset_id      TEXT    NOT NULL DEFAULT '',
+    txid          TEXT    NOT NULL DEFAULT '',
+    status        TEXT    NOT NULL DEFAULT 'broadcast',
+    confirmations INTEGER NOT NULL DEFAULT 0,
+    anchor_depth  INTEGER NOT NULL DEFAULT 0,
+    anchor_height INTEGER NOT NULL DEFAULT 0,
+    anchor_hash   TEXT    NOT NULL DEFAULT '',
+    anchor_status TEXT    NOT NULL DEFAULT '',
+    block_hash    TEXT    NOT NULL DEFAULT '',
+    block_height  INTEGER NOT NULL DEFAULT 0,
+    contract      TEXT    NOT NULL DEFAULT '',
+    registry_url  TEXT    NOT NULL DEFAULT '',
+    price_seeded  INTEGER NOT NULL DEFAULT 0,
+    updated_at    INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX idx_watch_owner ON watch(owner_aid);
+`,
 }
 
 // Store is seqpald's persistent state. Every financial fact the UI shows is
@@ -396,6 +422,26 @@ func (s *Store) CreateIssuance(i *Issuance) error {
 
 func (s *Store) IssuanceByID(id string) (*Issuance, error) {
 	return scanIssuance(s.db.QueryRow(`SELECT `+issuanceCols+` FROM issuances WHERE id = ?`, id))
+}
+
+// LiveIssuances returns every deployed (on-chain) issuance. The chain watcher
+// reconciles its watch rows from this set, so a restart resumes tracking from
+// chain rather than resetting.
+func (s *Store) LiveIssuances() ([]*Issuance, error) {
+	rows, err := s.db.Query(`SELECT ` + issuanceCols + ` FROM issuances WHERE status = 'live' AND asset_id != '' ORDER BY created_at`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []*Issuance{}
+	for rows.Next() {
+		i, err := scanIssuanceRows(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, i)
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) IssuancesByOwner(aid string) ([]*Issuance, error) {

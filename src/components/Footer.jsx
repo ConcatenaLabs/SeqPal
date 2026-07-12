@@ -24,6 +24,7 @@ const cols = [
     title: 'Resources',
     links: [
       { to: '/pricing', label: 'Pricing' },
+      { to: '/verify', label: 'Verify independently' },
       { to: '/onboarding', label: 'Start an issuance' },
       { to: '/dashboard', label: 'Dashboard' },
     ],
@@ -83,7 +84,7 @@ export default function Footer() {
             solicitation to buy any security.
           </p>
           <p className="mt-4">
-            © {new Date().getFullYear()} SeqPal · seqpal.io —{' '}
+            © {new Date().getFullYear()} SeqPal · seqpal.io ·{' '}
             <span className="text-btc/80">demo preview</span>
           </p>
         </div>

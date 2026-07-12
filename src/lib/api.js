@@ -74,6 +74,25 @@ export const patchIssuance = (id, body) =>
 // returns the first result rather than minting a second asset.
 export const deploy = (body) => req('/deploy', { method: 'POST', body })
 
+// ── owner-scoped chain reads (M3) ───────────────────────────────────────────
+// The register / cap table for one deployed issuance, proxied verbatim from
+// openampd GET /v1/issuer/holders: { asset, height, holders:{aid:atoms},
+// total_atoms }. 403 unless the session owns the issuance; the atoms figure is
+// confirmed on-chain balance, the only truthful source for "held".
+export const issuanceHolders = (id) =>
+  req(`/issuances/${encodeURIComponent(id)}/holders`)
+
+// This issuance's slice of the transparency log plus every log-head anchor
+// entry: { issuance_id, asset, entries:[{seq,prev,time,action,data,hash}],
+// log_url }. Each entry's hash is re-verified client-side; anchor entries carry
+// data.txid, deep-linked to the explorer.
+export const issuanceLog = (id) => req(`/issuances/${encodeURIComponent(id)}/log`)
+
+// The session-scoped Server-Sent Events endpoint. Consumed with EventSource
+// (which sends the HttpOnly session cookie same-origin), not fetch: the store
+// owns the single connection and fans "watch" events out to the surfaces.
+export const EVENTS_URL = `${BASE}/events`
+
 // Compile the Step 5 matrix (or a preview override) into openampd rules,
 // server-side. seqpald is the only place the authoritative rules are computed;
 // this returns { rules, tip_height, blocks_per_day } for the onboarding preview.

@@ -23,6 +23,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -40,13 +41,22 @@ type config struct {
 	screenDir string          // cache dir for downloaded sanctions lists
 	adminAIDs map[string]bool // AIDs allowed to use the manual-review surface
 
-	// Chain-derived compile inputs. The real chain watcher lands in M3; until
-	// then tip height comes from the node RPC when configured, else assumedTip.
+	// Chain-derived compile inputs. Tip height comes from the node RPC when
+	// configured, else assumedTip. The M3 chain watcher uses the same node RPC.
 	blocksPerDay int64
 	assumedTip   int64
 	nodeURL      string
 	nodeUser     string
 	nodePass     string
+
+	// M3 truthful chain surfaces.
+	registryURL          string // Sequentia asset registry base (publication target)
+	priceURL             string // box price feed base (GET /prices, POST /seed)
+	entityDomain         string // committed in the contract at issue for registry proof
+	entityName           string // optional issuer display name (OA-1)
+	operatorName         string // optional operator identity (OA-1)
+	operatorRegistration string // optional operator registration (OA-1)
+	policyFeeSats        int64  // network fee reference (SEQ-sats) for fee_convert derivation
 
 	// Cron cadences (fast defaults so a demo runs unattended).
 	screenRefresh   time.Duration // re-download the lists
@@ -54,6 +64,8 @@ type config struct {
 	expiryInterval  time.Duration // category expiry sweep
 	autoReviewEvery time.Duration // auto-reviewer poll
 	autoReviewDelay time.Duration // grace before the auto-reviewer acts
+	watchInterval   time.Duration // chain watcher tick
+	anchorInterval  time.Duration // log-head anchor cron
 }
 
 type server struct {
@@ -63,6 +75,11 @@ type server struct {
 	rl     *rateLimiter
 	catMu  *keyedMutex // serializes openampd category writes per AID
 	screen *screener   // sanctions lists
+
+	// M3 chain surfaces.
+	sse         *sseBroker  // SSE fan-out (lazily built via bus())
+	busOnce     sync.Once   //
+	regThrottle regThrottle // rate-limits registry publish retries
 }
 
 func env(key, def string) string {
@@ -98,9 +115,16 @@ func main() {
 	flag.StringVar(&cfg.screenDir, "screendir", env("SEQPALD_SCREEN_DIR", "./sanctions-cache"), "cache directory for downloaded sanctions lists")
 	flag.Int64Var(&cfg.blocksPerDay, "blocksperday", envInt("SEQPALD_BLOCKS_PER_DAY", 144), "assumed Sequentia blocks per day for lockup height conversion")
 	flag.Int64Var(&cfg.assumedTip, "tipheight", envInt("SEQPALD_TIP_HEIGHT", 0), "fallback tip height when no node RPC is configured")
-	flag.StringVar(&cfg.nodeURL, "nodeurl", env("SEQPALD_NODE_URL", ""), "Sequentia node JSON-RPC URL for the tip height (optional)")
+	flag.StringVar(&cfg.nodeURL, "nodeurl", env("SEQPALD_NODE_URL", ""), "Sequentia node JSON-RPC URL for the chain watcher and tip height (optional)")
 	flag.StringVar(&cfg.nodeUser, "nodeuser", env("SEQPALD_NODE_USER", ""), "node RPC username")
 	flag.StringVar(&cfg.nodePass, "nodepass", env("SEQPALD_NODE_PASS", ""), "node RPC password")
+	flag.StringVar(&cfg.registryURL, "registryurl", env("SEQPALD_REGISTRY_URL", "http://127.0.0.1:3005"), "Sequentia asset registry base URL for publication (empty = disabled)")
+	flag.StringVar(&cfg.priceURL, "priceurl", env("SEQPALD_PRICE_URL", "http://127.0.0.1:8088"), "box price feed base URL (GET /prices, POST /seed; empty = disabled)")
+	flag.StringVar(&cfg.entityDomain, "entitydomain", env("SEQPALD_ENTITY_DOMAIN", "sequentiatestnet.com"), "entity domain committed in the contract for registry proof")
+	flag.StringVar(&cfg.entityName, "entityname", env("SEQPALD_ENTITY_NAME", ""), "optional issuer display name added to the contract (OA-1)")
+	flag.StringVar(&cfg.operatorName, "operatorname", env("SEQPALD_OPERATOR_NAME", ""), "optional operator identity added to the contract (OA-1)")
+	flag.StringVar(&cfg.operatorRegistration, "operatorreg", env("SEQPALD_OPERATOR_REGISTRATION", ""), "optional operator registration added to the contract (OA-1)")
+	flag.Int64Var(&cfg.policyFeeSats, "policyfeesats", envInt("SEQPALD_POLICY_FEE_SATS", 1000), "network fee reference in SEQ-sats used to derive fee_convert_atoms")
 	flag.Parse()
 
 	cfg.adminAIDs = adminSet(adminAIDs)
@@ -109,7 +133,11 @@ func main() {
 	cfg.expiryInterval = time.Hour
 	cfg.autoReviewEvery = 5 * time.Second
 	cfg.autoReviewDelay = 10 * time.Second
+	cfg.watchInterval = 15 * time.Second
+	cfg.anchorInterval = 24 * time.Hour
 	cfg.openampURL = strings.TrimRight(cfg.openampURL, "/")
+	cfg.registryURL = strings.TrimRight(cfg.registryURL, "/")
+	cfg.priceURL = strings.TrimRight(cfg.priceURL, "/")
 	for _, o := range strings.Split(devOrigins, ",") {
 		if o = strings.TrimSpace(o); o != "" {
 			cfg.devOrigins = append(cfg.devOrigins, strings.TrimRight(o, "/"))
@@ -166,6 +194,11 @@ func (s *server) handler() http.Handler {
 	mux.HandleFunc("POST /api/issuances/{id}/compile", s.requireSession(s.handleCompile))
 	mux.HandleFunc("POST /api/deploy", s.requireSession(s.handleDeploy))
 
+	// M3 truthful chain surfaces: the SSE stream and the owner-scoped reads.
+	mux.HandleFunc("GET /api/events", s.requireSession(s.handleEvents))
+	mux.HandleFunc("GET /api/issuances/{id}/holders", s.requireSession(s.handleIssuanceHolders))
+	mux.HandleFunc("GET /api/issuances/{id}/log", s.requireSession(s.handleIssuanceLog))
+
 	// SeqPal ID surface.
 	mux.HandleFunc("POST /api/id/verify", s.requireSession(s.handleIDVerify))
 	mux.HandleFunc("GET /api/id/passport", s.requireSession(s.handleIDPassport))
@@ -182,6 +215,10 @@ func (s *server) handler() http.Handler {
 		}
 		writeErr(w, 404, "no such endpoint")
 	})
+
+	// Public asset-registry domain proof. The registry fetches this at the domain
+	// root; reaching it there depends on the box routing /.well-known to seqpald.
+	mux.HandleFunc("GET /.well-known/", s.handleAssetProof)
 
 	if s.cfg.webroot != "" {
 		mux.HandleFunc("/", s.handleStatic)
