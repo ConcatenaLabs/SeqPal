@@ -647,6 +647,23 @@ CREATE TABLE kv (
     updated_at INTEGER NOT NULL DEFAULT 0
 );
 `,
+	// M9: the external issuer key + two-phase clawback. issuer_external records, per
+	// issuance, whether the enclave issuer half is the entity's own browser key (so
+	// clawback needs the issuer's browser signature, run build->sign->complete)
+	// rather than a server-held key (the legacy single-call clawback). issuer_pubkey
+	// stores that external x-only for the signer cross-check. On the clawbacks row,
+	// oa_id references the openampd two-phase build awaiting the issuer's signatures
+	// and to_sign caches the leaf sighashes the issuer must sign, so a resumed build
+	// re-surfaces them without asking openampd to assemble a second sweep. All
+	// additive with safe defaults: an M8 database migrates forward in place, every
+	// existing issuance stays issuer_external=0 (the legacy path), and BONDX and the
+	// M1-M8 assets are untouched.
+	`
+ALTER TABLE issuances ADD COLUMN issuer_external INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE issuances ADD COLUMN issuer_pubkey TEXT NOT NULL DEFAULT '';
+ALTER TABLE clawbacks ADD COLUMN oa_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE clawbacks ADD COLUMN to_sign TEXT NOT NULL DEFAULT '';
+`,
 }
 
 // Store is seqpald's persistent state. Every financial fact the UI shows is
@@ -752,8 +769,14 @@ type Issuance struct {
 	ContractHash   string          `json:"contract_hash,omitempty"`
 	HolderAID      string          `json:"holder_aid,omitempty"`
 	EnclaveAddress string          `json:"enclave_address,omitempty"`
-	CreatedAt      int64           `json:"created_at"`
-	UpdatedAt      int64           `json:"updated_at"`
+	// IssuerExternal (M9) marks an issuance whose enclave issuer half is the
+	// entity's own browser key (IssuerPubkey), so clawback runs two-phase and the
+	// server never holds an issuer key for this asset. False (the default) is the
+	// legacy server-held issuer key and the single-call clawback.
+	IssuerExternal bool   `json:"issuer_external,omitempty"`
+	IssuerPubkey   string `json:"issuer_pubkey,omitempty"`
+	CreatedAt      int64  `json:"created_at"`
+	UpdatedAt      int64  `json:"updated_at"`
 }
 
 type DeployRecord struct {
@@ -853,7 +876,7 @@ func (s *Store) EntityByID(id string) (*Entity, error) {
 
 const issuanceCols = `id, owner_aid, COALESCE(entity_id,''), name, ticker, structure_id, status, terms,
     supply, precision, confidential, clawback, asset_id, txid, contract_hash, holder_aid, enclave_address,
-    created_at, updated_at`
+    issuer_external, issuer_pubkey, created_at, updated_at`
 
 func (s *Store) CreateIssuance(i *Issuance) error {
 	var entity any
@@ -917,16 +940,17 @@ type scanner interface {
 func scanIssuanceInto(sc scanner) (*Issuance, error) {
 	var i Issuance
 	var terms string
-	var confidential, clawback int
+	var confidential, clawback, issuerExternal int
 	err := sc.Scan(&i.ID, &i.OwnerAID, &i.EntityID, &i.Name, &i.Ticker, &i.StructureID, &i.Status, &terms,
 		&i.Supply, &i.Precision, &confidential, &clawback, &i.AssetID, &i.Txid, &i.ContractHash,
-		&i.HolderAID, &i.EnclaveAddress, &i.CreatedAt, &i.UpdatedAt)
+		&i.HolderAID, &i.EnclaveAddress, &issuerExternal, &i.IssuerPubkey, &i.CreatedAt, &i.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
 	i.Terms = json.RawMessage(terms)
 	i.Confidential = confidential != 0
 	i.Clawback = clawback != 0
+	i.IssuerExternal = issuerExternal != 0
 	return &i, nil
 }
 

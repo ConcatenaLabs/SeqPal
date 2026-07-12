@@ -29,6 +29,7 @@ export const REAL = [
   'Transparency-log minimization: a category event logs the hash of the category set, which recomputes from the known set, instead of the raw list',
   'Opt-in confidential issuance requested per call with a blinded address, so it works without changing the shared node default',
   'Issuer venue-listing authorization, readable at the public listings endpoint, which a venue reads to list an asset but can never use to grant eligibility',
+  'The external issuer key on a new asset: the enclave issuer half is the issuing entity’s own browser key, so a clawback is two-phase and cannot be broadcast without the issuer’s signature, which the platform does not hold',
 ]
 
 export const SIMULATED = [
@@ -99,9 +100,9 @@ export const SIMULATED = [
   },
 ]
 
-// The FROST roadmap milestone: the platform-held issuer key becomes a quorum.
+// The two-tier custody posture after M9, plus the FROST roadmap for the legacy key.
 export const FROST_ROADMAP =
-  'Today the issuer clawback key is a single LocalKeySigner: one key, one token, one box, one disk. The production design replaces it with a FROST threshold quorum so no single party can move a holder position, which is the step that changes the custody conclusion. Until then, every asset carries the platform-held-key custody disclosure.'
+  'A new asset uses an external issuer key: the enclave issuer half is the issuing entity’s own SeqPal ID key, held in its browser, so a clawback is two-phase and cannot be broadcast without the issuer’s signature. The platform holds only the policy key, which is negative control, so it cannot move a holder’s position on its own. Legacy assets that predate this path still use a platform-held issuer key, a single LocalKeySigner (one key, one token, one box, one disk), and each carries the platform-held-key custody disclosure. The remaining hardening for that legacy key is a FROST threshold quorum, so no single party can move a holder position; until it ships, every legacy asset carries the custody disclosure per asset.'
 
 // Legacy assets that predate the overhaul and are excluded from the platform.
 export const LEGACY_ASSETS = [

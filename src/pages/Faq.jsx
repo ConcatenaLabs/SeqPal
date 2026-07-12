@@ -96,7 +96,7 @@ const SECTIONS = [
       {
         q: 'What can the platform see and do about my holdings?',
         a: [
-          'For clawback-enabled assets with a platform-held issuer key, SeqPal has transfer power over your holdings. We say that out loud: it is control amounting to custody, and it is on the Legal and Licensing page and in every offering memorandum as a risk factor.',
+          'It depends on which issuer-key path the asset is on, and each asset discloses its path. For a legacy-path asset the platform holds the issuer key, so SeqPal has transfer power over your holdings: that is control amounting to custody, and we say it out loud on the Legal and Licensing page and in every offering memorandum as a risk factor. For a new asset the issuer key is the issuing entity’s own browser key, not the platform’s, so a clawback needs the issuer’s signature and SeqPal cannot move your position on its own. On both paths the platform still operates the policy server that co-signs transfers.',
         ],
       },
     ],
@@ -107,13 +107,13 @@ const SECTIONS = [
       {
         q: 'What key do I hold, and what does it control?',
         a: [
-          'You hold one half of a 2-of-2 enclave key, generated in your browser and stored only as an encrypted backup under your passphrase. Your half is negative control: it lets you refuse a transfer. It does not, on its own, move a clawback-enabled asset, because the platform holds the issuer key.',
+          'You hold one half of a 2-of-2 enclave key, generated in your browser and stored only as an encrypted backup under your passphrase. Your half is negative control: it lets you refuse a transfer. It does not, on its own, move a clawback-enabled asset. The party that can claw back is whoever holds the issuer key: on a new asset that is the issuing entity’s own key, not the platform’s, so the issuer directs a seizure and the registrar co-signs; on a legacy asset the platform holds it.',
         ],
       },
       {
         q: 'What happens if I lose my key?',
         a: [
-          'For a clawback-enabled asset there is a runbook: the platform can claw back and re-deliver your position to a fresh AID you control. That is a real recovery path, and its trust implication is exactly the custody conclusion above, so we state it rather than imply your key alone is the whole story. This is why "self-custodial" is qualified here rather than absolute.',
+          'For a clawback-enabled asset there is a runbook: claw back and re-deliver your position to a fresh AID you control. On a new asset the seizure step needs the issuing entity’s signature, since the issuer key is external to the platform, and the re-delivery leg runs under a disclosed treasury delegation; on a legacy asset the platform completes both steps. That is a real recovery path, and its trust implication is exactly the custody conclusion above, so we state it rather than imply your key alone is the whole story. This is why "self-custodial" is qualified here rather than absolute.',
         ],
       },
     ],

@@ -102,6 +102,25 @@ type m5Stub struct {
 	broadcastThenFailOnce bool
 	txLog                 []map[string]any
 	logSeq                uint64
+
+	// M9 instrumentation (additive; all inert by default so the M5-M8 suite is
+	// byte-identical). externalAssets marks an asset whose enclave issuer half is
+	// the entity's own browser key: its clawback is two-phase (build returns the
+	// L_claw sighashes, /complete adds the issuer signature and broadcasts), and
+	// assetIssuerPub is the issuer x-only each to_sign entry must name. pendingClaw
+	// holds a built-but-unbroadcast sweep, clawDone maps a consumed build id to its
+	// txid so a replay of /complete returns the same txid and never re-sweeps.
+	externalAssets map[string]bool
+	assetIssuerPub map[string]string
+	pendingClaw    map[string]*m5pendingClaw
+	clawDone       map[string]string
+}
+
+// m5pendingClaw is a two-phase clawback build the stub returned but has not yet
+// broadcast (it broadcasts only when /complete supplies the issuer signature).
+type m5pendingClaw struct {
+	asset, holder, reason, txid string
+	atoms                       uint64
 }
 
 func newM5Stub(t *testing.T) *m5Stub {
@@ -116,6 +135,10 @@ func newM5Stub(t *testing.T) *m5Stub {
 		reissues:       map[string]string{},
 		reblindLeft:    map[string]int{},
 		completeRefuse: map[string]string{},
+		externalAssets: map[string]bool{},
+		assetIssuerPub: map[string]string{},
+		pendingClaw:    map[string]*m5pendingClaw{},
+		clawDone:       map[string]string{},
 	}
 	mux := http.NewServeMux()
 
@@ -443,6 +466,8 @@ func newM5Stub(t *testing.T) *m5Stub {
 			return
 		}
 		txid := fmt.Sprintf("%064x", 900000+len(f.clawbackLog)+1)
+		// The reason is logged BEFORE any signature on BOTH paths (openampd's public
+		// transparency-log invariant): the eventual sweep txid is committed now.
 		f.clawbackLog = append(f.clawbackLog, map[string]any{
 			"action": "clawback",
 			"data": map[string]any{
@@ -450,9 +475,66 @@ func newM5Stub(t *testing.T) *m5Stub {
 			},
 		})
 		f.clawbacks++
+		// M9 two-phase: an external-issuer asset cannot be swept server-side. BUILD the
+		// L_claw sweep and return its sighashes (broadcast nothing, keep the balance);
+		// /complete adds the issuer's signature and only then sweeps.
+		if f.externalAssets[req.Asset] {
+			id, _ := randHex(8)
+			f.pendingClaw[id] = &m5pendingClaw{asset: req.Asset, holder: req.HolderAID, reason: req.Reason, txid: txid, atoms: atoms}
+			pub := f.assetIssuerPub[req.Asset]
+			f.mu.Unlock()
+			writeJSON(w, 200, map[string]any{
+				"id": id, "tx": "", "atoms": atoms,
+				"to_sign": []map[string]any{{"input": 0, "sighash": strings.Repeat("33", 32), "pubkey": pub}},
+			})
+			return
+		}
 		f.balances[req.HolderAID][req.Asset] = 0
 		f.mu.Unlock()
 		writeJSON(w, 200, map[string]any{"txid": txid, "atoms": atoms})
+	})
+
+	// M9: complete a two-phase (external-issuer) clawback. The issuer's browser
+	// signatures (keyed by input index) arrive here; the stub verifies they are
+	// present, sweeps the holder's balance into the issuer enclave, and broadcasts.
+	// Idempotent + consume-once: a completed build returns the same txid and never
+	// re-sweeps, mirroring openampd's GetClawback short-circuit.
+	mux.HandleFunc("POST /v1/issuer/clawback/{id}/complete", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-issuer-token" {
+			writeJSON(w, 401, map[string]any{"error": "bad token"})
+			return
+		}
+		id := r.PathValue("id")
+		var req struct {
+			Sigs map[string]string `json:"sigs"`
+		}
+		raw, _ := readAllLimited(r.Body, 1<<20)
+		json.Unmarshal(raw, &req)
+		f.mu.Lock()
+		if txid, ok := f.clawDone[id]; ok {
+			atoms := uint64(0)
+			f.mu.Unlock()
+			writeJSON(w, 200, map[string]any{"txid": txid, "atoms": atoms, "idempotent": true})
+			return
+		}
+		pc, ok := f.pendingClaw[id]
+		if !ok {
+			f.mu.Unlock()
+			writeJSON(w, 404, map[string]any{"error": "unknown or expired clawback"})
+			return
+		}
+		if _, has := req.Sigs["0"]; !has {
+			f.mu.Unlock()
+			writeJSON(w, 400, map[string]any{"error": "missing issuer signature for input 0"})
+			return
+		}
+		if f.balances[pc.holder] != nil {
+			f.balances[pc.holder][pc.asset] = 0
+		}
+		f.clawDone[id] = pc.txid
+		delete(f.pendingClaw, id)
+		f.mu.Unlock()
+		writeJSON(w, 200, map[string]any{"txid": pc.txid, "atoms": pc.atoms})
 	})
 
 	// M7/M8: the public transparency log as newline-delimited JSON, scanned by
@@ -577,6 +659,25 @@ func (f *m5Stub) clawbackCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.clawbacks
+}
+
+// markExternal (M9) flags an asset as external-issuer at the policy server: its
+// clawback becomes two-phase and every to_sign entry names issuerPub (the entity's
+// own browser x-only). seqpald independently tracks the same flag from its deploy
+// response, so a test sets both sides consistently.
+func (f *m5Stub) markExternal(assetID, issuerPub string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.externalAssets[assetID] = true
+	f.assetIssuerPub[assetID] = issuerPub
+}
+
+// pendingClawCount reports how many two-phase builds are awaiting an issuer
+// signature (used to prove a build is resumed, not re-assembled).
+func (f *m5Stub) pendingClawCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.pendingClaw)
 }
 
 func (f *m5Stub) logLen() int {

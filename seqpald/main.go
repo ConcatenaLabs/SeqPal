@@ -341,6 +341,10 @@ func (s *server) handler() http.Handler {
 	// supplied) and read, with its head-consistency invariant, at GET .../amendments.
 	mux.HandleFunc("POST /api/issuances/{id}/freeze", s.requireSession(s.handleConsoleFreeze))
 	mux.HandleFunc("POST /api/issuances/{id}/clawback", s.requireSession(s.handleConsoleClawback))
+	// M9: complete a two-phase (external-issuer) clawback with the issuer's browser
+	// signatures. Legacy (server-held issuer key) assets never reach here; their
+	// clawback still completes in the single call above.
+	mux.HandleFunc("POST /api/issuances/{id}/clawback/{cid}/complete", s.requireSession(s.handleConsoleClawbackComplete))
 	mux.HandleFunc("GET /api/id/notices", s.requireSession(s.handleNotices))
 	mux.HandleFunc("POST /api/id/redeliver", s.requireSession(s.requireAdmin(s.handleRedeliver)))
 
