@@ -67,6 +67,11 @@ type compileEnv struct {
 	BlocksPerDay int64
 	FeeConvert   uint64
 	PrimaryAIDs  []string
+	// Characterization is the instrument classification for the structure (M4).
+	// Its zero value (IsAIF false) is a no-op, so a compileRules call that does
+	// not set it behaves exactly as it did before M4; an AIF-classified structure
+	// restricts EU member-state access to professional categories.
+	Characterization Characterization
 }
 
 var accessAdmits = map[string]map[string]bool{
@@ -122,6 +127,10 @@ func compileRules(terms json.RawMessage, env compileEnv) (CompiledRules, error) 
 			}
 		}
 	}
+	// AIF marketing clamp (M4): an AIF-classified structure disables the EU retail
+	// lift and restricts EU member states to professional categories. This runs
+	// on the admitted set before it is frozen into allowed_categories.
+	clampForCharacterization(allowed, env.Characterization)
 	if len(allowed) > 0 {
 		out.AllowedCategories = sortedKeysBool(allowed)
 	}

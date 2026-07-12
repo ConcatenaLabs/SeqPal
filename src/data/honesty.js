@@ -1,0 +1,93 @@
+// The master real-vs-simulated list (plan Section 7). One source of truth, shared
+// by the Status page (the master list) and referenced by the FAQ. Every simulated
+// element carries what is genuinely real about it and how the UI labels it.
+//
+// House rule: nothing simulated ever renders in the same visual style as
+// chain-verified state, and nothing is labeled final at 0 confirmations.
+
+export const REAL = [
+  'Enclave keys and the SeqPal ID, generated in your browser',
+  'OpenAMP restricted assets minted on the Sequentia testnet',
+  'Policy co-signed transfers and their real refusals',
+  'The register and cap table, read from the chain in atoms',
+  'The hash-chained transparency log and its on-chain anchors',
+  'Sanctions screening against the public OFAC, EU, and UN lists',
+  'terms_hash committed on chain, and the content-addressed document set',
+  'BIP340 document e-signatures over the tagged document hash',
+  'The RFSA filing number, its public lookup, the deploy gate, and the anchored filing hash',
+  'USDX and native testnet BTC as settlement assets',
+]
+
+export const SIMULATED = [
+  {
+    element: 'KYC and KYB document review, selfie, PEP, adverse media',
+    real: 'A server-side review queue with pending, approved, rejected, and needs-info states, deterministic refusal personas, and a signed claims record. The sanctions part is real.',
+    label: 'Screening: simulated review, real refusals',
+  },
+  {
+    element: 'Sanctions vendor',
+    real: 'The OFAC SDN and consolidated, EU consolidated, and UN Security Council list data and the daily cron are real. Only the commercial vendor relationship is absent.',
+    label: 'Real data, no commercial vendor',
+  },
+  {
+    element: 'E-signature provider',
+    real: 'A real BIP340 signature by your enclave key over the real document hash, stored and anchored.',
+    label: 'Cryptographically real signature; provider-grade e-signature simulated',
+  },
+  {
+    element: 'Prospera incorporation and e-registry',
+    real: 'A watermarked certificate artifact and entity number, hash anchored, with server-driven timers.',
+    label: 'Watermark: no e-registry sandbox exists',
+  },
+  {
+    element: 'RFSA regulator approval',
+    real: 'Filing numbers, public lookup, the deploy gate, and anchored filing hashes.',
+    label: 'Simulated regulator, real registry mechanics',
+  },
+  {
+    element: 'Fiat rails (card, bank transfer)',
+    real: 'The full checkout flow, state machine, receipts, and refund path, with ledger entries marked funds_simulated. The tokens delivered against them are real.',
+    label: 'Simulated at the checkout itself and on every money surface derived from it',
+  },
+  {
+    element: 'Depositary-receipt custodian',
+    real: 'Signed reserve attestations, anchored, with real reissue and burn reconciled against a mock balance.',
+    label: 'Simulated custody attestation',
+  },
+  {
+    element: 'Tax forms and remittance',
+    real: 'The withholding math is real and nets are paid on chain. The forms and the remittance are simulated.',
+    label: 'Forms simulated, math real; remittance out of scope',
+  },
+  {
+    element: 'Licenses and registrations',
+    real: 'The Legal and Licensing page role analysis is real production analysis; only the registration numbers are demo.',
+    label: 'Simulated registration numbers',
+  },
+  {
+    element: 'Legal-world corporate actions (voting proxy, default workflow)',
+    real: 'Notices and records.',
+    label: 'Off-chain legal process, simulated',
+  },
+  {
+    element: 'Offering price',
+    real: 'Displayed only as the offering reference price.',
+    label: 'Reference price, not a market quote',
+  },
+]
+
+// The FROST roadmap milestone: the platform-held issuer key becomes a quorum.
+export const FROST_ROADMAP =
+  'Today the issuer clawback key is a single LocalKeySigner: one key, one token, one box, one disk. The production design replaces it with a FROST threshold quorum so no single party can move a holder position, which is the step that changes the custody conclusion. Until then, every asset carries the platform-held-key custody disclosure.'
+
+// Legacy assets that predate the overhaul and are excluded from the platform.
+export const LEGACY_ASSETS = [
+  {
+    ticker: 'SPBOND',
+    note: 'A pre-overhaul demo bond. Unregistered in the asset registry because entity.domain must be committed at issue time and cannot be retrofitted.',
+  },
+  {
+    ticker: 'TCT',
+    note: 'A pre-overhaul demo token, deprecated for the same reason.',
+  },
+]

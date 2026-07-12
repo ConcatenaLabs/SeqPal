@@ -229,18 +229,13 @@ func (s *server) runAnchorCron(interval time.Duration) {
 }
 
 func (s *server) anchorLogHead() {
-	if s.cfg.issuerToken == "" {
+	txid, seq, err := s.postLogHeadAnchor()
+	if err != nil {
+		if s.cfg.issuerToken != "" {
+			log.Printf("anchor cron: %v", err)
+		}
 		return
 	}
-	var out struct {
-		Txid string `json:"txid"`
-		Seq  uint64 `json:"seq"`
-		Head string `json:"head"`
-	}
-	if err := s.callOpenAMP("POST", "/v1/issuer/anchor", s.cfg.issuerToken, map[string]any{}, &out); err != nil {
-		log.Printf("anchor cron: %v", err)
-		return
-	}
-	s.st.Audit("", "log.anchor", map[string]any{"txid": out.Txid, "seq": out.Seq, "head": out.Head})
-	log.Printf("anchor cron: log head anchored, txid=%s seq=%d", out.Txid, out.Seq)
+	s.st.Audit("", "log.anchor", map[string]any{"txid": txid, "seq": seq})
+	log.Printf("anchor cron: log head anchored, txid=%s seq=%d", txid, seq)
 }

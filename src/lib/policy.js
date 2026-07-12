@@ -1,6 +1,6 @@
 // Canonical investor-eligibility rule for a SeqPal-issued asset.
 // This is the single source of truth shared by the investor portal gate and the
-// "offerings you can access" list — keep them from drifting apart.
+// "offerings you can access" list, keep them from drifting apart.
 //
 // A holder is eligible iff their residence jurisdiction is:
 //   - 'standard'   → admitted (local-law screening is the issuer's responsibility), or

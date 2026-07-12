@@ -22,9 +22,9 @@ export const SETUP_FEES = [
     amount: '$20,000',
   },
   {
-    item: 'Debt / Yield — secured add-on',
+    item: 'Debt / Yield, secured add-on',
     detail: 'Captures collateral-structuring complexity',
-    amount: '+$5K–$15K',
+    amount: '+$5K-$15K',
   },
   {
     item: 'Depository Receipt',
@@ -39,10 +39,10 @@ export const SETUP_FEES = [
 ]
 
 export const ANNUAL_FEES = [
-  { item: 'Annual support — Native Equity', amount: '$5,000' },
-  { item: 'Annual support — Equity SPV', amount: '$8,000' },
-  { item: 'Annual support — Debt / Yield', amount: '$10,000' },
-  { item: 'Annual support — Depository Receipt', amount: '$12,000' },
+  { item: 'Annual support, Native Equity', amount: '$5,000' },
+  { item: 'Annual support, Equity SPV', amount: '$8,000' },
+  { item: 'Annual support, Debt / Yield', amount: '$10,000' },
+  { item: 'Annual support, Depository Receipt', amount: '$12,000' },
   {
     item: 'Annual public-reporting support',
     detail: 'Added for non-DR public offerings',
@@ -54,7 +54,7 @@ export const TRANSACTION_FEES = [
   {
     item: 'Escrow & Settlement Fee',
     detail:
-      'Custody and on-chain settlement of subscription funds held in escrow. Accrued daily, payable whether or not the offering closes — typically ≈1% of the raise over a multi-month window.',
+      'Custody and on-chain settlement of subscription funds held in escrow. Accrued daily, payable whether or not the offering closes, typically ≈1% of the raise over a multi-month window.',
     amount: '0.25% / month on escrowed funds · $5K min · 3% cap',
   },
   {
@@ -70,22 +70,22 @@ export const TRANSACTION_FEES = [
   {
     item: 'Debt default-handling fee',
     detail: 'Out-of-pocket pass-through plus work fee',
-    amount: '$10K–$50K',
+    amount: '$10K-$50K',
   },
-  { item: 'DR minting — cash-settled', amount: '0.30%' },
-  { item: 'DR minting — in-kind (direct deposit)', amount: '0.25%' },
+  { item: 'DR minting, cash-settled', amount: '0.30%' },
+  { item: 'DR minting, in-kind (direct deposit)', amount: '0.25%' },
   { item: 'DR redemption', amount: '0.50%' },
   { item: 'DR management fee (AUM-based)', amount: '0.75% / yr' },
 ]
 
 export const ID_FEES = [
   {
-    item: 'SeqPal ID — individual',
+    item: 'SeqPal ID, individual',
     detail: 'One-time identity & accreditation passport',
     amount: '$20',
   },
   {
-    item: 'SeqPal ID — corporate',
+    item: 'SeqPal ID, corporate',
     detail: 'One-time KYB passport per entity',
     amount: '$150',
   },
@@ -117,10 +117,10 @@ export function computeSetupCost(structureId, isPublic, opts = {}) {
   if (structureId === 'native-equity' && raiseUsd > 0 && raiseUsd <= 500000) {
     base = 7500
     simple = true
-    baseLabel = 'Setup — Simple Native Equity'
+    baseLabel = 'Setup, Simple Native Equity'
   }
 
-  // Secured Debt/Yield add-on ($5K–$15K; representative $10K in the demo).
+  // Secured Debt/Yield add-on ($5K-$15K; representative $10K in the demo).
   let secured = 0
   if (
     structureId === 'debt-yield' &&

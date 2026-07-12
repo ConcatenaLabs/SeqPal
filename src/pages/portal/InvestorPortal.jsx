@@ -165,7 +165,7 @@ export default function InvestorPortal() {
 
                 <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
                   {[
-                    ['Target raise', iss.raise || '—'],
+                    ['Target raise', iss.raise || 'not set'],
                     ['Min. investment', `${unitSymbol(iss.unit)}${p.minInvestment}`],
                     ['Offering', iss.isPublic ? 'Public' : 'Private placement'],
                   ].map(([k, v]) => (
@@ -176,7 +176,7 @@ export default function InvestorPortal() {
                   ))}
                 </div>
 
-                {/* Data room — only after eligibility */}
+                {/* Data room, only after eligibility */}
                 <div className="mt-8">
                   <h2 className="flex items-center gap-2 font-bold text-ink-900">
                     <Icon.lock width={16} height={16} className="text-ink-600" /> Data room
@@ -415,10 +415,10 @@ export default function InvestorPortal() {
                           </div>
                           <p className="mt-2 text-xs">
                             {railChosen === 'USD wire'
-                              ? `Wire ${fmt(parseMoney(amount || p.minInvestment))} to the segregated escrow account at the escrow bank (tri-party agreement among issuer, bank, and SeqPal).`
-                              : `Send ${fmt(parseMoney(amount || p.minInvestment))} to this issuance's segregated escrow wallet, held by SeqPal as licensed escrow agent.`}{' '}
+                              ? `Wire ${fmt(parseMoney(amount || p.minInvestment))} to the per-issuance segregated escrow this offering operates (fiat rail SIMULATED on the testnet).`
+                              : `Send ${fmt(parseMoney(amount || p.minInvestment))} to this issuance's per-issuance segregated escrow that SeqPal operates.`}{' '}
                             {!isBTC && railChosen === 'BTC'
-                              ? 'BTC is converted to USDX on receipt — your subscription’s value is fixed the moment it enters escrow. '
+                              ? 'BTC is converted to USDX on receipt, your subscription’s value is fixed the moment it enters escrow. '
                               : isBTC
                                 ? 'This raise is BTC-denominated: your subscription is escrowed in kind. '
                                 : ''}

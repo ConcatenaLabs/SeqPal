@@ -198,6 +198,78 @@ CREATE TABLE watch (
 );
 CREATE INDEX idx_watch_owner ON watch(owner_aid);
 `,
+	// M4: the legal artifact pipeline. Content-addressed documents, the
+	// terms->manifest binding that makes terms_hash commit to the document set,
+	// per-offering offer-window state (preimage gating), the RFSA simulated
+	// registry, the rules-amendment chain, and document e-signatures. All
+	// additive; an M3 database migrates forward in place.
+	`
+CREATE TABLE documents (
+    doc_hash      TEXT PRIMARY KEY,
+    issuance_id   TEXT NOT NULL DEFAULT '',
+    kind          TEXT NOT NULL DEFAULT '',
+    title         TEXT NOT NULL DEFAULT '',
+    content_type  TEXT NOT NULL DEFAULT 'text/html; charset=utf-8',
+    always_public INTEGER NOT NULL DEFAULT 0,
+    body          BLOB NOT NULL,
+    pdf           BLOB,
+    created_at    INTEGER NOT NULL
+);
+CREATE INDEX idx_documents_issuance ON documents(issuance_id);
+CREATE TABLE terms_docs (
+    terms_hash      TEXT PRIMARY KEY,
+    issuance_id     TEXT NOT NULL DEFAULT '',
+    canonical_terms TEXT NOT NULL,
+    manifest_hash   TEXT NOT NULL DEFAULT '',
+    manifest        TEXT NOT NULL DEFAULT '',
+    created_at      INTEGER NOT NULL
+);
+CREATE INDEX idx_terms_docs_issuance ON terms_docs(issuance_id);
+CREATE TABLE offerings (
+    issuance_id  TEXT PRIMARY KEY,
+    offer_open   INTEGER NOT NULL DEFAULT 1,
+    close_height INTEGER NOT NULL DEFAULT 0,
+    closed_at    INTEGER NOT NULL DEFAULT 0,
+    updated_at   INTEGER NOT NULL
+);
+CREATE TABLE filings (
+    filing_number     TEXT PRIMARY KEY,
+    issuer            TEXT NOT NULL DEFAULT '',
+    issuer_aid        TEXT NOT NULL DEFAULT '',
+    issuance_id       TEXT NOT NULL DEFAULT '',
+    structure         TEXT NOT NULL DEFAULT '',
+    doc_manifest_hash TEXT NOT NULL DEFAULT '',
+    terms_hash        TEXT NOT NULL DEFAULT '',
+    filing_hash       TEXT NOT NULL DEFAULT '',
+    anchor_txid       TEXT NOT NULL DEFAULT '',
+    created_at        INTEGER NOT NULL
+);
+CREATE INDEX idx_filings_terms ON filings(terms_hash);
+CREATE INDEX idx_filings_issuance ON filings(issuance_id);
+CREATE TABLE amendments (
+    amend_hash       TEXT PRIMARY KEY,
+    issuance_id      TEXT NOT NULL DEFAULT '',
+    asset_id         TEXT NOT NULL DEFAULT '',
+    ord              INTEGER NOT NULL DEFAULT 0,
+    prior_rules_hash TEXT NOT NULL DEFAULT '',
+    new_rules_hash   TEXT NOT NULL DEFAULT '',
+    basis            TEXT NOT NULL DEFAULT '',
+    effective_height INTEGER NOT NULL DEFAULT 0,
+    anchor_txid      TEXT NOT NULL DEFAULT '',
+    created_at       INTEGER NOT NULL
+);
+CREATE INDEX idx_amendments_issuance ON amendments(issuance_id);
+CREATE TABLE doc_signatures (
+    doc_hash    TEXT NOT NULL,
+    signer_aid  TEXT NOT NULL,
+    xonly       TEXT NOT NULL DEFAULT '',
+    sig         TEXT NOT NULL,
+    anchor_txid TEXT NOT NULL DEFAULT '',
+    created_at  INTEGER NOT NULL,
+    PRIMARY KEY (doc_hash, signer_aid)
+);
+CREATE INDEX idx_doc_sig_doc ON doc_signatures(doc_hash);
+`,
 }
 
 // Store is seqpald's persistent state. Every financial fact the UI shows is

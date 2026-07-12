@@ -44,7 +44,7 @@ export default function Pricing() {
           <SectionHeading
             eyebrow="Pricing"
             title="Fixed. Published. Transparent."
-            sub="No quotes, no human sales call, no weeks of bespoke negotiation. Every fee below is the published price — the same for every issuer."
+            sub="No quotes, no human sales call, no weeks of bespoke negotiation. Every fee below is the published price, the same for every issuer."
           />
           <div className="mt-8 flex flex-wrap gap-3">
             <Link to="/onboarding" className="btn-primary">
@@ -75,10 +75,10 @@ export default function Pricing() {
               <p className="mt-2 text-sm leading-relaxed text-ink-700/90">
                 A charge for the escrow custody, compliance-conditioned release, and
                 on-chain settlement of the subscription funds SeqPal holds for your
-                raise — 0.25% per month on the funds in escrow, accrued daily, with a
+                raise, 0.25% per month on the funds in escrow, accrued daily, with a
                 $5,000 minimum and a cap of 3% of the funds held. It compensates a
                 custody-and-settlement service performed, payable for the holding
-                period whether or not the offering closes — not a placement
+                period whether or not the offering closes, not a placement
                 commission. Over a typical multi-month raise it works out to roughly
                 1% of the amount raised.
               </p>
@@ -88,7 +88,7 @@ export default function Pricing() {
 
         <p className="mx-auto mt-10 max-w-3xl text-center text-sm leading-relaxed text-ink-700/70">
           Issuers electing a public offering should also expect costs outside the SeqPal
-          fee schedule — an issuer audit or audit review, and per-jurisdiction
+          fee schedule, an issuer audit or audit review, and per-jurisdiction
           local-counsel opinions or filings where applicable. These are borne by the
           issuer. SeqPal is not a law firm and does not provide legal advice.
         </p>

@@ -169,7 +169,7 @@ export default function PortalSetup() {
               The portal is brandable software that runs on SeqPal’s stack but is operated
               in <span className="font-semibold">your</span> name, on your own domain and
               terms of service. SeqPal supplies the software, the SeqPal ID gate, and the
-              escrow — you are the legal operator of the portal.
+              escrow, you are the legal operator of the portal.
             </p>
           </div>
 
@@ -246,7 +246,7 @@ export default function PortalSetup() {
                 <span className="font-mono text-sm text-ink-700/60">.com</span>
               </div>
               <div className="mt-4 rounded-lg bg-ink-900/[0.03] p-4 text-sm text-ink-700/80">
-                Point your domain at the pre-integrated stack with a single CNAME record —
+                Point your domain at the pre-integrated stack with a single CNAME record.
                 SeqPal facilitates the hosting agreement through the dashboard, so you
                 don’t procure or run any infrastructure.
                 <div className="mt-2 rounded-md bg-ink-950 px-3 py-2 font-mono text-xs leading-relaxed text-white/80 [word-break:break-all]">
@@ -266,7 +266,7 @@ export default function PortalSetup() {
               Offering & data room
             </div>
             <p className="mt-2 text-sm text-ink-700/70">
-              Choose which documents investors see — only after they clear the SeqPal ID
+              Choose which documents investors see, only after they clear the SeqPal ID
               gate.
             </p>
             <div className="mt-4 space-y-2">
@@ -340,10 +340,9 @@ export default function PortalSetup() {
                     : 'Request escrow for this raise'}
                 </span>
                 <span className="mt-0.5 block text-xs text-ink-700/70">
-                  Fiat subscriptions are held in a segregated account at SeqPal’s escrow
-                  bank under a tri-party agreement (you, the bank, SeqPal); BTC and
-                  USDX in per-issuance segregated escrow wallets held by SeqPal as
-                  licensed escrow agent. Released to you on closing conditions being met.
+                  Fiat subscriptions run through a simulated payment rail on the testnet;
+                  BTC and USDX go into a per-issuance segregated escrow that SeqPal
+                  operates. Released to you when the closing conditions are met.
                 </span>
               </span>
             </button>

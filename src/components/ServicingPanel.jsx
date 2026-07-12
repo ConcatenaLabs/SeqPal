@@ -15,7 +15,7 @@ const DIST_LABEL = {
 const FEE_BY_ACTION = {
   'Waterfall distribution': '0.50% of distribution value · $5K min',
   'Early redemption / call': '1% of outstanding principal',
-  'Default workflow': 'Out-of-pocket pass-through + $10K–$50K work fee',
+  'Default workflow': 'Out-of-pocket pass-through + $10K-$50K work fee',
 }
 
 const CORP_ACTIONS = {
@@ -228,8 +228,9 @@ export default function ServicingPanel({ iss }) {
                 ? `, ${iss.fields.rate}% p.a.)`
                 : iss.fields?.schedule
                   ? ')'
-                  : ''}{' '}
-              — SeqPal acts as Calculation &amp; Paying Agent. Use this for an ad-hoc or
+                  : ''}
+              {'. '}
+              SeqPal acts as Calculation &amp; Paying Agent. Use this for an ad-hoc or
               catch-up distribution.
             </div>
           )}
@@ -404,7 +405,7 @@ export default function ServicingPanel({ iss }) {
           {[
             [
               'Year-end holder statements',
-              'Gross income, redemption proceeds, and cost basis where SeqPal has visibility — for holders’ domestic filings.',
+              'Gross income, redemption proceeds, and cost basis where SeqPal has visibility, for holders’ domestic filings.',
             ],
             [
               'W-8 / W-9 holder reporting',

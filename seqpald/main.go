@@ -50,6 +50,7 @@ type config struct {
 	nodePass     string
 
 	// M3 truthful chain surfaces.
+	electrsURL           string // box explorer (electrs) base; confirmation source when the node lacks -txindex
 	registryURL          string // Sequentia asset registry base (publication target)
 	priceURL             string // box price feed base (GET /prices, POST /seed)
 	entityDomain         string // committed in the contract at issue for registry proof
@@ -118,6 +119,7 @@ func main() {
 	flag.StringVar(&cfg.nodeURL, "nodeurl", env("SEQPALD_NODE_URL", ""), "Sequentia node JSON-RPC URL for the chain watcher and tip height (optional)")
 	flag.StringVar(&cfg.nodeUser, "nodeuser", env("SEQPALD_NODE_USER", ""), "node RPC username")
 	flag.StringVar(&cfg.nodePass, "nodepass", env("SEQPALD_NODE_PASS", ""), "node RPC password")
+	flag.StringVar(&cfg.electrsURL, "electrsurl", env("SEQPALD_ELECTRS_URL", "http://127.0.0.1:3003"), "box explorer (electrs) base URL; confirmation source when the node lacks -txindex")
 	flag.StringVar(&cfg.registryURL, "registryurl", env("SEQPALD_REGISTRY_URL", "http://127.0.0.1:3005"), "Sequentia asset registry base URL for publication (empty = disabled)")
 	flag.StringVar(&cfg.priceURL, "priceurl", env("SEQPALD_PRICE_URL", "http://127.0.0.1:8088"), "box price feed base URL (GET /prices, POST /seed; empty = disabled)")
 	flag.StringVar(&cfg.entityDomain, "entitydomain", env("SEQPALD_ENTITY_DOMAIN", "sequentiatestnet.com"), "entity domain committed in the contract for registry proof")
@@ -136,6 +138,7 @@ func main() {
 	cfg.watchInterval = 15 * time.Second
 	cfg.anchorInterval = 24 * time.Hour
 	cfg.openampURL = strings.TrimRight(cfg.openampURL, "/")
+	cfg.electrsURL = strings.TrimRight(cfg.electrsURL, "/")
 	cfg.registryURL = strings.TrimRight(cfg.registryURL, "/")
 	cfg.priceURL = strings.TrimRight(cfg.priceURL, "/")
 	for _, o := range strings.Split(devOrigins, ",") {
@@ -184,6 +187,15 @@ func (s *server) handler() http.Handler {
 	mux.HandleFunc("POST /api/auth/login", s.handleLogin)
 	mux.HandleFunc("GET /api/eligibility", s.handleEligibility) // advisory preflight, public (serves the SeqDEX handover)
 
+	// M4 legal artifact pipeline: public surfaces. The terms manifest is public
+	// immediately; document preimages are offer-window gated inside handleDoc; the
+	// characterization memo, the RFSA lookup, and document signatures are public.
+	mux.HandleFunc("GET /api/terms/{hash}", s.handleTerms)
+	mux.HandleFunc("GET /api/doc/{hash}", s.handleDoc)
+	mux.HandleFunc("GET /api/characterization", s.handleCharacterization)
+	mux.HandleFunc("GET /api/rfsa/filings/{number}", s.handleRFSALookup)
+	mux.HandleFunc("GET /api/documents/{hash}/signatures", s.handleDocSignatures)
+
 	// Session required.
 	mux.HandleFunc("POST /api/auth/logout", s.requireSession(s.handleLogout))
 	mux.HandleFunc("GET /api/me", s.requireSession(s.handleMe))
@@ -193,6 +205,14 @@ func (s *server) handler() http.Handler {
 	mux.HandleFunc("PATCH /api/issuances/{id}", s.requireSession(s.handlePatchIssuance))
 	mux.HandleFunc("POST /api/issuances/{id}/compile", s.requireSession(s.handleCompile))
 	mux.HandleFunc("POST /api/deploy", s.requireSession(s.handleDeploy))
+
+	// M4 legal artifact pipeline: session-gated actions.
+	mux.HandleFunc("POST /api/issuances/{id}/documents", s.requireSession(s.handleGenerateDocuments))
+	mux.HandleFunc("POST /api/issuances/{id}/offer-close", s.requireSession(s.handleOfferClose))
+	mux.HandleFunc("GET /api/issuances/{id}/amendments", s.requireSession(s.handleAmendments))
+	mux.HandleFunc("POST /api/issuances/{id}/amendments", s.requireSession(s.handleGenerateAmendment))
+	mux.HandleFunc("POST /api/rfsa/filings", s.requireSession(s.handleRFSAFile))
+	mux.HandleFunc("POST /api/documents/{hash}/sign", s.requireSession(s.handleSignDocument))
 
 	// M3 truthful chain surfaces: the SSE stream and the owner-scoped reads.
 	mux.HandleFunc("GET /api/events", s.requireSession(s.handleEvents))

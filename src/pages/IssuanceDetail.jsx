@@ -10,6 +10,8 @@ import TransparencyLog from '../components/TransparencyLog'
 import NetworkFees from '../components/NetworkFees'
 import RegistryBadge from '../components/RegistryBadge'
 import HolderRegister from '../components/HolderRegister'
+import DataRoom from '../components/DataRoom'
+import RfsaFilingCard from '../components/RfsaFilingCard'
 import { useStore } from '../lib/store'
 import { view } from '../lib/issuance'
 import { getStructure } from '../data/structures'
@@ -86,15 +88,22 @@ function DeployCard({ iss, onDeployed }) {
         </div>
         <ul className="mt-2 space-y-1.5">
           {steps.map((m) => (
-            <li key={m.key} className="text-sm">
-              <span className="font-medium text-ink-900">{m.label}</span>
-              <span className="block text-xs text-ink-700/70">{m.detail}</span>
+            <li key={m.key} className="flex items-start justify-between gap-3 text-sm">
+              <span className="min-w-0">
+                <span className="font-medium text-ink-900">{m.label}</span>
+                <span className="block text-xs text-ink-700/70">{m.detail}</span>
+              </span>
+              <Badge color="amber" className="mt-0.5 shrink-0">
+                Simulated
+              </Badge>
             </li>
           ))}
         </ul>
         <p className="mt-2 text-xs text-ink-700/60">
-          SeqPal does not observe these steps yet, so it does not claim to track them. The
-          deploy below is the part that is real.
+          Incorporation and the RFSA filing produce watermarked simulated artifacts in this build:
+          no Prospera e-registry sandbox exists, so the certificate and entity number are labeled
+          simulations, though their hashes are anchored. SeqPal does not observe these steps, so it
+          does not claim to track them. The deploy below is the part that is real.
         </p>
       </div>
 
@@ -417,12 +426,15 @@ export default function IssuanceDetail() {
 
       <div className="mt-8 grid gap-6 lg:grid-cols-3">
         <div className="space-y-6">
+          {!iss.live && iss.isPublic && <RfsaFilingCard iss={iss} />}
           {!iss.live && <DeployCard iss={iss} />}
           <PortalCard iss={iss} portal={sim.portal} />
         </div>
 
         <div className="space-y-6 lg:col-span-2">
           <AssetCard iss={iss} watch={watch} />
+
+          <DataRoom iss={iss} />
 
           {iss.live && (
             <>

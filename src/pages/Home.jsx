@@ -8,17 +8,17 @@ const pillars = [
   {
     icon: Icon.shield,
     title: 'Smart Compliance',
-    body: 'Investor eligibility is enforced at the protocol level on every transfer — jurisdiction, accreditation, and sanctions screening baked into the asset. Verify once with SeqPal ID, hold every asset you qualify for.',
+    body: 'Investor eligibility is enforced at the protocol level on every transfer, jurisdiction, accreditation, and sanctions screening baked into the asset. Verify once with SeqPal ID, hold every asset you qualify for.',
   },
   {
     icon: Icon.users,
     title: 'Consistently User-Centric',
-    body: 'A self-service dashboard takes you from KYB to live deployment with no required human sales call. Fixed, published pricing — no quotes, no weeks of bespoke negotiation.',
+    body: 'A self-service dashboard takes you from KYB to live deployment with no required human sales call. Fixed, published pricing, no quotes, no weeks of bespoke negotiation.',
   },
   {
     icon: Icon.bitcoin,
     title: 'Strategically Bitcoin-First',
-    body: 'Every asset is issued on Sequentia via OpenAMP. Confidential transactions, sub-cent fees, and distributions in BTC or stablecoins.',
+    body: 'Every asset is issued on the Sequentia network via OpenAMP. Transparent by default with opt-in confidential holdings, sub-cent fees, and distributions in BTC or stablecoins.',
   },
 ]
 
@@ -41,7 +41,7 @@ const products = [
   {
     icon: Icon.globe,
     name: 'Placement Portal',
-    body: 'Brandable fundraising portal software on your own domain — offering memorandum, data room, subscription workflow, and escrow, gated by SeqPal ID.',
+    body: 'Brandable fundraising portal software on your own domain, offering memorandum, data room, subscription workflow, and escrow, gated by SeqPal ID.',
   },
 ]
 
@@ -92,7 +92,7 @@ export default function Home() {
             </div>
             <div className="mt-10 flex flex-wrap items-center gap-x-8 gap-y-4 text-sm text-white/60">
               <span className="inline-flex items-center gap-2">
-                <Icon.check width={16} height={16} className="text-btc" /> Live in 3–7
+                <Icon.check width={16} height={16} className="text-btc" /> Live in 3-7
                 business days
               </span>
               <span className="inline-flex items-center gap-2">
@@ -264,7 +264,7 @@ export default function Home() {
             className="[&_h2]:text-white [&_p]:text-white/70"
             eyebrow="The flow"
             title="From KYB to live deployment in six steps"
-            sub="The Issuer Dashboard walks you through the entire issuance — no spreadsheets, no bespoke negotiation."
+            sub="The Issuer Dashboard walks you through the entire issuance, no spreadsheets, no bespoke negotiation."
           />
           <ol className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {steps.map(([t, d], i) => (
@@ -294,9 +294,9 @@ export default function Home() {
         <div className="grid gap-12 lg:grid-cols-2 lg:items-center">
           <div>
             <SectionHeading
-              eyebrow="Open transferability"
-              title="Compliance at the protocol level — open, permissionless transferability"
-              sub="SeqPal embeds investor eligibility checks directly into each token, so SeqPal-issued assets move freely between whitelisted holders and can be listed on any vetted public DEX — rather than being locked inside a proprietary trading system."
+              eyebrow="Permissioned transferability"
+              title="Compliance at the protocol level, permissioned transferability"
+              sub="SeqPal embeds investor eligibility checks directly into each token, so a SeqPal-issued asset only moves between eligible holders, with a policy co-signature on every transfer, and it can be listed on any vetted public venue rather than being locked inside a proprietary trading system."
             />
             <ul className="mt-8 space-y-4">
               {[

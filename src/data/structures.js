@@ -10,7 +10,7 @@ export const STRUCTURES = [
     accent: 'btc',
     requiresKyb: false,
     claim:
-      'Direct ownership in the issuer LLC — voting rights, dividends, and a pro-rata claim on residual assets.',
+      'Direct ownership in the issuer LLC, voting rights, dividends, and a pro-rata claim on residual assets.',
     description:
       'Your Próspera LLC is the operating company itself. Tokens represent direct equity: the blockchain is the official Registry of Members, and SeqPal acts as Transfer Agent and Secretary. Dividends are paid pro-rata in stablecoins or BTC.',
     example:
@@ -38,7 +38,7 @@ export const STRUCTURES = [
     claim:
       'Beneficial interest in a single concentrated position the SPV holds in a foreign operating company.',
     description:
-      'Your Próspera LLC is a Special Purpose Vehicle holding one concentrated position — typically a pre-IPO company. SeqPal is appointed Administrative Manager and Asset Custodian, holding the certificates in a segregated account and providing Proof of Position to all token holders.',
+      'Your Próspera LLC is a Special Purpose Vehicle holding one concentrated position, typically a pre-IPO company. SeqPal is appointed Administrative Manager and Asset Custodian, holding the certificates in a segregated account and providing Proof of Position to all token holders.',
     example:
       'A family office tokenizing fractions of a pre-IPO unicorn position to syndicate to other accredited investors.',
     useCases: [
@@ -64,7 +64,7 @@ export const STRUCTURES = [
     claim:
       'A senior or subordinated debt claim against the LLC’s loan portfolio.',
     description:
-      'Your Próspera LLC operates as a private-credit or specialty-finance vehicle issuing tokenized notes. SeqPal is appointed Calculation and Paying Agent — monitoring loan performance and automating periodic coupon distributions — and Collateral Agent where the loan is secured.',
+      'Your Próspera LLC operates as a private-credit or specialty-finance vehicle issuing tokenized notes. SeqPal is appointed Calculation and Paying Agent, monitoring loan performance and automating periodic coupon distributions, and Collateral Agent where the loan is secured.',
     example:
       'A trade-finance operator funding a loan portfolio with tokenized senior notes and automated coupon distributions in BTC or stablecoins.',
     useCases: [
@@ -73,9 +73,9 @@ export const STRUCTURES = [
       'Real-estate bridge lenders raising senior debt against a deal',
       'Bitcoin-treasury operators raising BTC-denominated debt',
     ],
-    setup: { from: 20000, label: '$20,000', securedAddOn: '+$5K–$15K' },
+    setup: { from: 20000, label: '$20,000', securedAddOn: '+$5K-$15K' },
     annual: 10000,
-    timeToDeploy: '5–7 business days',
+    timeToDeploy: '5-7 business days',
     complexity: 'Medium-high',
     seqpalRole: 'Calculation, Paying & Collateral Agent',
     offering: 'Private placement or public offering',
@@ -97,11 +97,11 @@ export const STRUCTURES = [
       'Tokenized public equities (e.g. TSLA, NVDA, AAPL, SPY) on-chain',
       'Tokenized Treasuries and money-market funds for retail access',
       'Tokenized commodities with daily proof of reserves',
-      'Tokenized exotic instruments — closed-end funds, REITs, structured notes',
+      'Tokenized exotic instruments, closed-end funds, REITs, structured notes',
     ],
     setup: { from: 22500, label: '$22,500', note: 'public offering only' },
     annual: 12000,
-    timeToDeploy: '7–10 business days',
+    timeToDeploy: '7-10 business days',
     complexity: 'High',
     seqpalRole: 'Registered Agent with Power of Attorney (custody)',
     offering: 'Always a public offering',

@@ -8,6 +8,7 @@ const links = [
   { to: '/products', label: 'Products' },
   { to: '/structures', label: 'Issuance Structures' },
   { to: '/pricing', label: 'Pricing' },
+  { to: '/faq', label: 'FAQ' },
   { to: '/id', label: 'SeqPal ID' },
 ]
 
