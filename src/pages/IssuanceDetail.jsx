@@ -4,6 +4,12 @@ import { Icon, StructureIcon } from '../components/icons'
 import { Badge, DemoNote } from '../components/ui'
 import SignInGate from '../components/SignInGate'
 import ServicingPanel from '../components/ServicingPanel'
+import CopyId from '../components/CopyId'
+import { ChainChip, ChainDetail, ReorgBanner } from '../components/ChainStatus'
+import TransparencyLog from '../components/TransparencyLog'
+import NetworkFees from '../components/NetworkFees'
+import RegistryBadge from '../components/RegistryBadge'
+import HolderRegister from '../components/HolderRegister'
 import { useStore } from '../lib/store'
 import { view } from '../lib/issuance'
 import { getStructure } from '../data/structures'
@@ -11,15 +17,6 @@ import { JURISDICTIONS } from '../data/jurisdictions'
 import { STATUS, offPlatformSteps } from '../lib/lifecycle'
 import { termsHash } from '../lib/openamp'
 import { parseMoney, fmtAmount, ownershipPct, ownershipDenominator } from '../lib/economics'
-
-function Mono({ value }) {
-  if (!value) return <span className="text-ink-700/50">not minted</span>
-  return (
-    <span className="break-all font-mono text-xs text-ink-700" title={value}>
-      {value.length > 24 ? `${value.slice(0, 10)}…${value.slice(-8)}` : value}
-    </span>
-  )
-}
 
 // What the server's refusal means, in one line. The server's own message is
 // always shown verbatim above this: this only adds context it cannot know.
@@ -62,7 +59,9 @@ function DeployCard({ iss, onDeployed }) {
         precision: Number(form.precision),
         clawback: form.clawback,
         confidential: form.confidential,
-        fee_convert_atoms: 100,
+        // fee_convert_atoms is intentionally not sent: seqpald derives it from
+        // the price server (value-preserving conversion), and a nonzero value
+        // here would be treated as an explicit issuer override.
         terms,
         terms_hash: await termsHash(terms),
       })
@@ -195,16 +194,24 @@ function DeployCard({ iss, onDeployed }) {
   )
 }
 
-function AssetCard({ iss }) {
+function AssetCard({ iss, watch }) {
   const live = iss.live
   return (
     <div className="card p-6">
-      <h2 className="font-bold text-ink-900">Asset</h2>
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="font-bold text-ink-900">Asset</h2>
+        {live && <ChainChip watch={watch} />}
+      </div>
       {live ? (
-        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-900">
-          The mint is broadcast and the identifiers below are real. SeqPal does not yet track
-          confirmations or Bitcoin anchor depth, so nothing here should be read as final at 0
-          confirmations. Check the identifiers on a Sequentia explorer.
+        <div className="mt-3 rounded-xl border border-ink-900/10 bg-ink-900/[0.02] px-4 py-3">
+          <ChainDetail watch={watch} />
+          {!watch && (
+            <p className="text-[11px] leading-relaxed text-ink-700/60">
+              The identifiers below are real and on chain. Waiting for the first chain-status event:
+              a state is only as final as its Bitcoin anchor is deep, so nothing here is final at 0
+              confirmations.
+            </p>
+          )}
         </div>
       ) : (
         <div className="mt-3 rounded-xl border border-ink-900/10 bg-ink-900/[0.02] px-4 py-3 text-xs text-ink-700/70">
@@ -218,11 +225,14 @@ function AssetCard({ iss }) {
           ['Network', 'Sequentia (a Bitcoin sidechain)'],
           ['Issuance layer', 'OpenAMP · transfer-restricted enclave'],
           ['Confidentiality', iss.confidential ? 'Confidential (opt-in)' : 'Transparent'],
-          ['Asset id', <Mono key="a" value={iss.assetId} />],
-          ['Issuance txid', <Mono key="t" value={iss.txid} />],
-          ['Contract hash', <Mono key="c" value={iss.contractHash} />],
-          ['Holder account (AID)', <Mono key="h" value={iss.holderAid} />],
-          ['Enclave address', <Mono key="e" value={iss.enclaveAddress} />],
+          ['Asset id', <CopyId key="a" value={iss.assetId} kind="asset" label="asset id" />],
+          ['Issuance txid', <CopyId key="t" value={iss.txid} kind="tx" label="issuance txid" />],
+          ['Contract hash', <CopyId key="c" value={iss.contractHash} label="contract hash" />],
+          ['Holder account (AID)', <CopyId key="h" value={iss.holderAid} label="holder AID" />],
+          ['Enclave address', <CopyId key="e" value={iss.enclaveAddress} label="enclave address" />],
+          ...(live && iss.assetId
+            ? [['Asset registry', <RegistryBadge key="r" assetId={iss.assetId} />]]
+            : []),
           [
             'Initial supply',
             iss.supply ? `${iss.supply.toLocaleString()} ${iss.ticker}` : 'not set',
@@ -233,10 +243,18 @@ function AssetCard({ iss }) {
         ].map(([k, v]) => (
           <div key={k} className="flex items-center justify-between gap-4 py-3">
             <dt className="shrink-0 text-ink-700/70">{k}</dt>
-            <dd className="text-right font-medium text-ink-900">{v}</dd>
+            <dd className="min-w-0 text-right font-medium text-ink-900">{v}</dd>
           </div>
         ))}
       </dl>
+      {live && iss.assetId && (
+        <Link
+          to={`/verify?asset=${encodeURIComponent(iss.assetId)}`}
+          className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-seq-600 hover:underline"
+        >
+          <Icon.shield width={15} height={15} /> Verify independently
+        </Link>
+      )}
     </div>
   )
 }
@@ -303,7 +321,7 @@ function PortalCard({ iss, portal }) {
 
 export default function IssuanceDetail() {
   const { id } = useParams()
-  const { loading, isSignedIn, issuances, simFor, updateSim } = useStore()
+  const { loading, isSignedIn, issuances, simFor, updateSim, watchFor } = useStore()
 
   if (loading) {
     return (
@@ -334,6 +352,7 @@ export default function IssuanceDetail() {
   const s = getStructure(iss.structureId)
   const Ic = StructureIcon[s?.icon] || Icon.layers
   const sim = simFor(iss.id)
+  const watch = watchFor(iss.id)
 
   // Simulated raise, in memory for this browser session only.
   const subs = sim.subscriptions
@@ -385,11 +404,16 @@ export default function IssuanceDetail() {
             </div>
           </div>
         </div>
-        <Badge color={(STATUS[iss.status] || STATUS.draft).color}>
-          {iss.live && <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />}
-          {(STATUS[iss.status] || STATUS.draft).label}
-        </Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge color={(STATUS[iss.status] || STATUS.draft).color}>
+            {iss.live && <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />}
+            {(STATUS[iss.status] || STATUS.draft).label}
+          </Badge>
+          {iss.live && <ChainChip watch={watch} />}
+        </div>
       </div>
+
+      {iss.live && <ReorgBanner watch={watch} className="mt-6" />}
 
       <div className="mt-8 grid gap-6 lg:grid-cols-3">
         <div className="space-y-6">
@@ -398,10 +422,13 @@ export default function IssuanceDetail() {
         </div>
 
         <div className="space-y-6 lg:col-span-2">
-          <AssetCard iss={iss} />
+          <AssetCard iss={iss} watch={watch} />
 
           {iss.live && (
             <>
+              <HolderRegister iss={iss} />
+              <NetworkFees iss={iss} />
+              <TransparencyLog iss={iss} />
               <ServicingPanel iss={iss} />
 
               <div className="card p-6">

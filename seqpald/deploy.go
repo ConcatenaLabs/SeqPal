@@ -13,6 +13,11 @@ import (
 const (
 	deploysPerAccountPerHour = 5
 	deploysGlobalPerHour     = 20
+
+	// defaultFeeConvertAtoms is the safe fallback when neither the issuer nor the
+	// price server supplies a fee-conversion figure. It is used only when a live
+	// price is unavailable; the normal path derives the value from /prices.
+	defaultFeeConvertAtoms = 100
 )
 
 // Reserved tickers: the Sequence token and the tickers already carried by the
@@ -245,7 +250,22 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	compiled.PrimaryAIDs = primary
-	compiled.FeeConvertAtoms = req.FeeConvertAtom
+
+	// fee_convert_atoms comes from the price server, not a hardcoded constant: it
+	// is the count of THIS asset's atoms that carries the network fee's value,
+	// derived from the canonical (never inverted) any-asset fee relation. The
+	// issuer may override it explicitly; otherwise it is derived from the
+	// offering price and /prices, with a safe fallback when a price is missing.
+	feeConvert := req.FeeConvertAtom
+	if feeConvert == 0 {
+		offer, _, _ := offeringPrice(canonical)
+		if fc, ok := s.feeConvertAtoms(iss.Ticker, offer); ok {
+			feeConvert = fc
+		} else {
+			feeConvert = defaultFeeConvertAtoms
+		}
+	}
+	compiled.FeeConvertAtoms = feeConvert
 
 	// 4. Mint the restricted asset into the escrow enclave (holder = escrow AID).
 	//    The issuer AID remains the issuer of record for clawback authority.
@@ -262,10 +282,29 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		"terms_hash":   termsHash,
 		"rules":        compiled,
 	}
+	// Entity/operator identity (OA-1) so the asset can be published to the
+	// Sequentia asset registry, which requires entity.domain committed on-chain
+	// at issue time. The contract_hash commits to whatever is added here, so the
+	// registry can verify the exact bytes. Defaults keep the contract to a
+	// domain-only shape the current box registry accepts; the operator identity
+	// fields are sent only when configured.
+	if s.cfg.entityDomain != "" {
+		issueBody["entity_domain"] = s.cfg.entityDomain
+		if s.cfg.entityName != "" {
+			issueBody["entity_name"] = s.cfg.entityName
+		}
+		if s.cfg.operatorName != "" {
+			issueBody["operator_name"] = s.cfg.operatorName
+		}
+		if s.cfg.operatorRegistration != "" {
+			issueBody["operator_registration"] = s.cfg.operatorRegistration
+		}
+	}
 	var issued struct {
-		Asset        string `json:"asset"`
-		Txid         string `json:"txid"`
-		ContractHash string `json:"contract_hash"`
+		Asset        string          `json:"asset"`
+		Txid         string          `json:"txid"`
+		ContractHash string          `json:"contract_hash"`
+		Contract     json.RawMessage `json:"contract"`
 	}
 	if err := s.callOpenAMP("POST", "/v1/issuer/assets", s.cfg.issuerToken, issueBody, &issued); err != nil {
 		refuse(502, "issue: "+err.Error())
@@ -319,6 +358,13 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		"contract_hash": issued.ContractHash, "atoms": atoms, "idem_key": idem,
 		"escrow_aid": escrow.AID, "primary_aids": primary,
 	})
+
+	// Hand the freshly minted asset to the chain watcher: it records a watch row
+	// (with the canonical contract for registry publication), emits the initial
+	// "broadcast" event, and drives the price seed. This never fails the deploy.
+	iss.AssetID = issued.Asset
+	iss.Txid = issued.Txid
+	s.onDeployed(iss, string(issued.Contract))
 	resp := deployResponse(rec)
 	resp["escrow_aid"] = escrow.AID
 	resp["holder_aid"] = escrow.AID

@@ -317,6 +317,12 @@ func (s *server) startWorkers() {
 	go s.screeningCron(s.cfg.screenRefresh, s.cfg.screenInterval)
 	go s.expiryCron(s.cfg.expiryInterval)
 	go s.autoReviewLoop(s.cfg.autoReviewEvery, s.cfg.autoReviewDelay)
+	// M3: the chain watcher (only when a node RPC is configured) and the daily
+	// log-head anchor cron.
+	if s.cfg.nodeURL != "" {
+		go s.runWatcher(s.cfg.watchInterval)
+	}
+	go s.runAnchorCron(s.cfg.anchorInterval)
 }
 
 func adminSet(csv string) map[string]bool {

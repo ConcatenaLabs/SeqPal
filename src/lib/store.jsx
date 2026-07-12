@@ -71,6 +71,11 @@ export function StoreProvider({ children }) {
   // Browser-session simulation of surfaces that have no server-side home yet
   // (placement portal, subscriptions, servicing activity). In memory on purpose.
   const [sim, setSim] = useState({})
+  // Live chain-watch state, keyed by issuance_id, fed by the seqpald SSE stream
+  // (GET /api/events). The server is authoritative: this is a mirror of the
+  // latest event per issuance, never a fact the browser invents. Includes the
+  // reorg-regression state so a chip can visibly regress.
+  const [watch, setWatch] = useState({})
 
   const applyMe = useCallback((data) => {
     setAccount(data.account)
@@ -101,6 +106,35 @@ export function StoreProvider({ children }) {
       cancelled = true
     }
   }, [applyMe])
+
+  // One Server-Sent Events connection for the signed-in principal. EventSource
+  // sends the HttpOnly session cookie same-origin, reconnects on its own, and on
+  // (re)connect seqpald replays a snapshot of every owned issuance, so a mirror
+  // that missed an event heals on the next connect. Torn down on sign-out.
+  useEffect(() => {
+    if (status !== 'in') return undefined
+    let es
+    try {
+      es = new EventSource(api.EVENTS_URL, { withCredentials: true })
+    } catch {
+      return undefined
+    }
+    es.addEventListener('watch', (e) => {
+      try {
+        const ev = JSON.parse(e.data)
+        if (ev && ev.issuance_id) setWatch((w) => ({ ...w, [ev.issuance_id]: ev }))
+      } catch {
+        // A malformed frame is ignored; the next event or reconnect corrects it.
+      }
+    })
+    return () => {
+      try {
+        es.close()
+      } catch {
+        // already closed
+      }
+    }
+  }, [status])
 
   const persistEnvelope = (env) => {
     localStorage.setItem(ENVELOPE_KEY, JSON.stringify(env))
@@ -176,6 +210,7 @@ export function StoreProvider({ children }) {
     setEntities([])
     setIssuances([])
     setSim({})
+    setWatch({})
     setStatus('anon')
   }
 
@@ -222,6 +257,11 @@ export function StoreProvider({ children }) {
   const signWithKey = (tag, statement) => (priv ? signStatement(priv, tag, statement) : null)
 
   // ── in-memory simulation (portal drafts, subscriptions, servicing) ──
+  // The latest chain-watch event for an issuance, or undefined until the SSE
+  // stream delivers one (the surface then shows a distinct "awaiting" chip
+  // rather than fabricating a confirmed state).
+  const watchFor = (id) => watch[id]
+
   const simFor = (id) => sim[id] || EMPTY_SIM
   const updateSim = (id, patch) =>
     setSim((s) => {
@@ -252,6 +292,8 @@ export function StoreProvider({ children }) {
     patchIssuance,
     deployIssuance,
     signWithKey,
+    watch,
+    watchFor,
     simFor,
     updateSim,
   }

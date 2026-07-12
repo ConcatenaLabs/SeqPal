@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Icon, StructureIcon } from '../components/icons'
-import { Badge } from '../components/ui'
+import CopyId from '../components/CopyId'
+import { ChainChip } from '../components/ChainStatus'
 import SignInGate from '../components/SignInGate'
 import { useStore } from '../lib/store'
 import { view } from '../lib/issuance'
 import { getBalance } from '../lib/openamp'
 import { getStructure } from '../data/structures'
+import { fmtAssetAmount } from '../lib/format'
 
 // A holding is a real on-chain balance: the atoms this AID holds of a
 // SeqPal-managed asset, read from the policy server. openampd has no "list every
@@ -15,7 +17,7 @@ import { getStructure } from '../data/structures'
 // treasury). Investor-side positions require the escrow and delivery rails,
 // which are a later milestone, so they are honestly absent rather than faked.
 export default function Holdings() {
-  const { loading, isSignedIn, account, issuances } = useStore()
+  const { loading, isSignedIn, account, issuances, watchFor } = useStore()
   const [rows, setRows] = useState(null) // null = loading
 
   useEffect(() => {
@@ -103,10 +105,12 @@ export default function Holdings() {
               const s = getStructure(iss.structureId)
               const Ic = StructureIcon[s?.icon] || Icon.layers
               return (
-                <Link
+                // The card is a div, not a Link: the asset id carries its own
+                // explorer anchor, and an anchor must not be nested inside one.
+                // The name links to the issuance instead.
+                <div
                   key={iss.id}
-                  to={`/issuance/${iss.id}`}
-                  className="card flex items-center gap-4 p-5 transition-all hover:-translate-y-0.5 hover:shadow-glow"
+                  className="card flex items-center gap-4 p-5 transition-all hover:shadow-glow"
                 >
                   <div
                     className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${
@@ -117,30 +121,41 @@ export default function Holdings() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="truncate font-bold text-ink-900">{iss.name}</span>
+                      <Link
+                        to={`/issuance/${iss.id}`}
+                        className="truncate font-bold text-ink-900 hover:text-btc-600"
+                      >
+                        {iss.name}
+                      </Link>
                       <span className="font-mono text-xs text-ink-700/60">{iss.ticker}</span>
                     </div>
                     <div className="mt-0.5 text-sm text-ink-700/70">
                       {s?.name || 'Structure not set'} · issuer treasury
                     </div>
+                    {iss.assetId && (
+                      <div className="mt-1">
+                        <CopyId value={iss.assetId} kind="asset" label="asset id" />
+                      </div>
+                    )}
                   </div>
                   <div className="text-right">
                     <div className="font-mono text-sm font-semibold text-ink-900">
-                      {atoms.toLocaleString()} atoms
+                      {fmtAssetAmount(atoms, iss.precision || 8, iss.ticker)}
                     </div>
-                    <div className="mt-1">
-                      <Badge color="emerald">
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> On chain
-                      </Badge>
+                    <div className="font-mono text-[11px] text-ink-700/50">
+                      {atoms.toLocaleString('en-US')} atoms
+                    </div>
+                    <div className="mt-1 flex justify-end">
+                      <ChainChip watch={watchFor(iss.id)} />
                     </div>
                   </div>
-                </Link>
+                </div>
               )
             })}
             <p className="px-1 pt-1 text-xs leading-relaxed text-ink-700/55">
-              Balances are confirmed-only figures from the policy server, shown in atoms.
-              SeqPal does not yet track Bitcoin anchor depth, so nothing here is final at 0
-              confirmations.
+              Balances are confirmed-only figures from the policy server. The status chip shows
+              Bitcoin anchor depth from the live chain watcher: a state is only as final as its
+              Bitcoin anchor is deep, so nothing here is final at 0 confirmations.
             </p>
           </div>
         )}
