@@ -287,11 +287,29 @@ export const consoleFreeze = (id, body) =>
   req(`/issuances/${encodeURIComponent(id)}/freeze`, { method: 'POST', body })
 
 // Owner: clawback (full sweep) a holder's confirmed enclave UTXOs into the issuer
-// enclave. REASON REQUIRED and it becomes part of the public transparency log.
-// Body { holder_aid, reason } → { clawback, txid, atoms, reason, log_url, note }
-// (or { clawback, note } with state=empty when the holder has no balance).
+// enclave. REASON REQUIRED and it becomes part of the public transparency log. The
+// reason is logged BEFORE anything is swept, on either path.
+//   Legacy asset (server-held issuer key): swept in this one call →
+//     { clawback, txid, atoms, reason, log_url, note }
+//     (or { clawback, note } with state=empty when the holder has no balance).
+//   External-issuer asset (M9, the entity's own browser key is the issuer half):
+//     this call only BUILDS the sweep and broadcasts nothing →
+//     { clawback, clawback_id, to_sign:[{input,sighash,pubkey}], atoms, pubkey,
+//       two_phase:true, complete_url, reason, log_url, note }.
+//     The issuer signs the sighashes with their SeqPal ID key (keys.signClawbackSighash)
+//     and posts them to consoleClawbackComplete; only then is the sweep broadcast.
 export const consoleClawback = (id, body) =>
   req(`/issuances/${encodeURIComponent(id)}/clawback`, { method: 'POST', body })
+
+// Owner: complete a two-phase (external-issuer) clawback with the issuer's browser
+// signatures over the L_claw sighashes. Body { sigs:{ "0":sig, ... } } keyed by
+// input index. Success → { clawback, txid, atoms, reason, log_url, note }. Idempotent:
+// a completed clawback returns the same seizure txid with no second broadcast.
+export const consoleClawbackComplete = (id, cid, body) =>
+  req(`/issuances/${encodeURIComponent(id)}/clawback/${encodeURIComponent(cid)}/complete`, {
+    method: 'POST',
+    body,
+  })
 
 // The signed-in holder's portal notices inbox, newest first:
 // { notices:[{id, aid, kind, body, created_at}] }.

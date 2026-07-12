@@ -119,6 +119,28 @@ export function signSighash(privHex, sighashHex) {
   return bytesToHex(schnorr.sign(digest, hexToBytes(privHex), NO_AUX))
 }
 
+// Co-sign one clawback (L_claw) enclave sweep sighash, for an EXTERNAL-issuer asset
+// (M9). This is a genuine taproot script-path spend the issuer explicitly authorizes:
+// the entity's own key is the enclave issuer half, and a clawback can only be
+// broadcast once the issuer signs the actual BIP341 script-path sighash openampd
+// computed over the L_claw leaf, which the policy server then co-signs. So this signs
+// the REAL 32-byte sighash, not a domain-tagged statement, exactly like signSighash
+// does for a transfer, and it is deliberately separate from the tagged
+// signChallenge/signStatement/signDocument signers: those stay tagged so no party can
+// turn the login/document flow into a signing oracle over a spendable digest. The
+// oracle guard still holds around this call, because the caller MUST confirm every
+// to_sign entry's pubkey is this issuer key's own x-only before signing (see
+// store.signClawbackSigs) and the sighash comes from a clawback the owner themselves
+// initiated (their chosen holder, their reason, already in the public log). It is a
+// distinct function from signSighash so the intent reads clearly at the call site:
+// this authorizes a seizure the issuer directs, which the registrar co-signs.
+// sighashHex is the 64-hex digest.
+export function signClawbackSighash(privHex, sighashHex) {
+  const digest = hexToBytes(sighashHex)
+  if (digest.length !== 32) throw new Error('A clawback sighash must be a 32-byte digest.')
+  return bytesToHex(schnorr.sign(digest, hexToBytes(privHex), NO_AUX))
+}
+
 // The BIP340 tags for the M8 platform-layer acknowledgments an issuer or investor
 // optionally signs with their own SeqPal ID key (mirroring the server constants
 // in secondary.go / listings.go). The statement is the exact canonical `sign_this`

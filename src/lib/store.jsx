@@ -6,6 +6,7 @@ import {
   encryptKey,
   generateEnclaveKey,
   signChallenge,
+  signClawbackSighash,
   signClosing,
   signDocument,
   signMandate,
@@ -291,6 +292,29 @@ export function StoreProvider({ children }) {
     return sigs
   }
 
+  // Co-sign a two-phase (external-issuer) clawback build with the session's
+  // in-memory enclave key: turn openampd's to_sign list ([{input, sighash, pubkey}])
+  // into the { input: signature } map /api/issuances/{id}/clawback/{cid}/complete
+  // expects. This is the issuer authorizing a real L_claw seizure the owner
+  // initiated (holder + reason, already logged); the policy server co-signs it. As
+  // with signTransferSigs it refuses to sign any input whose pubkey is not this
+  // key's own x-only, and it uses the distinct clawback-spend signer so the intent
+  // is unambiguous. Returns null when the key is locked.
+  const signClawbackSigs = (toSign) => {
+    if (!priv) return null
+    const mine = envelope?.xonly || account?.xonly
+    const sigs = {}
+    for (const ts of toSign || []) {
+      // Case-insensitive, matching the seqpald/openampd EqualFold cross-checks (both
+      // emit lowercase hex, so this only matters if a caller ever sends mixed case).
+      if (ts.pubkey && ts.pubkey.toLowerCase() !== String(mine).toLowerCase()) {
+        throw new Error('This clawback asks for a signature from a key you do not hold. Nothing was signed.')
+      }
+      sigs[String(ts.input)] = signClawbackSighash(priv, ts.sighash)
+    }
+    return sigs
+  }
+
   // ── in-memory simulation (portal drafts, subscriptions, servicing) ──
   // The latest chain-watch event for an issuance, or undefined until the SSE
   // stream delivers one (the surface then shows a distinct "awaiting" chip
@@ -331,6 +355,7 @@ export function StoreProvider({ children }) {
     signMandateStmt,
     signCloseStmt,
     signTransferSigs,
+    signClawbackSigs,
     xonly: envelope?.xonly || account?.xonly,
     hasKey: !!priv,
     watch,

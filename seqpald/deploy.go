@@ -96,6 +96,13 @@ type deployReq struct {
 	FeeConvertAtom uint64          `json:"fee_convert_atoms"`
 	Terms          json.RawMessage `json:"terms"`
 	TermsHash      string          `json:"terms_hash"` // cross-check only; the server computes its own
+	// IssuerPubkey (M9) is the entity's own browser key (x-only hex) requesting the
+	// external-issuer path: it becomes the enclave issuer half, so clawback needs
+	// the issuer's browser signature (two-phase) and the server never holds an
+	// issuer key for this asset. It MUST be this account's own key (the issuer of
+	// record the browser signs clawbacks with); a mismatch is refused. When absent
+	// the deploy is byte-identical to pre-M9 (server-generated key, legacy clawback).
+	IssuerPubkey string `json:"issuer_pubkey"`
 }
 
 func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
@@ -138,6 +145,25 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	if req.Confidential && !s.cfg.confidential {
 		refuse(501, "confidential issuance is not available on this deployment; the node is not confidentiality-enabled")
 		return
+	}
+
+	// M9: external issuer key. When the SPA supplies the entity's own browser key,
+	// that key (not a server-generated one) becomes the enclave issuer half, so
+	// clawback runs two-phase and the server never holds an issuer key for this
+	// asset. The source is the deploying identity itself: this account is the issuer
+	// of record (registered as the clawback authority below), and its browser key is
+	// the one that can later sign the L_claw sweep, so the supplied key must equal
+	// it. A mismatch is refused, like the mandate signer cross-check. Absent = the
+	// legacy server-held key, byte-identical to pre-M9.
+	issuerExternal := false
+	issuerPubkey := strings.TrimSpace(req.IssuerPubkey)
+	if issuerPubkey != "" {
+		if !strings.EqualFold(issuerPubkey, acct.XOnly) {
+			refuse(400, "issuer_pubkey must be this account's own key (the issuer of record); the browser signs clawbacks with it")
+			return
+		}
+		issuerPubkey = acct.XOnly
+		issuerExternal = true
 	}
 
 	// The canonical terms hash is a server-side fact. The browser's value is only
@@ -248,6 +274,7 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		"issuance_id": iss.ID, "ticker": iss.Ticker, "supply": req.Supply,
 		"precision": req.Precision, "confidential": req.Confidential,
 		"clawback": clawback, "terms_hash": termsHash, "idem_key": idem,
+		"issuer_external": issuerExternal,
 	})
 
 	// Ticker collision against the live assets. The residual race inside openampd
@@ -333,6 +360,12 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		"terms_hash":   termsHash,
 		"rules":        compiled,
 	}
+	// M9: pass the external issuer key so openampd uses it as the enclave issuer
+	// half (the L_claw leaf becomes (policy, this key)) and marks the asset
+	// external-issuer. Omitted when empty, keeping a legacy deploy byte-identical.
+	if issuerExternal {
+		issueBody["issuer_pubkey"] = issuerPubkey
+	}
 	// Entity/operator identity (OA-1) so the asset can be published to the
 	// Sequentia asset registry, which requires entity.domain committed on-chain
 	// at issue time. The contract_hash commits to whatever is added here, so the
@@ -400,6 +433,8 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		"contract_hash":   issued.ContractHash,
 		"holder_aid":      escrow.AID,
 		"enclave_address": addr.Address,
+		"issuer_external": boolInt(issuerExternal),
+		"issuer_pubkey":   issuerPubkey,
 	}); err != nil {
 		writeErr(w, 500, "store error")
 		return
@@ -420,6 +455,12 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	resp["escrow_aid"] = escrow.AID
 	resp["holder_aid"] = escrow.AID
 	resp["rules"] = compiled
+	if issuerExternal {
+		// So the SPA can render the two-phase clawback posture (the issuer's own key
+		// co-signs seizures; the platform cannot move a holder's position alone).
+		resp["issuer_external"] = true
+		resp["issuer_pubkey"] = issuerPubkey
+	}
 	writeJSON(w, 200, resp)
 }
 

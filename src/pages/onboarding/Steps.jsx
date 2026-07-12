@@ -1586,7 +1586,7 @@ function CompiledRulesView({ preview }) {
 export function Step6Checkout({ data, onDeployed }) {
   // Both create and deploy go through the store so its issuance list refreshes
   // before we navigate to the new issuance page.
-  const { createIssuance, patchIssuance, deployIssuance } = useStore()
+  const { createIssuance, patchIssuance, deployIssuance, xonly } = useStore()
   const s = getStructure(data.structureId)
   const cost = computeSetupCost(data.structureId, data.isPublic, {
     raise: data.raise,
@@ -1642,6 +1642,11 @@ export function Step6Checkout({ data, onDeployed }) {
         precision,
         clawback: true,
         confidential: !!data.confidential,
+        // M9: external issuer key. The entity's own SeqPal ID key becomes the
+        // enclave issuer half, so a clawback needs the issuer's browser signature
+        // (two-phase) and the platform never holds an issuer key for this asset.
+        // seqpald cross-checks it against the deploying account.
+        ...(xonly ? { issuer_pubkey: xonly } : {}),
         fee_convert_atoms: 100,
         terms,
         terms_hash: await termsHash(terms),

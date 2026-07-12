@@ -103,6 +103,12 @@ func scanRulesMutInto(sc scanner) (*RulesMutation, error) {
 // is reconciled by scanning that log for the entry naming this asset and holder,
 // exactly as escrowFindSend reconciles an escrow send. state: sweeping -> swept
 // (txid recorded) | empty (holder had no confirmed balance) | failed (retryable).
+//
+// M9 (external issuer key) adds a two-phase path: state 'awaiting_signature'
+// holds a built L_claw sweep (openampd build id OaID, cached leaf sighashes
+// ToSign) that broadcasts nothing until the external issuer signs it; complete
+// then advances it to 'swept'. The legacy single-call path keeps its
+// sweeping -> swept lifecycle unchanged (OaID/ToSign empty).
 type Clawback struct {
 	ID         string `json:"id"`
 	IssuanceID string `json:"issuance_id"`
@@ -115,19 +121,21 @@ type Clawback struct {
 	ByAID      string `json:"by_aid,omitempty"`
 	Context    string `json:"context"` // console | redeliver
 	Error      string `json:"error,omitempty"`
+	OaID       string `json:"oa_id,omitempty"`   // openampd two-phase build id (external issuer)
+	ToSign     string `json:"to_sign,omitempty"` // cached leaf sighashes JSON (external issuer)
 	CreatedAt  int64  `json:"created_at"`
 	UpdatedAt  int64  `json:"updated_at"`
 }
 
-const clawbackCols = `id, issuance_id, asset_id, holder_aid, reason, state, atoms, txid, by_aid, context, error, created_at, updated_at`
+const clawbackCols = `id, issuance_id, asset_id, holder_aid, reason, state, atoms, txid, by_aid, context, error, oa_id, to_sign, created_at, updated_at`
 
 func (s *Store) InsertClawback(c *Clawback) error {
 	now := time.Now().Unix()
 	c.CreatedAt, c.UpdatedAt = now, now
 	_, err := s.db.Exec(
-		`INSERT INTO clawbacks (`+clawbackCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		`INSERT INTO clawbacks (`+clawbackCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		c.ID, c.IssuanceID, c.AssetID, c.HolderAID, c.Reason, c.State, c.Atoms, c.Txid,
-		c.ByAID, c.Context, c.Error, c.CreatedAt, c.UpdatedAt)
+		c.ByAID, c.Context, c.Error, c.OaID, c.ToSign, c.CreatedAt, c.UpdatedAt)
 	return err
 }
 
@@ -156,10 +164,20 @@ func (s *Store) LastSweptClawback(assetID, holderAID string) (*Clawback, error) 
          ORDER BY created_at DESC LIMIT 1`, assetID, holderAID))
 }
 
+// AwaitingClawback returns the most recent two-phase build for (asset, holder)
+// still awaiting the external issuer's signatures (M9), so a repeated build
+// resumes the same pending sweep and re-surfaces its sighashes rather than asking
+// openampd to assemble a second one.
+func (s *Store) AwaitingClawback(assetID, holderAID string) (*Clawback, error) {
+	return scanClawback(s.db.QueryRow(
+		`SELECT `+clawbackCols+` FROM clawbacks WHERE asset_id = ? AND holder_aid = ? AND state = 'awaiting_signature'
+         ORDER BY created_at DESC LIMIT 1`, assetID, holderAID))
+}
+
 func scanClawback(row *sql.Row) (*Clawback, error) {
 	var c Clawback
 	err := row.Scan(&c.ID, &c.IssuanceID, &c.AssetID, &c.HolderAID, &c.Reason, &c.State, &c.Atoms,
-		&c.Txid, &c.ByAID, &c.Context, &c.Error, &c.CreatedAt, &c.UpdatedAt)
+		&c.Txid, &c.ByAID, &c.Context, &c.Error, &c.OaID, &c.ToSign, &c.CreatedAt, &c.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}

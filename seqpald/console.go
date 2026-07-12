@@ -110,6 +110,39 @@ func (s *server) handleConsoleClawback(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "a reason is required; it becomes part of the public transparency log")
 		return
 	}
+
+	// M9 two-phase path: an external-issuer asset cannot be swept server-side. Build
+	// the L_claw sweep (the reason is logged now, but nothing is swept), surface the
+	// sighashes, and wait for the issuer's browser signature to complete it.
+	if iss.IssuerExternal {
+		c, toSign, err := s.doClawbackBuild(iss, holder, reason, acct.AID, "console")
+		if err != nil {
+			writeErr(w, 502, "the clawback could not be built: %v", err)
+			return
+		}
+		switch c.State {
+		case "empty":
+			writeJSON(w, 200, map[string]any{
+				"clawback": c, "log_url": "/openamp/v1/log",
+				"note": "the holder had no confirmed enclave balance for this asset; nothing was swept",
+			})
+		case "swept":
+			writeJSON(w, 200, map[string]any{
+				"clawback": c, "txid": c.Txid, "atoms": c.Atoms, "reason": reason, "log_url": "/openamp/v1/log",
+				"note": "this holder was already swept for this asset for an earlier request",
+			})
+		default:
+			writeJSON(w, 200, map[string]any{
+				"clawback": c, "clawback_id": c.ID, "to_sign": toSign, "atoms": c.Atoms,
+				"pubkey": iss.IssuerPubkey, "two_phase": true, "reason": reason, "log_url": "/openamp/v1/log",
+				"complete_url": "/api/issuances/" + iss.ID + "/clawback/" + c.ID + "/complete",
+				"note": "external issuer key: the reason is already in the public transparency log, but nothing is swept " +
+					"until the issuer signs these sighashes with the SeqPal ID key and posts them to complete_url; nothing is final at 0-conf",
+			})
+		}
+		return
+	}
+
 	c, err := s.doClawback(iss, holder, reason, acct.AID, "console")
 	if err != nil {
 		writeErr(w, 502, "the clawback could not be completed: %v", err)
@@ -128,6 +161,199 @@ func (s *server) handleConsoleClawback(w http.ResponseWriter, r *http.Request) {
 		"clawback": c, "txid": c.Txid, "atoms": c.Atoms, "reason": reason, "log_url": "/openamp/v1/log",
 		"note": "full sweep: every confirmed enclave UTXO of this holder for this asset was seized into the issuer enclave; the reason is recorded in the public transparency log",
 	})
+}
+
+// --- two-phase clawback (M9, external issuer key) ----------------------------
+
+type consoleClawbackCompleteReq struct {
+	Sigs map[string]string `json:"sigs"`
+}
+
+// handleConsoleClawbackComplete is POST /api/issuances/{id}/clawback/{cid}/complete
+// (owner). It finishes a two-phase (external-issuer) clawback: the issuer's browser
+// signatures over the L_claw sighashes are handed to openampd, which adds the
+// policy signature and broadcasts. Idempotent: a completed sweep returns the same
+// txid without a second broadcast.
+func (s *server) handleConsoleClawbackComplete(w http.ResponseWriter, r *http.Request) {
+	acct := principal(r)
+	iss := s.ownedIssuance(w, acct, r.PathValue("id"))
+	if iss == nil {
+		return
+	}
+	c, err := s.st.ClawbackByID(r.PathValue("cid"))
+	if err != nil {
+		writeErr(w, 500, "store error")
+		return
+	}
+	if c == nil || c.IssuanceID != iss.ID {
+		writeErr(w, 404, "unknown clawback for this issuance")
+		return
+	}
+	if c.State == "swept" {
+		writeJSON(w, 200, map[string]any{
+			"clawback": c, "txid": c.Txid, "atoms": c.Atoms, "state": "swept", "log_url": "/openamp/v1/log",
+			"note": "this clawback was already completed; the same seizure txid is returned",
+		})
+		return
+	}
+	var req consoleClawbackCompleteReq
+	if err := readJSON(r, &req); err != nil || len(req.Sigs) == 0 {
+		writeErr(w, 400, "sigs are required (issuer signatures keyed by input index)")
+		return
+	}
+	c, err = s.doClawbackComplete(iss, c, req.Sigs, acct.AID)
+	if err != nil {
+		writeErr(w, 502, "the clawback could not be completed: %v", err)
+		return
+	}
+	_ = s.st.InsertNotice(c.HolderAID, "servicing",
+		fmt.Sprintf("A clawback seized your %s holdings into the issuer enclave (txid %s). Reason: %s.", iss.Ticker, c.Txid, c.Reason))
+	writeJSON(w, 200, map[string]any{
+		"clawback": c, "txid": c.Txid, "atoms": c.Atoms, "reason": c.Reason, "log_url": "/openamp/v1/log",
+		"note": "full sweep completed by the issuer's signature; every confirmed enclave UTXO of this holder for this asset " +
+			"was seized into the issuer enclave, and the reason is recorded in the public transparency log",
+	})
+}
+
+// doClawbackBuild is the external-issuer analogue of doClawback's first half: it
+// resolves the sweep at openampd (which logs the reason and returns the L_claw
+// sighashes but broadcasts NOTHING) and persists it as an 'awaiting_signature'
+// clawback. It is idempotent and reconciled: a holder with nothing to sweep yields
+// an 'empty' (or prior 'swept') row, and a build already awaiting a signature is
+// resumed rather than re-assembled, so it never drives a second sweep. The
+// returned toSign is nil for the empty/swept short-circuits.
+func (s *server) doClawbackBuild(iss *Issuance, holderAID, reason, byAID, context string) (*Clawback, []map[string]any, error) {
+	s.ensureServicingMu()
+	key := iss.AssetID + ":" + holderAID
+	unlock := s.clawMu.lock(key)
+	defer unlock()
+
+	// Nothing to sweep: return the prior completed sweep if one exists, else record
+	// an idempotent empty result (matches doClawback's zero-balance handling).
+	if bal, _ := s.enclaveBalance(holderAID, iss.AssetID); bal == 0 {
+		if last, _ := s.st.LastSweptClawback(iss.AssetID, holderAID); last != nil {
+			return last, nil, nil
+		}
+		c := &Clawback{
+			ID: mustID(), IssuanceID: iss.ID, AssetID: iss.AssetID, HolderAID: holderAID,
+			Reason: reason, State: "empty", ByAID: byAID, Context: context,
+		}
+		if err := s.st.InsertClawback(c); err != nil {
+			return nil, nil, err
+		}
+		return c, nil, nil
+	}
+
+	// Resume an in-flight build rather than assembling a second sweep of the same
+	// UTXOs. openampd's pending build survives the wait; re-surfacing its sighashes
+	// keeps the issuer signing one canonical sweep.
+	if pend, _ := s.st.AwaitingClawback(iss.AssetID, holderAID); pend != nil {
+		if toSign, err := decodeToSign(pend.ToSign); err == nil && len(toSign) > 0 {
+			return pend, toSign, nil
+		}
+	}
+
+	var built struct {
+		ID     string `json:"id"`
+		Tx     string `json:"tx"`
+		Atoms  uint64 `json:"atoms"`
+		ToSign []struct {
+			Input   int    `json:"input"`
+			Sighash string `json:"sighash"`
+			Pubkey  string `json:"pubkey"`
+		} `json:"to_sign"`
+	}
+	if err := s.callOpenAMP("POST", "/v1/issuer/clawback", s.cfg.issuerToken,
+		map[string]any{"asset": iss.AssetID, "holder_aid": holderAID, "reason": reason}, &built); err != nil {
+		return nil, nil, err
+	}
+	if built.ID == "" {
+		return nil, nil, fmt.Errorf("the clawback build returned no id")
+	}
+	// The issuer signs only its own enclave inputs; refuse a build that asks for any
+	// other key, as the escrow and P2P transfer paths do.
+	toSign := make([]map[string]any, 0, len(built.ToSign))
+	for _, ts := range built.ToSign {
+		if ts.Pubkey != "" && !strings.EqualFold(ts.Pubkey, iss.IssuerPubkey) {
+			return nil, nil, fmt.Errorf("the clawback build wants a signature from a key the issuer does not hold")
+		}
+		toSign = append(toSign, map[string]any{"input": ts.Input, "sighash": ts.Sighash, "pubkey": ts.Pubkey})
+	}
+	tsJSON, _ := json.Marshal(toSign)
+	c := &Clawback{
+		ID: mustID(), IssuanceID: iss.ID, AssetID: iss.AssetID, HolderAID: holderAID,
+		Reason: reason, State: "awaiting_signature", Atoms: built.Atoms, ByAID: byAID, Context: context,
+		OaID: built.ID, ToSign: string(tsJSON),
+	}
+	if err := s.st.InsertClawback(c); err != nil {
+		return nil, nil, err
+	}
+	s.st.Audit(byAID, "clawback.build", map[string]any{
+		"issuance_id": iss.ID, "asset": iss.AssetID, "holder": holderAID, "atoms": built.Atoms,
+		"clawback_id": c.ID, "oa_id": built.ID, "reason": reason, "context": context,
+	})
+	return c, toSign, nil
+}
+
+// doClawbackComplete finishes an 'awaiting_signature' clawback with the external
+// issuer's signatures. openampd verifies them, adds the policy signature, and
+// broadcasts; it never re-drives a fresh sweep, and a replay returns the same
+// txid, so completing twice cannot double-sweep. A seqpald write lost after a
+// successful complete is reconciled by re-calling complete (openampd returns the
+// same txid idempotently).
+func (s *server) doClawbackComplete(iss *Issuance, c *Clawback, sigs map[string]string, byAID string) (*Clawback, error) {
+	s.ensureServicingMu()
+	key := iss.AssetID + ":" + c.HolderAID
+	unlock := s.clawMu.lock(key)
+	defer unlock()
+
+	if c.State == "swept" {
+		return c, nil
+	}
+	if c.State != "awaiting_signature" || c.OaID == "" {
+		return nil, fmt.Errorf("this clawback is %s, not awaiting a signature", c.State)
+	}
+
+	var out struct {
+		Txid  string `json:"txid"`
+		Atoms uint64 `json:"atoms"`
+	}
+	if err := s.callOpenAMP("POST", "/v1/issuer/clawback/"+c.OaID+"/complete", s.cfg.issuerToken,
+		map[string]any{"sigs": sigs}, &out); err != nil {
+		_ = s.st.UpdateClawbackFields(c.ID, map[string]any{"error": err.Error()})
+		c.Error = err.Error()
+		return c, err
+	}
+	if out.Txid == "" {
+		return c, fmt.Errorf("the clawback complete returned no txid")
+	}
+	atoms := out.Atoms
+	if atoms == 0 {
+		atoms = c.Atoms
+	}
+	_ = s.st.UpdateClawbackFields(c.ID, map[string]any{"state": "swept", "txid": out.Txid, "atoms": atoms, "error": ""})
+	c.State, c.Txid, c.Atoms, c.Error = "swept", out.Txid, atoms, ""
+	_ = s.st.InsertLedger(&LedgerEntry{
+		IssuanceID: iss.ID, Kind: "clawback", Rail: "asset", Amount: atoms, Ccy: iss.Ticker, Txid: out.Txid,
+	})
+	s.st.Audit(byAID, "clawback.sweep", map[string]any{
+		"issuance_id": iss.ID, "asset": iss.AssetID, "holder": c.HolderAID, "atoms": atoms,
+		"txid": out.Txid, "reason": c.Reason, "context": c.Context, "clawback_id": c.ID, "external": true,
+	})
+	return c, nil
+}
+
+// decodeToSign parses the cached L_claw sighash list stored on an
+// 'awaiting_signature' clawback row (empty for the legacy single-call path).
+func decodeToSign(raw string) ([]map[string]any, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	var out []map[string]any
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // doClawback is the shared, idempotent, reconciled full-sweep used by the console

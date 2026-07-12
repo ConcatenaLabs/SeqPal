@@ -43,7 +43,7 @@ const DEPLOY_HINT = {
 }
 
 function DeployCard({ iss, onDeployed }) {
-  const { deployIssuance } = useStore()
+  const { deployIssuance, xonly } = useStore()
   const [form, setForm] = useState({
     supply: iss.supply > 0 ? String(iss.supply) : '1000000',
     precision: iss.precision >= 1 && iss.precision <= 8 ? iss.precision : 8,
@@ -88,6 +88,12 @@ function DeployCard({ iss, onDeployed }) {
         precision: Number(form.precision),
         clawback: form.clawback,
         confidential: form.confidential,
+        // M9: the entity's own SeqPal ID key becomes the enclave issuer half, so a
+        // clawback needs the issuer's browser signature (two-phase) and the platform
+        // never holds an issuer key for this asset. seqpald cross-checks this against
+        // the deploying account and refuses a mismatch. Omitted when signed out,
+        // which falls back to the legacy server-held key.
+        ...(xonly ? { issuer_pubkey: xonly } : {}),
         // fee_convert_atoms is intentionally not sent: seqpald derives it from
         // the price server (value-preserving conversion), and a nonzero value
         // here would be treated as an explicit issuer override.

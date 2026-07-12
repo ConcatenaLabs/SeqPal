@@ -168,16 +168,25 @@ export default function Legal() {
           <h2 className="font-bold text-ink-900">The custody conclusion</h2>
         </div>
         <p className="mt-2 text-sm leading-relaxed text-ink-700/85">
-          For a clawback-enabled asset whose issuer key is held by the platform, which is every asset
-          until the FROST quorum ships and legacy-path assets forever, SeqPal can move any holder's
-          position without the holder's key. That is control amounting to custody under essentially
-          any test, so we state it as a conclusion rather than a maybe. It is a risk factor in every
-          offering memorandum and it qualifies every "self-custodial" claim on the platform.
+          For a clawback-enabled asset whose issuer key is held by the platform, SeqPal can move any
+          holder's position without the holder's key. That is control amounting to custody under
+          essentially any test, so we state it as a conclusion rather than a maybe. It is a risk
+          factor in every offering memorandum and it qualifies every "self-custodial" claim for those
+          assets.
         </p>
         <p className="mt-2 text-sm leading-relaxed text-ink-700/85">
-          The 2-of-2 co-signature is a separate thing and is disclosed separately: it is negative
-          control, the power to refuse a transfer, not the power to move funds on its own. The
-          roadmap to remove the custody conclusion is the FROST threshold quorum, tracked on the{' '}
+          This now applies to legacy-path assets only: those that predate the external issuer key. A
+          new asset instead uses the issuing entity's own SeqPal ID key as the enclave issuer half, so
+          a clawback is two-phase and cannot be broadcast without the issuer's signature. The platform
+          holds only the policy key on those assets and cannot move a holder's position on its own.
+          Each asset discloses which path it is on, in its freeze and clawback console.
+        </p>
+        <p className="mt-2 text-sm leading-relaxed text-ink-700/85">
+          The 2-of-2 co-signature is a separate thing and is disclosed separately on both paths: it is
+          negative control, the power to refuse a transfer, not the power to move funds on its own,
+          and the platform continues to operate the policy server that co-signs. The roadmap to
+          remove the custody conclusion for the remaining legacy-path key is the FROST threshold
+          quorum, tracked on the{' '}
           <Link to="/status" className="font-medium text-seq-600 hover:underline">
             Status
           </Link>{' '}
@@ -189,11 +198,13 @@ export default function Legal() {
       <div className="card mt-6 p-6">
         <h2 className="font-bold text-ink-900">Single-token blast radius</h2>
         <p className="mt-2 text-sm leading-relaxed text-ink-700/80">
-          The platform-held issuer key is a single LocalKeySigner: one key, one token, one box, one
-          disk. A compromise of that one credential is a compromise of every asset it can clawback.
-          The mitigation today is operational, a documented backup and restore procedure, and the
-          structural fix is the FROST quorum. We disclose the blast radius rather than imply
-          isolation that does not exist.
+          The platform-held issuer key, on legacy-path assets, is a single LocalKeySigner: one key,
+          one token, one box, one disk. A compromise of that one credential is a compromise of every
+          legacy asset it can clawback. The mitigation today is operational, a documented backup and
+          restore procedure, and the structural fix is the FROST quorum. A new asset is outside this
+          blast radius entirely: its issuer key never touches the platform, so there is no platform
+          credential that can seize it. We disclose the blast radius rather than imply isolation that
+          does not exist.
         </p>
       </div>
 

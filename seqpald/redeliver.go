@@ -20,7 +20,10 @@ import (
 //     SeqPal account (its key held by the investor); the runbook records the
 //     old->new link as the audit trail.
 //  3. Clawback-with-reason sweeps ALL of the old AID's units of the asset. openampd
-//     seizes them into the issuer enclave (the disclosed clawback destination).
+//     seizes them into the issuer enclave (the disclosed clawback destination). For
+//     an external-issuer asset (M9) the server cannot sign the seizure, so the
+//     runbook pauses, surfaces the L_claw sighashes, and resumes once the ISSUER
+//     entity signs them in the browser; a legacy asset signs server-side as before.
 //  4. Re-deliver to the new AID. openampd's clawback lands the seized units in the
 //     issuer enclave, whose key seqpald does not custody, so re-delivery is sourced
 //     from a custodied enclave under a DISCLOSED pre-M9 treasury delegation: the
@@ -36,6 +39,11 @@ type redeliverReq struct {
 	OldAID     string `json:"old_aid"`
 	NewAID     string `json:"new_aid"`
 	Reason     string `json:"reason"`
+	// ClawbackSigs (M9) resume an external-issuer runbook paused at the clawback
+	// step: the issuer's browser signatures over the L_claw sighashes the prior
+	// call surfaced, keyed by input index. Empty for a legacy asset (the runbook's
+	// clawback signs server-side) or for the first call of an external run.
+	ClawbackSigs map[string]string `json:"clawback_sigs"`
 }
 
 // handleRedeliver is POST /api/id/redeliver (session + admin). It runs, or resumes,
@@ -109,31 +117,87 @@ func (s *server) handleRedeliver(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	if err := s.runRedelivery(iss, rd); err != nil {
+	if err := s.runRedelivery(iss, rd, req.ClawbackSigs); err != nil {
 		writeErr(w, 502, "the re-delivery runbook is blocked: %v", err)
-		s.writeRedeliveryView(w, rd)
 		return
 	}
-	s.writeRedeliveryView(w, rd)
+	s.writeRedeliveryView(w, iss, rd)
 }
 
 // runRedelivery advances the runbook from its current state to complete. It is
 // idempotent and resumable: each step reconciles against the chain before acting.
-func (s *server) runRedelivery(iss *Issuance, rd *Redelivery) error {
-	// Step 3: clawback the old AID (idempotent + reconciled via doClawback). Capture
-	// the new AID's balance BEFORE any delivery so the made-whole check is exact.
+// clawbackSigs are the issuer's browser signatures for the external-issuer
+// clawback step; they are ignored on a legacy asset (which signs server-side).
+func (s *server) runRedelivery(iss *Issuance, rd *Redelivery, clawbackSigs map[string]string) error {
+	// Step 3: clawback the old AID. Capture the new AID's balance BEFORE any delivery
+	// so the made-whole check is exact. A legacy (server-held issuer key) asset sweeps
+	// in one reconciled call; an EXTERNAL-issuer asset cannot be swept server-side, so
+	// the runbook pauses at 'awaiting_clawback_sig', surfaces the L_claw sighashes, and
+	// resumes once the issuer's browser signatures arrive.
 	if rd.State == "created" {
 		before, _ := s.enclaveBalance(rd.NewAID, iss.AssetID)
-		c, err := s.doClawback(iss, rd.OldAID, rd.Reason, rd.ByAID, "redeliver")
+		if iss.IssuerExternal {
+			c, _, err := s.doClawbackBuild(iss, rd.OldAID, rd.Reason, rd.ByAID, "redeliver")
+			if err != nil {
+				return fmt.Errorf("clawback build of the old AID failed: %w", err)
+			}
+			switch c.State {
+			case "empty":
+				_ = s.st.UpdateRedeliveryFields(rd.ID, map[string]any{
+					"state": "clawed", "swept_atoms": 0, "clawback_id": c.ID, "new_before": before,
+				})
+				rd.State, rd.SweptAtoms, rd.ClawbackID, rd.NewBefore = "clawed", 0, c.ID, before
+			case "swept":
+				_ = s.st.UpdateRedeliveryFields(rd.ID, map[string]any{
+					"state": "clawed", "swept_atoms": c.Atoms, "clawback_id": c.ID,
+					"clawback_txid": c.Txid, "new_before": before,
+				})
+				rd.State, rd.SweptAtoms, rd.ClawbackID, rd.ClawbackTxid, rd.NewBefore = "clawed", c.Atoms, c.ID, c.Txid, before
+			default:
+				_ = s.st.UpdateRedeliveryFields(rd.ID, map[string]any{
+					"state": "awaiting_clawback_sig", "clawback_id": c.ID, "new_before": before,
+				})
+				rd.State, rd.ClawbackID, rd.NewBefore = "awaiting_clawback_sig", c.ID, before
+				s.st.Audit(rd.ByAID, "redeliver.awaiting_clawback_sig", map[string]any{
+					"redelivery": rd.ID, "old_aid": rd.OldAID, "clawback_id": c.ID,
+				})
+				return nil // pause; the handler surfaces the sighashes to the issuer
+			}
+		} else {
+			c, err := s.doClawback(iss, rd.OldAID, rd.Reason, rd.ByAID, "redeliver")
+			if err != nil {
+				return fmt.Errorf("clawback of the old AID failed: %w", err)
+			}
+			_ = s.st.UpdateRedeliveryFields(rd.ID, map[string]any{
+				"state": "clawed", "swept_atoms": c.Atoms, "clawback_id": c.ID,
+				"clawback_txid": c.Txid, "new_before": before,
+			})
+			rd.State, rd.SweptAtoms, rd.ClawbackID, rd.ClawbackTxid, rd.NewBefore = "clawed", c.Atoms, c.ID, c.Txid, before
+		}
+		if rd.State == "clawed" {
+			s.st.Audit(rd.ByAID, "redeliver.clawed", map[string]any{
+				"redelivery": rd.ID, "old_aid": rd.OldAID, "swept_atoms": rd.SweptAtoms, "txid": rd.ClawbackTxid,
+			})
+		}
+	}
+
+	// Resume an external-issuer clawback once the issuer's signatures arrive.
+	if rd.State == "awaiting_clawback_sig" {
+		if len(clawbackSigs) == 0 {
+			return nil // still waiting; the handler surfaces the sighashes
+		}
+		c, err := s.st.ClawbackByID(rd.ClawbackID)
+		if err != nil || c == nil {
+			return fmt.Errorf("the pending clawback for this re-delivery is missing")
+		}
+		c, err = s.doClawbackComplete(iss, c, clawbackSigs, rd.ByAID)
 		if err != nil {
 			return fmt.Errorf("clawback of the old AID failed: %w", err)
 		}
-		fields := map[string]any{
-			"state": "clawed", "swept_atoms": c.Atoms, "clawback_id": c.ID,
-			"clawback_txid": c.Txid, "new_before": before,
-		}
-		_ = s.st.UpdateRedeliveryFields(rd.ID, fields)
-		rd.State, rd.SweptAtoms, rd.ClawbackID, rd.ClawbackTxid, rd.NewBefore = "clawed", c.Atoms, c.ID, c.Txid, before
+		_ = s.st.UpdateRedeliveryFields(rd.ID, map[string]any{
+			"state": "clawed", "swept_atoms": c.Atoms, "clawback_txid": c.Txid,
+		})
+		rd.State, rd.SweptAtoms, rd.ClawbackTxid = "clawed", c.Atoms, c.Txid
 		s.st.Audit(rd.ByAID, "redeliver.clawed", map[string]any{
 			"redelivery": rd.ID, "old_aid": rd.OldAID, "swept_atoms": c.Atoms, "txid": c.Txid,
 		})
@@ -225,12 +289,30 @@ func (s *server) redeliverySource(iss *Issuance) (*EnclaveKey, string) {
 	return nil, ""
 }
 
-func (s *server) writeRedeliveryView(w http.ResponseWriter, rd *Redelivery) {
-	writeJSON(w, 200, map[string]any{
+func (s *server) writeRedeliveryView(w http.ResponseWriter, iss *Issuance, rd *Redelivery) {
+	out := map[string]any{
 		"redelivery": rd,
 		"log_url":    "/openamp/v1/log",
 		"label": "real clawback + re-delivery on the Sequentia network. The seized units are parked in the issuer enclave " +
 			"and reconciled to treasury; re-delivery is sourced from a custodied enclave under a disclosed pre-M9 treasury " +
 			"delegation, so the returning holder is made whole and total supply is conserved.",
-	})
+	}
+	// M9: an external-issuer asset's clawback needs the issuer's own signature, so
+	// the runbook pauses here and surfaces the L_claw sighashes. The admin hands them
+	// to the issuer, who signs with the SeqPal ID key; resubmitting this endpoint with
+	// clawback_sigs resumes the sweep. Nothing is swept until then.
+	if rd.State == "awaiting_clawback_sig" {
+		if c, _ := s.st.ClawbackByID(rd.ClawbackID); c != nil {
+			toSign, _ := decodeToSign(c.ToSign)
+			out["to_sign"] = toSign
+			out["clawback_id"] = c.ID
+			out["pubkey"] = iss.IssuerPubkey
+			out["two_phase"] = true
+			out["note"] = "external issuer key: this asset's clawback needs the issuer's signature. Sign these sighashes with " +
+				"the issuer's SeqPal ID key and resubmit POST /api/id/redeliver with clawback_sigs to resume the runbook; the " +
+				"re-delivery step still sources from a custodied enclave under the disclosed treasury delegation. Nothing is " +
+				"swept until the issuer signs, and nothing is final at 0-conf."
+		}
+	}
+	writeJSON(w, 200, out)
 }
