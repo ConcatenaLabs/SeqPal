@@ -71,6 +71,14 @@ This is the exhaustive defect inventory, 121 items, grouped by theme, with sourc
 
 ## 3. Target architecture
 
+### 3.0 What a SeqPal ID is (the identity layer, not an issuer login)
+
+SeqPal ID is the KYC and AML identity layer for the whole OpenAMP-on-Sequentia world, and it sits UPSTREAM of both products. There is one registration flow, identical for everybody, and it never asks whether you are an issuer or an investor: no user-type selector, no fork, role-neutral copy. What registration produces is a verified identity bound to an enclave key (the AID). The platform then stamps eligibility categories onto that AID (M2), and those categories gate everything downstream.
+
+The same single credential opens different doors depending on what the person does next: an issuer signs into the issuance platform with it; an investor needs it to be permitted to hold or trade SeqPal-managed restricted assets AT ALL, including on a Sequentia DEX that carries SeqPal listings (a venue cannot grant eligibility, it can only check what SeqPal stamped, which is exactly the model in the integration spec's venue part). So "issuer" and "investor" are things a verified identity DOES later, never a type chosen at signup, and a corporate (KYB) entity is an addition to an existing personal SeqPal ID, never an alternative signup path.
+
+This is why the identity surface is a compliance passport rather than a product login, and why the investor journey and the issuer journey share one front door.
+
 ### 3.1 Principals and trust domains
 
 | Principal | Key material | Auth | Trust domain |
