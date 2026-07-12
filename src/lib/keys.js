@@ -102,6 +102,30 @@ export function signClosing(privHex, statement) {
   return signStatement(privHex, CLOSE_TAG, statement)
 }
 
+// Co-sign one enclave transfer sighash. This is the ONE place the enclave key
+// signs a raw 32-byte digest rather than a domain-tagged statement, and it is
+// deliberate: a genuine 2-of-2 enclave spend can only be authorized by signing
+// the actual BIP341 transfer sighash openampd computed, which is exactly what
+// the policy server verifies with sig.Verify(sighash, pubkey) at
+// /v1/transfers/{id}/complete (mirrors seqpald taxonomy.go signSighash). The
+// signing-oracle guard that keeps signChallenge/signStatement tagged still holds
+// around this call: the SPA only ever signs sighashes returned by a transfer the
+// holder themselves built (their chosen asset, beneficiary, amount), and the
+// caller MUST confirm every to_sign entry's pubkey is this key's own x-only
+// before signing (see store.signTransferSigs). sighashHex is the 64-hex digest.
+export function signSighash(privHex, sighashHex) {
+  const digest = hexToBytes(sighashHex)
+  if (digest.length !== 32) throw new Error('A transfer sighash must be a 32-byte digest.')
+  return bytesToHex(schnorr.sign(digest, hexToBytes(privHex), NO_AUX))
+}
+
+// The BIP340 tags for the M8 platform-layer acknowledgments an issuer or investor
+// optionally signs with their own SeqPal ID key (mirroring the server constants
+// in secondary.go / listings.go). The statement is the exact canonical `sign_this`
+// bytes seqpald returns, signed TAGGED like every other application statement.
+export const MARKET_ABUSE_TAG = 'seqpal-market-abuse-ack-v1'
+export const LISTING_TAG = 'seqpal-listing-v1'
+
 // ── Encrypted key envelope ─────────────────────────────────────────────
 // AES-GCM under PBKDF2-SHA256 (200k iterations, 16-byte salt). The envelope is
 // what localStorage holds and what the user exports as a backup file.

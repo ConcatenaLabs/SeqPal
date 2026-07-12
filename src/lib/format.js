@@ -26,6 +26,21 @@ export function scaleDown(atomsLike, decimals) {
   return (neg ? '-' : '') + whole + '.' + frac
 }
 
+// Scale a display amount (a decimal string of whole tokens) UP into an integer
+// atom-count string by `decimals`, on strings so no digit is lost to float.
+// scaleUp("0.4", 8) === "40000000". Returns null when the input is not a clean
+// decimal or carries more fractional digits than the asset's precision allows.
+export function scaleUp(amountLike, decimals) {
+  const s = String(amountLike ?? '').trim()
+  if (!/^\d*(\.\d*)?$/.test(s) || s === '' || s === '.') return null
+  const d = Math.max(0, Number(decimals) || 0)
+  const [whole, frac = ''] = s.split('.')
+  if (frac.length > d) return null
+  const atoms = (whole || '0') + frac.padEnd(d, '0')
+  const trimmed = atoms.replace(/^0+(?=\d)/, '')
+  return trimmed === '' ? '0' : trimmed
+}
+
 // Drop trailing zeros in the fractional part (and a bare trailing dot).
 export function trimZeros(dec) {
   if (!dec.includes('.')) return dec

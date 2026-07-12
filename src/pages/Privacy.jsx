@@ -62,9 +62,11 @@ export default function Privacy() {
           a clean delete we cannot perform.
         </p>
         <p className="mt-2 text-sm leading-relaxed text-ink-700/85">
-          Transparency-log minimization, where a category event logs the hash of the category set
-          rather than the raw list, is planned and not yet shipped. When it lands, this page is
-          updated.
+          Transparency-log minimization has shipped. A category event in the public transparency log
+          now records the hash of your category set, not the raw list, so the log no longer leaks each
+          holder's exact category vector. The hash stays verifiable: anyone who knows the set can
+          recompute the commitment and match it. Older entries predating the change remain readable,
+          and the log's hash chain and on-chain anchor are unchanged.
         </p>
       </div>
 
@@ -111,8 +113,10 @@ export default function Privacy() {
           and balances are publicly queryable per AID. Once category tokens encode a jurisdiction and
           an eligibility tier, for example <span className="font-mono text-xs">j:US:acc</span>, they
           are identity-adjacent. The SeqDEX eligibility preflight depends on this surface staying
-          readable, so a venue can check what you are eligible to hold. Hashing category tokens behind
-          a resolver for authorized venues is a possible follow-up, not shipped here.
+          readable, so a venue can check what you are eligible to hold. This is distinct from the
+          transparency log, which now records only a hash of your category set: the live user endpoint
+          still returns the raw tokens because eligibility enforcement needs them. Hashing category
+          tokens behind a resolver for authorized venues is a possible follow-up, not shipped here.
         </p>
       </div>
 

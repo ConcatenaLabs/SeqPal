@@ -554,6 +554,99 @@ CREATE TABLE ownership_snapshots (
 );
 CREATE INDEX idx_ownership_snapshots_issuance ON ownership_snapshots(issuance_id);
 `,
+	// M8: secondary market + Depository-Receipt programme + venue listings. p2p_transfers
+	// is the travel-rule record for a policy-co-signed holder-to-holder transfer: it stores
+	// the originator and beneficiary AIDs (both joined to registered platform identities) and
+	// its txid pre-broadcast, so an ambiguous complete is reconciled by a chain/log scan before
+	// any retry, never a double-transfer. A refusal is a first-class terminal state carrying the
+	// real policy-server reason (also in openampd /v1/log). market_abuse_acks records the
+	// once-per-investor insider-dealing acknowledgment (a platform-layer control, disclosed as
+	// such, not policy-enforced at co-sign). listings holds the issuer-granted listing
+	// authorization a venue reads (a venue can only CHECK, never GRANT). dr_programs + dr_ops
+	// drive the DR programme: mint = OA-6 reissuance, redeem = OA-5 burn, each op keyed by an
+	// idempotency request_id so a crash-then-retry never double-mints or double-burns; supply
+	// stays chain-derived (never a stored counter). kv holds the wallet-transfer log poller's
+	// cursor. All additive; an M7 database migrates forward in place.
+	`
+CREATE TABLE p2p_transfers (
+    id               TEXT PRIMARY KEY,
+    oa_id            TEXT    NOT NULL DEFAULT '',
+    issuance_id      TEXT    NOT NULL DEFAULT '',
+    asset_id         TEXT    NOT NULL DEFAULT '',
+    originator_aid   TEXT    NOT NULL,
+    beneficiary_aid  TEXT    NOT NULL DEFAULT '',
+    atoms            INTEGER NOT NULL DEFAULT 0,
+    state            TEXT    NOT NULL DEFAULT 'awaiting_signature',
+    source           TEXT    NOT NULL DEFAULT 'browser',
+    txid             TEXT    NOT NULL DEFAULT '',
+    reason           TEXT    NOT NULL DEFAULT '',
+    orig_name        TEXT    NOT NULL DEFAULT '',
+    orig_residence   TEXT    NOT NULL DEFAULT '',
+    benef_name       TEXT    NOT NULL DEFAULT '',
+    benef_residence  TEXT    NOT NULL DEFAULT '',
+    benef_registered INTEGER NOT NULL DEFAULT 0,
+    created_at       INTEGER NOT NULL,
+    updated_at       INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX idx_p2p_originator ON p2p_transfers(originator_aid);
+CREATE INDEX idx_p2p_asset ON p2p_transfers(asset_id);
+CREATE UNIQUE INDEX idx_p2p_txid ON p2p_transfers(txid) WHERE txid != '';
+CREATE TABLE market_abuse_acks (
+    aid          TEXT PRIMARY KEY,
+    version      INTEGER NOT NULL DEFAULT 1,
+    ack_hash     TEXT    NOT NULL DEFAULT '',
+    signature    TEXT    NOT NULL DEFAULT '',
+    signer_xonly TEXT    NOT NULL DEFAULT '',
+    created_at   INTEGER NOT NULL
+);
+CREATE TABLE listings (
+    asset_id     TEXT PRIMARY KEY,
+    issuance_id  TEXT    NOT NULL DEFAULT '',
+    issuer_aid   TEXT    NOT NULL DEFAULT '',
+    ticker       TEXT    NOT NULL DEFAULT '',
+    name         TEXT    NOT NULL DEFAULT '',
+    authorized   INTEGER NOT NULL DEFAULT 0,
+    venues       TEXT    NOT NULL DEFAULT '[]',
+    signature    TEXT    NOT NULL DEFAULT '',
+    signer_xonly TEXT    NOT NULL DEFAULT '',
+    created_at   INTEGER NOT NULL,
+    updated_at   INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE dr_programs (
+    issuance_id         TEXT PRIMARY KEY,
+    asset_id            TEXT    NOT NULL DEFAULT '',
+    enabled             INTEGER NOT NULL DEFAULT 0,
+    us_exclusion_height INTEGER NOT NULL DEFAULT 0,
+    mutation_id         TEXT    NOT NULL DEFAULT '',
+    created_at          INTEGER NOT NULL,
+    updated_at          INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE dr_ops (
+    id               TEXT PRIMARY KEY,
+    issuance_id      TEXT    NOT NULL,
+    asset_id         TEXT    NOT NULL DEFAULT '',
+    kind             TEXT    NOT NULL,
+    request_id       TEXT    NOT NULL,
+    target_aid       TEXT    NOT NULL DEFAULT '',
+    holder_aid       TEXT    NOT NULL DEFAULT '',
+    atoms            INTEGER NOT NULL DEFAULT 0,
+    oa_id            TEXT    NOT NULL DEFAULT '',
+    txid             TEXT    NOT NULL DEFAULT '',
+    state            TEXT    NOT NULL DEFAULT 'pending',
+    attestation_hash TEXT    NOT NULL DEFAULT '',
+    anchor_txid      TEXT    NOT NULL DEFAULT '',
+    error            TEXT    NOT NULL DEFAULT '',
+    created_at       INTEGER NOT NULL,
+    updated_at       INTEGER NOT NULL DEFAULT 0
+);
+CREATE UNIQUE INDEX idx_dr_ops_request ON dr_ops(request_id);
+CREATE INDEX idx_dr_ops_issuance ON dr_ops(issuance_id);
+CREATE TABLE kv (
+    key        TEXT PRIMARY KEY,
+    value      TEXT    NOT NULL DEFAULT '',
+    updated_at INTEGER NOT NULL DEFAULT 0
+);
+`,
 }
 
 // Store is seqpald's persistent state. Every financial fact the UI shows is

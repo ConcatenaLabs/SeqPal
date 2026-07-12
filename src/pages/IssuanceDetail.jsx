@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Icon, StructureIcon } from '../components/icons'
 import { Badge, DemoNote } from '../components/ui'
@@ -18,12 +18,15 @@ import ClosingCard from '../components/ClosingCard'
 import DistributionConsole from '../components/DistributionConsole'
 import FreezeClawbackConsole from '../components/FreezeClawbackConsole'
 import AmendmentChainCard from '../components/AmendmentChainCard'
+import DRConsole from '../components/DRConsole'
+import ListingCard from '../components/ListingCard'
 import { useStore } from '../lib/store'
 import { view } from '../lib/issuance'
 import { getStructure } from '../data/structures'
 import { JURISDICTIONS } from '../data/jurisdictions'
 import { STATUS, offPlatformSteps } from '../lib/lifecycle'
 import { termsHash } from '../lib/openamp'
+import { health } from '../lib/api'
 
 // What the server's refusal means, in one line. The server's own message is
 // always shown verbatim above this: this only adds context it cannot know.
@@ -49,6 +52,24 @@ function DeployCard({ iss, onDeployed }) {
   })
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
+  // Whether this deployment's node is confidentiality-enabled (OA-8 +
+  // SEQPALD_CONFIDENTIAL). health.ok is an authenticated upstream probe, so this
+  // tells the issuer honestly whether the confidential toggle will succeed before
+  // they mint, rather than surfacing a 501 only at deploy time.
+  const [confAvailable, setConfAvailable] = useState(null)
+  useEffect(() => {
+    let cancelled = false
+    health()
+      .then((h) => {
+        if (!cancelled) setConfAvailable(!!h.confidential)
+      })
+      .catch(() => {
+        if (!cancelled) setConfAvailable(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const steps = offPlatformSteps(iss.structureId)
 
@@ -172,9 +193,22 @@ function DeployCard({ iss, onDeployed }) {
             <span className="font-medium text-ink-900">Confidential holdings (opt-in)</span>
             <span className="block text-xs leading-relaxed text-ink-700/70">
               Blind amounts and the asset tag on chain. Sequentia is transparent by default,
-              so this is opt-in per asset, and it needs a confidentiality-enabled node: if
-              this one is not, the deploy is refused rather than silently downgraded.
+              so this is opt-in per asset. It is requested per call with a blinded (blech32)
+              address, so it works without changing the shared node's default. Holdings stay
+              visible to the issuer and the policy server, which enforce eligibility.
             </span>
+            {confAvailable === true && form.confidential && (
+              <span className="mt-1 block text-xs font-medium text-emerald-700">
+                This deployment is confidentiality-enabled.
+              </span>
+            )}
+            {confAvailable === false && form.confidential && (
+              <span className="mt-1 block text-xs font-medium text-amber-700">
+                This deployment is not confidentiality-enabled, so a confidential mint would be
+                refused. Deploy transparently, the Sequentia default, or use a confidentiality-enabled
+                deployment.
+              </span>
+            )}
           </span>
         </label>
       </div>
@@ -430,29 +464,14 @@ export default function IssuanceDetail() {
             <>
               <HolderRegister iss={iss} />
               <AmendmentChainCard iss={iss} />
+              {!isRaise && <DRConsole iss={iss} />}
               <DistributionConsole iss={iss} />
               <FreezeClawbackConsole iss={iss} />
               <NetworkFees iss={iss} />
               <TransparencyLog iss={iss} />
               <ServicingPanel iss={iss} />
 
-              <div className="card p-6">
-                <div className="flex items-center gap-2">
-                  <Icon.exchange width={18} height={18} className="text-seq-600" />
-                  <h2 className="font-bold text-ink-900">Secondary market</h2>
-                </div>
-                <p className="mt-1.5 text-sm leading-relaxed text-ink-700/70">
-                  Because the policy server co-signs every transfer, the asset can only move
-                  between holders it recognises. That is what makes a venue listing possible
-                  without a proprietary trading system, and it is also the limit: a venue can
-                  check eligibility, never grant it.
-                </p>
-                <p className="mt-3 text-[11px] leading-relaxed text-ink-700/55">
-                  Eligibility rules are not yet compiled into this asset, and no venue
-                  integration exists today. Secondary-market depth on Sequentia is still
-                  building: this describes transferability, not trading volume.
-                </p>
-              </div>
+              <ListingCard iss={iss} />
 
               {isRaise && (
                 <>

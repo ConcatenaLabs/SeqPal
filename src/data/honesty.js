@@ -22,6 +22,13 @@ export const REAL = [
   'Clawback full-sweep seizures, with the reason recorded in the public transparency log alongside the sweep txid',
   'The rules-amendment chain: the live on-chain rules always equal the anchored chain head, which is the genesis terms_hash plus N anchored amendments',
   'Category expiry enforced at the policy server, so an expired accreditation becomes a real transfer refusal',
+  'Holder-to-holder secondary transfers, policy co-signed, with the browser signing the enclave sighash and both travel-rule counterparties captured',
+  'Secondary-transfer refusals surfaced as a first-class result: an ineligible recipient, a lockup-window resale, or a Reg S window returns a real policy-server refusal with the reason in the public log',
+  'The Depository-Receipt programme: mint is a real reissuance and redeem a real burn, with circulating supply chain-derived, never a stored counter',
+  'The Depository-Receipt US-person exclusion, enforced as a real policy-server j:US category deny applied through the amendment chain, not a display string',
+  'Transparency-log minimization: a category event logs the hash of the category set, which recomputes from the known set, instead of the raw list',
+  'Opt-in confidential issuance requested per call with a blinded address, so it works without changing the shared node default',
+  'Issuer venue-listing authorization, readable at the public listings endpoint, which a venue reads to list an asset but can never use to grant eligibility',
 ]
 
 export const SIMULATED = [
@@ -56,9 +63,14 @@ export const SIMULATED = [
     label: 'Simulated at the checkout itself and on every money surface derived from it',
   },
   {
-    element: 'Depositary-receipt custodian',
-    real: 'Signed reserve attestations, anchored, with real reissue and burn reconciled against a mock balance.',
-    label: 'Simulated custody attestation',
+    element: 'Depository-receipt custodian',
+    real: 'The reissue (mint) and burn (redeem) are real supply changes on chain, and circulating supply is chain-derived. Each operation produces a content-addressed reserve attestation whose hash is anchored. Only the custodian and its underlying holding are simulated.',
+    label: 'Simulated custody, real supply changes and anchored attestations',
+  },
+  {
+    element: 'Market-abuse / insider-dealing acknowledgment',
+    real: 'A real once-per-investor record, optionally signed by your SeqPal ID key, that gates the platform transfer surfaces.',
+    label: 'Platform-layer control, disclosed as such; not enforced at the policy co-signature',
   },
   {
     element: 'Tax forms and remittance',

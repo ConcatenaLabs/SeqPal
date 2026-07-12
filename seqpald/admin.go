@@ -369,6 +369,12 @@ func (s *server) startWorkers() {
 		go s.runOwnershipSnapshotCron(s.cfg.snapshotInterval)
 		go s.runAnnualReportCron(s.cfg.reportInterval)
 	}
+	// M8: capture wallet-initiated secondary transfers from openampd's /v1/log and
+	// join them to identities server-side (the travel-rule record). Needs the issuer
+	// token to read the holder register for beneficiary resolution.
+	if s.cfg.issuerToken != "" {
+		go s.runWalletTransferPoller(s.cfg.walletPollInterval)
+	}
 }
 
 func adminSet(csv string) map[string]bool {

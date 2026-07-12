@@ -83,6 +83,9 @@ type config struct {
 	rulesReconcile   time.Duration // heal half-applied rules mutations (amendment chain)
 	snapshotInterval time.Duration // scheduled ownership snapshot + anchor
 	reportInterval   time.Duration // labeled-simulated annual report to holders
+
+	// M8 secondary-market cadence.
+	walletPollInterval time.Duration // wallet-initiated transfer capture from openampd /v1/log
 }
 
 type server struct {
@@ -107,7 +110,8 @@ type server struct {
 	rulesMu      *keyedMutex // serializes rules mutations per issuance (amendment chain)
 	clawMu       *keyedMutex // serializes clawbacks per (asset, holder)
 	redeliverMu  *keyedMutex // serializes the stranded-key runbook per (issuance, old, new)
-	servicingMu1 sync.Once   // lazily provisions the three servicing mutexes above
+	drMu         *keyedMutex // serializes DR mint/redeem per issuance (M8)
+	servicingMu1 sync.Once   // lazily provisions the servicing mutexes above
 }
 
 // ensureServicingMu lazily provisions the M7 (Backend-B) servicing mutexes so a
@@ -126,6 +130,9 @@ func (s *server) ensureServicingMu() {
 		}
 		if s.redeliverMu == nil {
 			s.redeliverMu = newKeyedMutex()
+		}
+		if s.drMu == nil {
+			s.drMu = newKeyedMutex()
 		}
 	})
 }
@@ -209,6 +216,7 @@ func main() {
 	cfg.rulesReconcile = time.Duration(envInt("SEQPALD_RULES_RECONCILE_SECS", 30)) * time.Second
 	cfg.snapshotInterval = time.Duration(envInt("SEQPALD_SNAPSHOT_SECS", 24*3600)) * time.Second
 	cfg.reportInterval = time.Duration(envInt("SEQPALD_REPORT_SECS", 365*24*3600)) * time.Second
+	cfg.walletPollInterval = time.Duration(envInt("SEQPALD_WALLET_POLL_SECS", 15)) * time.Second
 	cfg.openampURL = strings.TrimRight(cfg.openampURL, "/")
 	cfg.electrsURL = strings.TrimRight(cfg.electrsURL, "/")
 	cfg.registryURL = strings.TrimRight(cfg.registryURL, "/")
@@ -244,6 +252,7 @@ func main() {
 		rulesMu:     newKeyedMutex(),
 		clawMu:      newKeyedMutex(),
 		redeliverMu: newKeyedMutex(),
+		drMu:        newKeyedMutex(),
 	}
 	s.startWorkers()
 
@@ -264,6 +273,7 @@ func (s *server) handler() http.Handler {
 	mux.HandleFunc("POST /api/auth/register", s.handleRegister)
 	mux.HandleFunc("POST /api/auth/login", s.handleLogin)
 	mux.HandleFunc("GET /api/eligibility", s.handleEligibility) // advisory preflight, public (serves the SeqDEX handover)
+	mux.HandleFunc("GET /api/listings", s.handleListings)       // M8: issuer-granted listing authorization, public (serves the SeqDEX handover)
 
 	// M4 legal artifact pipeline: public surfaces. The terms manifest is public
 	// immediately; document preimages are offer-window gated inside handleDoc; the
@@ -333,6 +343,25 @@ func (s *server) handler() http.Handler {
 	mux.HandleFunc("POST /api/issuances/{id}/clawback", s.requireSession(s.handleConsoleClawback))
 	mux.HandleFunc("GET /api/id/notices", s.requireSession(s.handleNotices))
 	mux.HandleFunc("POST /api/id/redeliver", s.requireSession(s.requireAdmin(s.handleRedeliver)))
+
+	// M8 secondary market: the market-abuse acknowledgment gate, policy-co-signed
+	// holder-to-holder transfers (build + complete, with the first-class refusal
+	// path and travel-rule capture), and the caller's transfer history.
+	mux.HandleFunc("GET /api/id/market-abuse-ack", s.requireSession(s.handleMarketAbuseAckGet))
+	mux.HandleFunc("POST /api/id/market-abuse-ack", s.requireSession(s.handleMarketAbuseAck))
+	mux.HandleFunc("GET /api/transfers", s.requireSession(s.handleListMyTransfers))
+	mux.HandleFunc("POST /api/transfers", s.requireSession(s.handleP2PInitiate))
+	mux.HandleFunc("POST /api/transfers/{id}/complete", s.requireSession(s.handleP2PComplete))
+
+	// M8 issuer surfaces: listing authorization grant and the Depository-Receipt
+	// programme (enable + US-person exclusion, mint = reissuance, redeem = burn,
+	// chain-derived supply).
+	mux.HandleFunc("POST /api/issuances/{id}/listing", s.requireSession(s.handleGrantListing))
+	mux.HandleFunc("GET /api/issuances/{id}/dr", s.requireSession(s.handleDRProgram))
+	mux.HandleFunc("POST /api/issuances/{id}/dr/enable", s.requireSession(s.handleDREnable))
+	mux.HandleFunc("POST /api/issuances/{id}/dr/mint", s.requireSession(s.handleDRMint))
+	mux.HandleFunc("POST /api/issuances/{id}/dr/redeem", s.requireSession(s.handleDRRedeem))
+	mux.HandleFunc("GET /api/issuances/{id}/dr/supply", s.requireSession(s.handleDRSupply))
 
 	// SeqPal ID surface.
 	mux.HandleFunc("POST /api/id/verify", s.requireSession(s.handleIDVerify))
@@ -452,17 +481,29 @@ func writeErr(w http.ResponseWriter, code int, format string, args ...any) {
 // callOpenAMP issues an authenticated (if token != "") JSON request to the policy
 // server and decodes the response into out (may be nil).
 func (s *server) callOpenAMP(method, path, token string, body any, out any) error {
+	_, err := s.callOpenAMPStatus(method, path, token, body, out)
+	return err
+}
+
+// callOpenAMPStatus is callOpenAMP that also returns the policy server's HTTP
+// status code. It is how the P2P transfer path distinguishes a first-class policy
+// REFUSAL (403 with a reason: an ineligible recipient, a resale inside the lockup
+// window, a Reg S distribution-compliance window) from an operational error, so a
+// refusal is surfaced honestly rather than swallowed as a 502. The error and its
+// message are identical to callOpenAMP's, so every existing caller is byte-for-byte
+// unchanged.
+func (s *server) callOpenAMPStatus(method, path, token string, body any, out any) (int, error) {
 	var rdr io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		rdr = bytes.NewReader(b)
 	}
 	httpReq, err := http.NewRequest(method, s.cfg.openampURL+path, rdr)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if body != nil {
 		httpReq.Header.Set("content-type", "application/json")
@@ -472,7 +513,7 @@ func (s *server) callOpenAMP(method, path, token string, body any, out any) erro
 	}
 	resp, err := s.http.Do(httpReq)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
@@ -482,12 +523,12 @@ func (s *server) callOpenAMP(method, path, token string, body any, out any) erro
 			Error string `json:"error"`
 		}
 		if json.Unmarshal(raw, &e) == nil && e.Error != "" {
-			return fmt.Errorf("%s", e.Error)
+			return resp.StatusCode, fmt.Errorf("%s", e.Error)
 		}
-		return fmt.Errorf("%s %s -> %d", method, path, resp.StatusCode)
+		return resp.StatusCode, fmt.Errorf("%s %s -> %d", method, path, resp.StatusCode)
 	}
 	if out != nil {
-		return json.Unmarshal(raw, out)
+		return resp.StatusCode, json.Unmarshal(raw, out)
 	}
-	return nil
+	return resp.StatusCode, nil
 }

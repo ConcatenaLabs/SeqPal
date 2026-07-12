@@ -6,6 +6,8 @@ import { ChainChip } from '../components/ChainStatus'
 import SignInGate from '../components/SignInGate'
 import InvestorMandateCard from '../components/InvestorMandateCard'
 import NoticesInbox from '../components/NoticesInbox'
+import MarketAbuseGate from '../components/MarketAbuseGate'
+import TransferConsole from '../components/TransferConsole'
 import { useStore } from '../lib/store'
 import { view } from '../lib/issuance'
 import { getBalance } from '../lib/openamp'
@@ -60,6 +62,13 @@ export default function Holdings() {
   }
 
   const held = (rows || []).filter((r) => r.atoms > 0)
+  const holdings = held.map(({ iss, atoms }) => ({
+    assetId: iss.assetId,
+    ticker: iss.ticker,
+    name: iss.name,
+    atoms,
+    precision: iss.precision || 8,
+  }))
 
   return (
     <section className="container-x py-12">
@@ -161,6 +170,20 @@ export default function Holdings() {
             </p>
           </div>
         )}
+      </div>
+
+      <div className="mt-10">
+        <h2 className="text-lg font-bold text-ink-900">Transfer to another holder</h2>
+        <p className="mt-1 text-sm text-ink-700/70">
+          Send a restricted asset to another SeqPal identity. Every transfer is co-signed by the
+          policy server, which can refuse an ineligible recipient, a resale inside the lockup window,
+          or a Reg S window. The refusal, when it happens, is shown here in full.
+        </p>
+        <div className="mt-4">
+          <MarketAbuseGate>
+            <TransferConsole holdings={holdings} />
+          </MarketAbuseGate>
+        </div>
       </div>
 
       <div className="mt-10">
