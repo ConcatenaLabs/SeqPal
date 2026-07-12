@@ -323,6 +323,12 @@ func (s *server) startWorkers() {
 		go s.runWatcher(s.cfg.watchInterval)
 	}
 	go s.runAnchorCron(s.cfg.anchorInterval)
+	// M5: the deposit watcher (escrow deposits + on-chain fee payments) and the
+	// SIMULATED fiat settlement cron.
+	if s.cfg.nodeURL != "" || s.cfg.btcURL != "" {
+		go s.runMoneyWatcher(s.cfg.watchInterval)
+	}
+	go s.runFiatCron(2 * time.Second)
 }
 
 func adminSet(csv string) map[string]bool {

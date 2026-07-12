@@ -83,6 +83,25 @@ export function signDocument(privHex, docHashHex) {
   return bytesToHex(schnorr.sign(msg, hexToBytes(privHex), NO_AUX))
 }
 
+// Payout-mandate and closing authorizations. Both are signed exactly like the
+// M1 challenge and M4 document: the enclave key signs the TAGGED canonical
+// statement seqpald returned as `sign_this`, never a raw external digest (the
+// signing-oracle guard). The message is the UTF-8 bytes of the canonical JSON
+// string, matching seqpald's verifyTaggedByKey(signer, tag, statement, sig). The
+// tags mirror the server constants (platform.go / closing.go).
+export const MANDATE_TAG = 'seqpal-payout-mandate-v1'
+export const CLOSE_TAG = 'seqpal-close-v1'
+
+// Sign the payout-mandate statement (the exact `sign_this` bytes).
+export function signMandate(privHex, statement) {
+  return signStatement(privHex, MANDATE_TAG, statement)
+}
+
+// Sign the single closing authorization (the exact `sign_this` bytes).
+export function signClosing(privHex, statement) {
+  return signStatement(privHex, CLOSE_TAG, statement)
+}
+
 // ── Encrypted key envelope ─────────────────────────────────────────────
 // AES-GCM under PBKDF2-SHA256 (200k iterations, 16-byte salt). The envelope is
 // what localStorage holds and what the user exports as a backup file.

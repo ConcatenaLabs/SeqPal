@@ -59,6 +59,16 @@ type config struct {
 	operatorRegistration string // optional operator registration (OA-1)
 	policyFeeSats        int64  // network fee reference (SEQ-sats) for fee_convert derivation
 
+	// M5 money engine.
+	btcURL       string        // testnet4 (parent-chain) Bitcoin node RPC for the native-BTC escrow
+	btcUser      string        // testnet4 RPC username (mainchainrpcuser)
+	btcPass      string        // testnet4 RPC password (mainchainrpcpassword)
+	usdxAsset    string        // USDX asset id (Sequentia payment asset)
+	escrowConfs  int64         // confirmations before a deposit becomes in_escrow
+	setupFeeUSD  float64       // SeqPal platform setup fee (USD), blocks deploy until paid
+	escrowFeeBps int64         // SeqPal escrow fee in basis points, deducted at release
+	fiatSettle   time.Duration // simulated fiat pending->settled delay
+
 	// Cron cadences (fast defaults so a demo runs unattended).
 	screenRefresh   time.Duration // re-download the lists
 	screenInterval  time.Duration // re-screen all identities
@@ -81,6 +91,10 @@ type server struct {
 	sse         *sseBroker  // SSE fan-out (lazily built via bus())
 	busOnce     sync.Once   //
 	regThrottle regThrottle // rate-limits registry publish retries
+
+	// M5 money engine.
+	escrow  *escrowState // idempotent escrow-wallet provisioning guard
+	closeMu *keyedMutex  // serializes the closing engine per issuance
 }
 
 func env(key, def string) string {
@@ -94,6 +108,15 @@ func envInt(key string, def int64) int64 {
 	if v := os.Getenv(key); v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
 			return n
+		}
+	}
+	return def
+}
+
+func envFloat(key string, def float64) float64 {
+	if v := os.Getenv(key); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			return f
 		}
 	}
 	return def
@@ -127,7 +150,14 @@ func main() {
 	flag.StringVar(&cfg.operatorName, "operatorname", env("SEQPALD_OPERATOR_NAME", ""), "optional operator identity added to the contract (OA-1)")
 	flag.StringVar(&cfg.operatorRegistration, "operatorreg", env("SEQPALD_OPERATOR_REGISTRATION", ""), "optional operator registration added to the contract (OA-1)")
 	flag.Int64Var(&cfg.policyFeeSats, "policyfeesats", envInt("SEQPALD_POLICY_FEE_SATS", 1000), "network fee reference in SEQ-sats used to derive fee_convert_atoms")
+	flag.StringVar(&cfg.btcURL, "btcurl", env("SEQPALD_BTC_RPC_URL", ""), "testnet4 (parent-chain) Bitcoin node RPC URL for the native-BTC escrow (empty = BTC rail disabled)")
+	flag.StringVar(&cfg.btcUser, "btcuser", env("SEQPALD_BTC_RPC_USER", ""), "testnet4 Bitcoin RPC username (mainchainrpcuser)")
+	flag.StringVar(&cfg.btcPass, "btcpass", env("SEQPALD_BTC_RPC_PASS", ""), "testnet4 Bitcoin RPC password (mainchainrpcpassword)")
+	flag.StringVar(&cfg.usdxAsset, "usdxasset", env("SEQPALD_USDX_ASSET", "2a515539da5e6a60caa7766ecd65bac0c10d15717ddd2088844ba58f4d04b9de"), "USDX asset id (Sequentia payment asset)")
+	flag.Int64Var(&cfg.escrowConfs, "escrowconfs", envInt("SEQPALD_ESCROW_CONFS", 1), "confirmations before a deposit becomes in_escrow")
 	flag.Parse()
+	cfg.setupFeeUSD = envFloat("SEQPALD_SETUP_FEE_USD", 500)
+	cfg.escrowFeeBps = envInt("SEQPALD_ESCROW_FEE_BPS", 50)
 
 	cfg.adminAIDs = adminSet(adminAIDs)
 	cfg.screenRefresh = 24 * time.Hour
@@ -137,6 +167,7 @@ func main() {
 	cfg.autoReviewDelay = 10 * time.Second
 	cfg.watchInterval = 15 * time.Second
 	cfg.anchorInterval = 24 * time.Hour
+	cfg.fiatSettle = 8 * time.Second
 	cfg.openampURL = strings.TrimRight(cfg.openampURL, "/")
 	cfg.electrsURL = strings.TrimRight(cfg.electrsURL, "/")
 	cfg.registryURL = strings.TrimRight(cfg.registryURL, "/")
@@ -160,12 +191,14 @@ func main() {
 	}
 
 	s := &server{
-		cfg:    cfg,
-		st:     st,
-		http:   &http.Client{Timeout: 60 * time.Second},
-		rl:     newRateLimiter(),
-		catMu:  newKeyedMutex(),
-		screen: newScreener(cfg.screenDir),
+		cfg:     cfg,
+		st:      st,
+		http:    &http.Client{Timeout: 60 * time.Second},
+		rl:      newRateLimiter(),
+		catMu:   newKeyedMutex(),
+		screen:  newScreener(cfg.screenDir),
+		escrow:  newEscrowState(),
+		closeMu: newKeyedMutex(),
 	}
 	s.startWorkers()
 
@@ -218,6 +251,22 @@ func (s *server) handler() http.Handler {
 	mux.HandleFunc("GET /api/events", s.requireSession(s.handleEvents))
 	mux.HandleFunc("GET /api/issuances/{id}/holders", s.requireSession(s.handleIssuanceHolders))
 	mux.HandleFunc("GET /api/issuances/{id}/log", s.requireSession(s.handleIssuanceLog))
+
+	// M5 money engine: the gated offering view (public teaser + gated full view),
+	// gate capture, subscriptions and their per-rail deposits, the SIMULATED fiat
+	// checkout, platform fees, payout mandates, and closing.
+	mux.HandleFunc("GET /api/issuances/{id}/offering", s.handleOffering) // public: teaser or gated full view
+	mux.HandleFunc("POST /api/issuances/{id}/gate", s.requireSession(s.handleGate))
+	mux.HandleFunc("POST /api/issuances/{id}/subscribe", s.requireSession(s.handleSubscribe))
+	mux.HandleFunc("GET /api/subscriptions", s.requireSession(s.handleMySubscriptions))
+	mux.HandleFunc("GET /api/issuances/{id}/subscriptions", s.requireSession(s.handleIssuanceSubscriptions))
+	mux.HandleFunc("GET /api/fiat/{id}", s.requireSession(s.handleFiatStatus))
+	mux.HandleFunc("GET /api/issuances/{id}/fees", s.requireSession(s.handleFees))
+	mux.HandleFunc("POST /api/issuances/{id}/fees/pay", s.requireSession(s.handlePayFee))
+	mux.HandleFunc("GET /api/issuances/{id}/mandate", s.requireSession(s.handleMandates))
+	mux.HandleFunc("POST /api/issuances/{id}/mandate", s.requireSession(s.handleMandate))
+	mux.HandleFunc("POST /api/issuances/{id}/close", s.requireSession(s.handleClose))
+	mux.HandleFunc("GET /api/issuances/{id}/settlements", s.requireSession(s.handleSettlements))
 
 	// SeqPal ID surface.
 	mux.HandleFunc("POST /api/id/verify", s.requireSession(s.handleIDVerify))

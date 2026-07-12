@@ -218,6 +218,17 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// M5: an unpaid SeqPal platform setup fee blocks the deploy. The fee is
+	// invoiced lazily here (idempotent) and payable by the issuer's choice of rail
+	// via POST /issuances/{id}/fees/pay; a zero configured fee auto-marks paid.
+	if paid, ferr := s.setupFeePaid(iss.ID); ferr != nil {
+		writeErr(w, 500, "store error")
+		return
+	} else if !paid {
+		refuse(402, "the SeqPal platform setup fee is unpaid; pay it at POST /issuances/"+iss.ID+"/fees/pay before deploying")
+		return
+	}
+
 	// The token check precedes the rate limit so a platform misconfiguration does
 	// not silently spend the caller's deploy budget.
 	if s.cfg.issuerToken == "" {

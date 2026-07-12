@@ -270,6 +270,123 @@ CREATE TABLE doc_signatures (
 );
 CREATE INDEX idx_doc_sig_doc ON doc_signatures(doc_hash);
 `,
+	// M5: the money engine. Subscriptions and their per-rail escrow deposits, the
+	// exactly-one-per-subscription settlement record (the idempotency anchor), the
+	// append-only escrow ledger (funds_simulated flag on fiat-derived rows), the
+	// SIMULATED fiat processor's payments, platform-fee invoices (setup blocks
+	// deploy; escrow accrues and is deducted at release), issuer payout mandates,
+	// and the EU per-member-state offeree counters + captured offer-side gate
+	// records. All additive; an M4 database migrates forward in place.
+	`
+CREATE TABLE subscriptions (
+    id              TEXT PRIMARY KEY,
+    issuance_id     TEXT    NOT NULL,
+    investor_aid    TEXT    NOT NULL,
+    rail            TEXT    NOT NULL,
+    token_atoms     INTEGER NOT NULL DEFAULT 0,
+    pay_amount      INTEGER NOT NULL DEFAULT 0,
+    pay_ccy         TEXT    NOT NULL DEFAULT '',
+    deposit_address TEXT    NOT NULL DEFAULT '',
+    refund_address  TEXT    NOT NULL DEFAULT '',
+    state           TEXT    NOT NULL DEFAULT 'created',
+    funds_simulated INTEGER NOT NULL DEFAULT 0,
+    deposit_txid    TEXT    NOT NULL DEFAULT '',
+    confirmations   INTEGER NOT NULL DEFAULT 0,
+    deposited_atoms INTEGER NOT NULL DEFAULT 0,
+    usd_rate        REAL    NOT NULL DEFAULT 0,
+    created_at      INTEGER NOT NULL,
+    updated_at      INTEGER NOT NULL
+);
+CREATE INDEX idx_subs_issuance ON subscriptions(issuance_id);
+CREATE INDEX idx_subs_investor ON subscriptions(investor_aid);
+CREATE INDEX idx_subs_deposit_addr ON subscriptions(deposit_address);
+CREATE INDEX idx_subs_state ON subscriptions(state);
+CREATE TABLE settlements (
+    subscription_id TEXT PRIMARY KEY,
+    issuance_id     TEXT    NOT NULL DEFAULT '',
+    state           TEXT    NOT NULL DEFAULT 'pending',
+    delivery_txid   TEXT    NOT NULL DEFAULT '',
+    release_txid    TEXT    NOT NULL DEFAULT '',
+    refund_txid     TEXT    NOT NULL DEFAULT '',
+    fee_atoms       INTEGER NOT NULL DEFAULT 0,
+    error           TEXT    NOT NULL DEFAULT '',
+    created_at      INTEGER NOT NULL,
+    updated_at      INTEGER NOT NULL
+);
+CREATE TABLE escrow_ledger (
+    id              TEXT PRIMARY KEY,
+    subscription_id TEXT    NOT NULL DEFAULT '',
+    issuance_id     TEXT    NOT NULL DEFAULT '',
+    kind            TEXT    NOT NULL,
+    rail            TEXT    NOT NULL DEFAULT '',
+    amount          INTEGER NOT NULL DEFAULT 0,
+    ccy             TEXT    NOT NULL DEFAULT '',
+    txid            TEXT    NOT NULL DEFAULT '',
+    funds_simulated INTEGER NOT NULL DEFAULT 0,
+    created_at      INTEGER NOT NULL
+);
+CREATE INDEX idx_ledger_sub ON escrow_ledger(subscription_id);
+CREATE INDEX idx_ledger_issuance ON escrow_ledger(issuance_id);
+CREATE TABLE fiat_payments (
+    id              TEXT PRIMARY KEY,
+    subscription_id TEXT    NOT NULL DEFAULT '',
+    invoice_id      TEXT    NOT NULL DEFAULT '',
+    rail            TEXT    NOT NULL,
+    amount_minor    INTEGER NOT NULL DEFAULT 0,
+    ccy             TEXT    NOT NULL DEFAULT 'USD',
+    state           TEXT    NOT NULL DEFAULT 'pending',
+    receipt         TEXT    NOT NULL DEFAULT '',
+    created_at      INTEGER NOT NULL,
+    settle_at       INTEGER NOT NULL DEFAULT 0,
+    updated_at      INTEGER NOT NULL
+);
+CREATE INDEX idx_fiat_sub ON fiat_payments(subscription_id);
+CREATE INDEX idx_fiat_state ON fiat_payments(state);
+CREATE TABLE fee_invoices (
+    id              TEXT PRIMARY KEY,
+    issuance_id     TEXT    NOT NULL,
+    kind            TEXT    NOT NULL,
+    rail            TEXT    NOT NULL DEFAULT '',
+    amount_usd      REAL    NOT NULL DEFAULT 0,
+    amount          INTEGER NOT NULL DEFAULT 0,
+    ccy             TEXT    NOT NULL DEFAULT '',
+    state           TEXT    NOT NULL DEFAULT 'unpaid',
+    txid            TEXT    NOT NULL DEFAULT '',
+    address         TEXT    NOT NULL DEFAULT '',
+    funds_simulated INTEGER NOT NULL DEFAULT 0,
+    created_at      INTEGER NOT NULL,
+    paid_at         INTEGER NOT NULL DEFAULT 0,
+    updated_at      INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX idx_fee_invoices_issuance ON fee_invoices(issuance_id);
+CREATE TABLE payout_mandates (
+    issuance_id  TEXT    NOT NULL,
+    chain        TEXT    NOT NULL,
+    asset        TEXT    NOT NULL DEFAULT '',
+    address      TEXT    NOT NULL,
+    signature    TEXT    NOT NULL DEFAULT '',
+    signer_xonly TEXT    NOT NULL DEFAULT '',
+    created_at   INTEGER NOT NULL,
+    PRIMARY KEY (issuance_id, chain)
+);
+CREATE TABLE offerees (
+    issuance_id  TEXT    NOT NULL,
+    member_state TEXT    NOT NULL,
+    aid          TEXT    NOT NULL,
+    created_at   INTEGER NOT NULL,
+    PRIMARY KEY (issuance_id, member_state, aid)
+);
+CREATE INDEX idx_offerees_ms ON offerees(issuance_id, member_state);
+CREATE TABLE gate_records (
+    aid         TEXT    NOT NULL,
+    issuance_id TEXT    NOT NULL DEFAULT '',
+    kind        TEXT    NOT NULL,
+    detail      TEXT    NOT NULL DEFAULT '{}',
+    valid_until INTEGER NOT NULL DEFAULT 0,
+    created_at  INTEGER NOT NULL,
+    PRIMARY KEY (aid, issuance_id, kind)
+);
+`,
 }
 
 // Store is seqpald's persistent state. Every financial fact the UI shows is
