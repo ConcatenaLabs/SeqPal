@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Icon } from '../icons'
 import QrCode from '../QrCode'
-import { fmtRail, railMeta } from '../../lib/money'
+import { fmtRail, railMeta, settlementModel } from '../../lib/money'
 
 // A per-payment deposit instruction: the QR, the full copyable address, the
 // exact amount to send in the rail's OWN units, and the confirmation depth at
@@ -11,6 +11,7 @@ import { fmtRail, railMeta } from '../../lib/money'
 export default function DepositBox({ rail, address, payAmount, payCcy, confsRequired, registrarNote }) {
   const [copied, setCopied] = useState(false)
   const meta = railMeta(rail)
+  const model = settlementModel(rail)
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(address)
@@ -55,8 +56,14 @@ export default function DepositBox({ rail, address, payAmount, payCcy, confsRequ
           </p>
         </div>
       </div>
+      {model.label && (
+        <p className="mt-3 flex items-start gap-1.5 text-xs text-ink-700/70">
+          <Icon.exchange width={13} height={13} className="mt-0.5 shrink-0" />
+          At close, this settles as {model.label}.
+        </p>
+      )}
       {registrarNote && (
-        <p className="mt-3 flex items-start gap-1.5 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+        <p className="mt-2 flex items-start gap-1.5 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
           <Icon.exchange width={13} height={13} className="mt-0.5 shrink-0" />
           {registrarNote}
         </p>

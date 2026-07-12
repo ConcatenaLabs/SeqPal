@@ -387,6 +387,23 @@ CREATE TABLE gate_records (
     PRIMARY KEY (aid, issuance_id, kind)
 );
 `,
+	// M6: reorged-BTC-deposit holds. A settled native-BTC subscription's deposit is
+	// watched on testnet4 AFTER delivery; a reorg that unwinds the deposit triggers a
+	// GLOBAL account freeze (recorded here so a re-confirmation lifts only the freeze
+	// this hold caused, never a sanctions freeze).
+	`
+CREATE TABLE reorg_holds (
+    subscription_id TEXT PRIMARY KEY,
+    issuance_id     TEXT    NOT NULL DEFAULT '',
+    investor_aid    TEXT    NOT NULL,
+    deposit_txid    TEXT    NOT NULL DEFAULT '',
+    state           TEXT    NOT NULL DEFAULT 'active',
+    reason          TEXT    NOT NULL DEFAULT '',
+    created_at      INTEGER NOT NULL,
+    updated_at      INTEGER NOT NULL
+);
+CREATE INDEX idx_reorg_holds_state ON reorg_holds(state);
+`,
 }
 
 // Store is seqpald's persistent state. Every financial fact the UI shows is

@@ -16,6 +16,7 @@ export const REAL = [
   'BIP340 document e-signatures over the tagged document hash',
   'The RFSA filing number, its public lookup, the deploy gate, and the anchored filing hash',
   'USDX and native testnet BTC as settlement assets',
+  'Atomic delivery versus payment for USDX: the token and the USDX payment settle in one transaction',
 ]
 
 export const SIMULATED = [

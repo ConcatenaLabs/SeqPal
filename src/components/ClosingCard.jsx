@@ -6,7 +6,7 @@ import { fmtAssetAmount } from '../lib/format'
 import * as api from '../lib/api'
 import { usePoll } from '../lib/poll'
 import { useStore } from '../lib/store'
-import { fmtRail, subStateChip } from '../lib/money'
+import { fmtRail, subStateChip, settlementModel } from '../lib/money'
 
 // A short investor AID for the book.
 const shortAid = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '-')
@@ -94,10 +94,13 @@ export default function ClosingCard({ iss }) {
         </Badge>
       </div>
       <p className="mt-1.5 text-xs leading-relaxed text-ink-700/70">
-        Closing is two on-chain transactions per subscription: delivery of the token from the
-        offering escrow enclave to the investor, then release of the escrowed payment to your
-        payout mandate. A failed close auto-refunds to the investor's refund address. Nothing is
-        delivered before you sign.
+        Closing settles each subscription with delivery versus payment. A USDX subscription
+        settles atomically in one transaction: the token moves from the offering escrow enclave to
+        the investor and the escrowed USDX moves to your payout mandate together. A native BTC
+        subscription is cross-chain registrar settlement, not atomic: the payment confirmed on
+        Bitcoin testnet4 and delivery is co-signed on Sequentia. A failed close auto-refunds to the
+        investor's refund address. Nothing is delivered before you sign, and nothing is final at 0
+        confirmations.
       </p>
 
       <div className="mt-4 grid grid-cols-3 gap-3">
@@ -122,6 +125,11 @@ export default function ClosingCard({ iss }) {
           {subs.map((s) => {
             const chip = subStateChip(s.state)
             const st = settById[s.id]
+            const model = settlementModel(s.rail)
+            // An atomic USDX close carries one combined txid: delivery and release
+            // are the same transaction, so render it once, not as two lines.
+            const atomic =
+              model.atomic && st && st.delivery_txid && st.delivery_txid === st.release_txid
             return (
               <div key={s.id} className="rounded-lg border border-ink-900/10 px-3 py-2.5">
                 <div className="flex items-center justify-between gap-3 text-sm">
@@ -138,10 +146,22 @@ export default function ClosingCard({ iss }) {
                   <span>{fmtAssetAmount(s.token_atoms, iss.precision, iss.ticker)}</span>
                   <span>{fmtRail(s.deposited_atoms || s.pay_amount, s.pay_ccy)} escrowed</span>
                 </div>
+                {model.label && (
+                  <div className="mt-1 flex items-center gap-1.5 text-[11px] text-ink-700/55">
+                    <Icon.exchange width={11} height={11} className="shrink-0" />
+                    {model.label}
+                  </div>
+                )}
                 {st && (st.delivery_txid || st.release_txid || st.refund_txid) && (
                   <div className="mt-2 space-y-1 border-t border-ink-900/5 pt-2">
-                    <TxLine label="Delivery" txid={st.delivery_txid} />
-                    <TxLine label="Release" txid={st.release_txid} />
+                    {atomic ? (
+                      <TxLine label="Atomic delivery versus payment" txid={st.delivery_txid} />
+                    ) : (
+                      <>
+                        <TxLine label="Delivery" txid={st.delivery_txid} />
+                        <TxLine label="Release" txid={st.release_txid} />
+                      </>
+                    )}
                     <TxLine label="Refund" txid={st.refund_txid} />
                     {st.state === 'failed' && st.error && (
                       <p className="text-xs text-rose-600">{st.error}</p>

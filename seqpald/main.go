@@ -65,6 +65,7 @@ type config struct {
 	btcPass      string        // testnet4 RPC password (mainchainrpcpassword)
 	usdxAsset    string        // USDX asset id (Sequentia payment asset)
 	escrowConfs  int64         // confirmations before a deposit becomes in_escrow
+	atomicClose  bool          // M6: settle USDX subscriptions as ONE atomic DvP tx (closing v2); v1 fallback otherwise
 	setupFeeUSD  float64       // SeqPal platform setup fee (USD), blocks deploy until paid
 	escrowFeeBps int64         // SeqPal escrow fee in basis points, deducted at release
 	fiatSettle   time.Duration // simulated fiat pending->settled delay
@@ -155,6 +156,8 @@ func main() {
 	flag.StringVar(&cfg.btcPass, "btcpass", env("SEQPALD_BTC_RPC_PASS", ""), "testnet4 Bitcoin RPC password (mainchainrpcpassword)")
 	flag.StringVar(&cfg.usdxAsset, "usdxasset", env("SEQPALD_USDX_ASSET", "2a515539da5e6a60caa7766ecd65bac0c10d15717ddd2088844ba58f4d04b9de"), "USDX asset id (Sequentia payment asset)")
 	flag.Int64Var(&cfg.escrowConfs, "escrowconfs", envInt("SEQPALD_ESCROW_CONFS", 1), "confirmations before a deposit becomes in_escrow")
+	atomicDefault := env("SEQPALD_ATOMIC_CLOSE", "1") == "1" || strings.EqualFold(env("SEQPALD_ATOMIC_CLOSE", "1"), "true")
+	flag.BoolVar(&cfg.atomicClose, "atomicclose", atomicDefault, "settle USDX subscriptions as one atomic delivery-versus-payment transaction (closing v2); falls back to the two-transaction close v1 when the policy server has no payment leg")
 	flag.Parse()
 	cfg.setupFeeUSD = envFloat("SEQPALD_SETUP_FEE_USD", 500)
 	cfg.escrowFeeBps = envInt("SEQPALD_ESCROW_FEE_BPS", 50)

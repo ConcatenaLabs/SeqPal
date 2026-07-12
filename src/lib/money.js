@@ -51,6 +51,25 @@ export const RAIL_META = {
 
 export const railMeta = (rail) => RAIL_META[rail] || { label: rail, chain: '', simulated: false, trust: '' }
 
+// The settlement model of a rail, labeled honestly for the close surface. USDX
+// settles as one atomic delivery-versus-payment transaction (the token and the
+// USDX payment move together, M6); native BTC is cross-chain registrar settlement,
+// not atomic; the simulated fiat rails deliver on chain against a simulated
+// payment. atomic drives whether the close shows a single combined txid.
+export function settlementModel(rail) {
+  switch (rail) {
+    case 'usdx':
+      return { atomic: true, label: 'delivery-versus-payment: atomic (one transaction)' }
+    case 'btc':
+      return { atomic: false, label: 'cross-chain registrar settlement, not atomic' }
+    case 'card':
+    case 'bank':
+      return { atomic: false, label: 'simulated payment, on-chain delivery' }
+    default:
+      return { atomic: false, label: '' }
+  }
+}
+
 // The escrow lifecycle chip descriptor for a subscription state. Nothing is
 // "final": in_escrow means the deposit confirmed to N, settled means delivered
 // at close. Colours reuse the Badge palette.

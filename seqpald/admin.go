@@ -328,6 +328,11 @@ func (s *server) startWorkers() {
 	if s.cfg.nodeURL != "" || s.cfg.btcURL != "" {
 		go s.runMoneyWatcher(s.cfg.watchInterval)
 	}
+	// M6: keep tracking settled native-BTC deposits so a post-delivery reorg on
+	// testnet4 triggers a global freeze (Bitcoin anchoring is supreme).
+	if s.cfg.btcURL != "" {
+		go s.runBtcReorgWatcher(s.cfg.watchInterval)
+	}
 	go s.runFiatCron(2 * time.Second)
 }
 
