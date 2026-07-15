@@ -116,9 +116,9 @@ export default function Structures() {
         </div>
 
         <p className="mx-auto mt-10 max-w-3xl text-center text-sm text-ink-700/70">
-          Three structures, Native Equity, Equity SPV, and Debt / Yield, can be run as
-          either a private placement or a public offering. Depository Receipts are always
-          a public offering. Public offerings carry additional disclosure requirements and
+          Native Equity, Equity SPV, and Debt / Yield can each be run as a private
+          placement or a public offering. Depository Receipts are always a public
+          offering. Public offerings carry additional disclosure requirements and
           a setup surcharge; see{' '}
           <Link to="/pricing" className="font-semibold text-btc-600 hover:underline">
             pricing

@@ -29,7 +29,7 @@ const SECTIONS = [
         q: 'Is SeqPal a broker or a placement agent?',
         a: [
           'No. SeqPal does not solicit investors, does not advise or recommend, does not negotiate terms, and does not act as principal or agent in the sale itself. Those are the activities that make a firm a broker-dealer in the US, a MiFID II investment firm in the EU, or an arranger in the UK, and SeqPal performs none of them. You place your own offering as principal.',
-          'SeqPal charges you, the issuer, for the infrastructure and the escrow-and-settlement service. Its escrow fee accrues on the funds held and is payable whether or not the offering closes, so it pays for a custody-and-settlement service rather than a completed sale, which is what keeps it off the placement-commission side of the line the SEC drew in the FundersClub and AngelList no-action letters.',
+          'SeqPal charges you, the issuer, for the platform and, if you hire it, the escrow-and-settlement service. The escrow fee accrues on the funds held and is payable whether or not the offering closes, so it pays for a custody-and-settlement service rather than a completed sale, which is what keeps it off the placement-commission side of the line the SEC drew in the FundersClub and AngelList no-action letters.',
         ],
       },
     ],
@@ -60,10 +60,10 @@ const SECTIONS = [
     ],
   },
   {
-    title: 'Próspera and the RFSA, and what they do not replace',
+    title: 'What Próspera and the RFSA give you, and what they do not replace',
     items: [
       {
-        q: 'What are Próspera and the RFSA, and why here?',
+        q: 'Why Próspera, and what is the RFSA?',
         a: [
           'Próspera is the jurisdiction: a Zone for Employment and Economic Development on Roatán, Honduras, where SeqPal and the issuer’s offering are domiciled. The RFSA is its financial-services regulator.',
           'SeqPal is licensed by the RFSA for the infrastructure it runs, and Próspera’s regime is genuinely favourable to tokenized issuance. That is a real advantage on the issuance side.',
@@ -86,7 +86,7 @@ const SECTIONS = [
         q: 'What is a SeqPal ID?',
         a: [
           'A SeqPal ID is the identity layer, and there is one registration flow, identical for everyone; it never asks whether you are an issuer or an investor. It produces a verified identity bound to a key you generate in your browser.',
-          'An investor needs one to be permitted to hold or trade these restricted assets anywhere on Sequentia, including on a venue that lists them, and an issuer uses the same credential to issue. "Issuer" and "investor" are things a verified identity does later, never a type chosen at signup.',
+          'An investor needs one to hold or trade these restricted assets anywhere on Sequentia, including on a venue that lists them, and an issuer uses the same credential to issue. "Issuer" and "investor" are things a verified identity does later, never a type chosen at signup.',
         ],
       },
       {

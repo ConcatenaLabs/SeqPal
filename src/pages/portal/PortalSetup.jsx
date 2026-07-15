@@ -135,7 +135,9 @@ export default function PortalSetup() {
   const toggleDoc = (d) =>
     set({ docs: cfg.docs.includes(d) ? cfg.docs.filter((x) => x !== d) : [...cfg.docs, d] })
 
-  const canPublish = cfg.brandName && cfg.slug && cfg.escrowRequested && cfg.tosAccepted
+  // Escrow is optional; only branding, a domain, and the legal-operator
+  // acknowledgment gate publishing.
+  const canPublish = cfg.brandName && cfg.slug && cfg.tosAccepted
 
   const publish = () => {
     updateSim(iss.id, { portal: { ...cfg, configured: true, published: true } })
@@ -166,13 +168,14 @@ export default function PortalSetup() {
               Set up your placement portal
             </h1>
             <p className="mt-2 max-w-2xl leading-relaxed text-ink-700/90">
-              The portal is brandable software that runs on SeqPal’s stack and is operated
-              in <span className="font-semibold">your</span> name, on your own domain and
-              terms of service. You are the legal operator: you set the terms, decide which
-              investors you accept, and answer for the offering’s lawfulness in every
-              jurisdiction where you make it available. SeqPal is your technology and
-              services vendor: it supplies the software, the SeqPal ID gate, and the escrow
-              service.
+              The portal is brandable software you host yourself, on your own domain and your
+              own web host, in <span className="font-semibold">your</span> name and under your
+              own terms of service. You are the legal operator: you host and run it, set the
+              terms, decide which investors you accept, and answer for the offering’s lawfulness
+              in every jurisdiction where you make it available. SeqPal is your software and
+              services vendor, not your host: it supplies the portal software, the SeqPal ID
+              eligibility gate, and, if you hire it, escrow. SeqPal does not host or operate your
+              portal and is not a party to your investor terms.
             </p>
           </div>
 
@@ -226,17 +229,17 @@ export default function PortalSetup() {
             </div>
           </section>
 
-          {/* Domain */}
+          {/* Domain & hosting */}
           <section className="card p-6">
             <div className="flex items-center gap-2 font-bold text-ink-900">
               <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-ink-900 text-xs font-bold text-white">
                 2
               </span>
-              Domain & hosting
+              Your domain & hosting
             </div>
             <div className="mt-4">
               <label className="label" htmlFor="pf-slug">
-                Your subdomain
+                Your domain
               </label>
               <div className="flex items-center gap-2">
                 <span className="font-mono text-sm text-ink-700/60">invest.</span>
@@ -248,15 +251,23 @@ export default function PortalSetup() {
                 />
                 <span className="font-mono text-sm text-ink-700/60">.com</span>
               </div>
+              <p className="mt-1 text-xs text-ink-700/60">A domain you own, registered in your name.</p>
               <div className="mt-4 rounded-lg bg-ink-900/[0.03] p-4 text-sm text-ink-700/80">
-                Point your domain at the pre-integrated stack with a single CNAME record.
-                SeqPal facilitates the hosting agreement through the dashboard, so you
-                don’t procure or run any infrastructure.
-                <div className="mt-2 rounded-md bg-ink-950 px-3 py-2 font-mono text-xs leading-relaxed text-white/80 [word-break:break-all]">
-                  invest.{cfg.slug || 'your-name'}.com CNAME portals.seqpal.io
-                </div>
+                You host the portal. Deploy the portal bundle to your own web host, under this
+                domain, in your name. The bundle is a self-contained site that calls SeqPal’s
+                public APIs for the SeqPal ID eligibility gate and, if you hire it, escrow. SeqPal
+                is not your host and is not a party to your hosting contract.
               </div>
-              <DemoNote className="mt-3">DNS / hosting is mocked in the demo.</DemoNote>
+              <div className="mt-3 rounded-lg border border-ink-900/10 p-4 text-sm text-ink-700/80">
+                <span className="font-semibold text-ink-900">No domain or host yet?</span> SeqPal
+                can point you to a registrar and a web host and pre-fill the setup as a
+                convenience. The domain and hosting contracts are directly between you and those
+                providers; SeqPal is not a party to either.
+              </div>
+              <DemoNote className="mt-3">
+                In this demo the portal previews on seqpal.io. In production you deploy the same
+                bundle to your own domain and host.
+              </DemoNote>
             </div>
           </section>
 
@@ -360,11 +371,12 @@ export default function PortalSetup() {
               />
               <span className="text-sm">
                 <span className="font-medium text-ink-900">
-                  I am the legal operator of this portal
+                  I host and operate this portal
                 </span>
                 <span className="mt-0.5 block text-xs text-ink-700/70">
-                  Investors accept my own terms of service. SeqPal is a technology and
-                  services vendor, not the portal operator or a placement agent.
+                  I deploy it on my own domain and web host, in my name, and investors accept my
+                  own terms of service. SeqPal is a software and services vendor, not my host, the
+                  portal operator, or a placement agent.
                 </span>
               </span>
             </label>
@@ -385,11 +397,11 @@ export default function PortalSetup() {
             className="btn-primary mt-5 w-full"
           >
             <Icon.globe width={16} height={16} />
-            Publish portal
+            Save and preview portal
           </button>
           {!canPublish && (
             <p className="mt-2 text-center text-xs text-ink-700/60">
-              Request escrow and confirm you’re the legal operator to publish.
+              Name your brand, enter your domain, and confirm you host and operate the portal to continue.
             </p>
           )}
         </div>

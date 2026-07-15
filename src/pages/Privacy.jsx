@@ -42,8 +42,7 @@ export default function Privacy() {
         Privacy, scoped to what ships
       </h1>
       <p className="mt-4 text-lg leading-relaxed text-ink-700/90">
-        This page describes what the platform does with your data today. It is a testnet proof of
-        concept, and it is updated as data minimization lands.
+        What the platform does with your data, on a testnet proof of concept.
       </p>
 
       {/* Partial erasure */}
@@ -61,11 +60,9 @@ export default function Privacy() {
           of the chain records is not possible.
         </p>
         <p className="mt-2 text-sm leading-relaxed text-ink-700/85">
-          Transparency-log minimization has shipped. A category event in the public transparency log
-          now records the hash of your category set, not the raw list, so the log no longer leaks each
-          holder's exact category vector. The hash stays verifiable: anyone who knows the set can
-          recompute the commitment and match it. Older entries predating the change remain readable,
-          and the log's hash chain and on-chain anchor are unchanged.
+          A category event in the public transparency log records the hash of your category set, not
+          the raw list, so the log does not expose each holder's exact category vector. The hash stays
+          verifiable: anyone who knows the set can recompute the commitment and match it.
         </p>
       </div>
 

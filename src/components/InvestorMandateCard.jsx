@@ -154,7 +154,7 @@ export default function InvestorMandateCard() {
       <p className="mt-3 text-[11px] leading-relaxed text-ink-700/55">
         The address must be an ordinary Sequentia address a wallet can scan. An enclave key-path
         address, where your restricted tokens live, is refused: paying one would strand the funds.
-        Distributions are USDX on Sequentia in this milestone; native BTC payouts are a later step.
+        Distributions pay in USDX on Sequentia.
       </p>
     </div>
   )

@@ -19,7 +19,7 @@ const products = [
   {
     icon: Icon.id,
     name: 'SeqPal ID',
-    tagline: 'A universal compliance passport, for anyone.',
+    tagline: 'One compliance passport for everyone.',
     body: 'The identity and compliance passport for everyone on Sequentia who holds or issues a SeqPal asset. One role-neutral registration flow: it never asks whether you intend to issue or invest. Once verified, it carries the eligibility categories the policy server enforces on every transfer, so the holder is whitelisted for every SeqPal-managed asset their profile is eligible to hold. A SeqPal ID is required to hold or trade these assets anywhere on Sequentia.',
     points: [
       'One flow for everyone, no user-type question',
@@ -46,12 +46,12 @@ const products = [
     icon: Icon.globe,
     name: 'Placement Portal',
     tagline: 'Your own branded fundraising portal.',
-    body: 'A hosted technology and services stack that issuers use to run their own private placement portals on their own domain (e.g. invest.your-name.com). The issuer is the legal operator of the portal. SeqPal supplies the software, the SeqPal ID identity gate, and, if the issuer hires it, escrow.',
+    body: 'Portal software that issuers deploy on their own web host and their own domain (e.g. invest.your-name.com), in their own name, to run their own private placement portals. The issuer hosts and operates the portal and is its legal operator. SeqPal supplies the software, the SeqPal ID identity gate, and, if the issuer hires it, escrow, and is not the host or a party to the investor terms.',
     points: [
       'Offering memorandum & version-controlled data room',
       'SeqPal ID identity and eligibility gate',
       'Subscription-agreement workflow and e-signature',
-      'Optional escrow in fiat (segregated bank account, tri-party agreement) or BTC / USDX (segregated wallets), released on closing, or subscriptions paid directly to the issuer',
+      'Optional escrow in fiat (segregated bank account) or BTC / USDX (segregated wallets), released on closing; without escrow, subscriptions go directly to the issuer',
     ],
     cta: { to: '/onboarding', label: 'Configure a portal' },
   },
@@ -147,7 +147,7 @@ export default function Products() {
           <SectionHeading
             eyebrow="Products"
             title="The complete issuance stack"
-            sub="Four integrated products. Every third-party integration, KYC, e-signature, escrow, and the issuance layer, is pre-built once, so every issuer starts from a working platform."
+            sub="Four integrated products. KYC, e-signature, escrow, and the issuance layer are pre-built once, so every issuer starts from a working platform."
           />
           <Architecture />
         </div>

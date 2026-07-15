@@ -29,7 +29,7 @@ export const REAL = [
   'Transparency-log minimization: a category event logs the hash of the category set, which recomputes from the known set, instead of the raw list',
   'Opt-in confidential issuance requested per call with a blinded address, so it works without changing the shared node default',
   'Issuer venue-listing authorization, readable at the public listings endpoint, which a venue reads to list an asset but can never use to grant eligibility',
-  'The external issuer key on a new asset: the enclave issuer half is the issuing entity’s own browser key, so a clawback is two-phase and cannot be broadcast without the issuer’s signature, which the platform does not hold',
+  'The issuer key: on every asset the enclave issuer half is the issuing entity’s own browser key, so a clawback is two-phase and cannot be broadcast without the issuer’s signature, which the platform does not hold',
 ]
 
 export const SIMULATED = [
@@ -85,7 +85,7 @@ export const SIMULATED = [
   },
   {
     element: 'Licenses and registrations',
-    real: 'The Legal and Licensing page role analysis is real production analysis; only the registration numbers are demo.',
+    real: 'The licence slate on the Legal and Licensing page reflects the services SeqPal operates; only the entity and the registration numbers are demo.',
     label: 'Simulated registration numbers',
   },
   {
