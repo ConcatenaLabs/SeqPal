@@ -1240,6 +1240,11 @@ func (h *m5h) deployLivePrivate(session, ticker, jurisdiction string, price floa
 	if assetID == "" || escrowAID == "" {
 		h.t.Fatalf("deploy did not return asset/escrow: %s", dep.raw)
 	}
+	// Every asset is external (the issuer holds the clawback key); mirror that on the
+	// policy-server stub so a clawback of this asset is two-phase.
+	if issuerPub, _ := dep.body["issuer_pubkey"].(string); issuerPub != "" {
+		h.oa.markExternal(assetID, issuerPub)
+	}
 	return
 }
 

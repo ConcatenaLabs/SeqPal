@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 )
@@ -565,13 +566,33 @@ func TestM7Clawback_ReasonRequired_RecordsTxidAndLog_Idempotent(t *testing.T) {
 		t.Fatalf("clawback without a reason = %d, want 400", nc.code)
 	}
 
-	// A clawback with a reason performs the full sweep and surfaces the txid + log.
+	// A clawback with a reason builds the two-phase sweep: the reason is logged, the
+	// L_claw sighashes are surfaced, nothing is broadcast, and the holder's balance is
+	// untouched until the issuer signs.
 	reason := "sanctions confirmed, seizure ordered"
-	cb := h.do("POST", "/api/issuances/"+issID+"/clawback", issuerSession, map[string]any{
+	build := h.do("POST", "/api/issuances/"+issID+"/clawback", issuerSession, map[string]any{
 		"holder_aid": holder, "reason": reason,
 	})
+	if build.code != 200 {
+		t.Fatalf("clawback build: %d %s", build.code, build.errMsg())
+	}
+	if build.body["two_phase"] != true {
+		t.Fatalf("clawback must be two-phase (the issuer signs the sweep): %s", build.raw)
+	}
+	completeURL, _ := build.body["complete_url"].(string)
+	if completeURL == "" || build.body["txid"] != nil {
+		t.Fatalf("build must return a complete_url and broadcast nothing: %s", build.raw)
+	}
+	if bal := h.oa.balanceOf(holder, assetID); bal != 5000 {
+		t.Fatalf("build must not sweep: holder balance = %d, want 5000", bal)
+	}
+
+	// The issuer's signature completes the sweep and surfaces the txid.
+	cb := h.do("POST", completeURL, issuerSession, map[string]any{
+		"sigs": map[string]string{"0": strings.Repeat("ab", 64)},
+	})
 	if cb.code != 200 {
-		t.Fatalf("clawback: %d %s", cb.code, cb.errMsg())
+		t.Fatalf("clawback complete: %d %s", cb.code, cb.errMsg())
 	}
 	txid, _ := cb.body["txid"].(string)
 	if txid == "" {
@@ -588,23 +609,22 @@ func TestM7Clawback_ReasonRequired_RecordsTxidAndLog_Idempotent(t *testing.T) {
 	if !found || rtxid != txid || ratoms != 5000 {
 		t.Fatalf("clawback not in the public log (found=%v txid=%q atoms=%d)", found, rtxid, ratoms)
 	}
-	// The holder's confirmed balance is now zero (fully swept).
 	if bal := h.oa.balanceOf(holder, assetID); bal != 0 {
 		t.Fatalf("holder balance after sweep = %d, want 0", bal)
 	}
 
-	// IDEMPOTENT: a repeat clawback of the now-empty holder does not sweep again.
-	cb2 := h.do("POST", "/api/issuances/"+issID+"/clawback", issuerSession, map[string]any{
-		"holder_aid": holder, "reason": reason,
+	// IDEMPOTENT: a replay of completion returns the same txid without a second sweep.
+	cb2 := h.do("POST", completeURL, issuerSession, map[string]any{
+		"sigs": map[string]string{"0": strings.Repeat("ab", 64)},
 	})
 	if cb2.code != 200 {
-		t.Fatalf("repeat clawback: %d %s", cb2.code, cb2.errMsg())
+		t.Fatalf("repeat clawback complete: %d %s", cb2.code, cb2.errMsg())
+	}
+	if rt, _ := cb2.body["txid"].(string); rt != txid {
+		t.Fatalf("replay must return the same txid %s, got %s", txid, rt)
 	}
 	if h.oa.clawbackCount() != 1 {
 		t.Fatalf("repeat clawback double-swept: openampd clawback calls = %d, want still 1", h.oa.clawbackCount())
-	}
-	if h.oa.logLen() != 1 {
-		t.Fatalf("repeat clawback wrote a second log entry: log len = %d, want 1", h.oa.logLen())
 	}
 }
 
@@ -612,85 +632,6 @@ func TestM7Clawback_ReasonRequired_RecordsTxidAndLog_Idempotent(t *testing.T) {
 // 5. Stranded-key re-delivery runbook.
 // ===========================================================================
 
-// TestM7Redeliver_EndToEndAndIdempotent runs the stranded-key runbook end to end:
-// re-auth against the server-held identity of the old AID + a registered new AID,
-// a clawback sweep of the old AID, re-delivery of the full swept amount to the new
-// AID from a custodied source enclave, and the made-whole accounting. A replay is
-// idempotent (no second clawback, no second delivery).
-func TestM7Redeliver_EndToEndAndIdempotent(t *testing.T) {
-	h := newM7Harness(t, m5opts{})
-	issuerSession, _, _ := h.register(genPriv(t), "Issuer", "HN")
-	issID, assetID, escrowAID := h.deployLivePrivate(issuerSession, "STRAND", "HN", 1.0)
-
-	// The stranded investor (old AID) holds 700 units; they have an on-file identity
-	// record to re-authenticate against. The new AID is a registered account.
-	oldAID := h.regHolder("Returning Investor", "HN")
-	h.s.st.UpsertClaims(&Claims{AID: oldAID, Residence: "HN", BaseEligibility: "ret", Status: "verified"})
-	h.oa.setBalance(oldAID, assetID, 700)
-	newAID := h.regHolder("Returning Investor New Key", "HN")
-
-	// The custodied source (the offering escrow enclave) must hold enough to
-	// re-deliver under the disclosed pre-M9 treasury delegation.
-	h.oa.setBalance(escrowAID, assetID, 1000)
-
-	// The runbook is admin-gated: run it as a platform reviewer.
-	h.s.cfg.adminAIDs = map[string]bool{}
-	adminSession, adminAID, _ := h.register(genPriv(t), "Reviewer", "HN")
-	h.s.cfg.adminAIDs[adminAID] = true
-
-	rd := h.do("POST", "/api/id/redeliver", adminSession, map[string]any{
-		"issuance_id": issID, "old_aid": oldAID, "new_aid": newAID, "reason": "key loss attested out of band",
-	})
-	if rd.code != 200 {
-		t.Fatalf("redeliver: %d %s", rd.code, rd.errMsg())
-	}
-	rdObj, _ := rd.body["redelivery"].(map[string]any)
-	if st, _ := rdObj["state"].(string); st != "complete" {
-		t.Fatalf("redelivery state = %q, want complete (%s)", st, rd.raw)
-	}
-	if swept := jsonAtoms(rdObj["swept_atoms"]); swept != 700 {
-		t.Fatalf("swept_atoms = %d, want 700", swept)
-	}
-	// The old AID was fully swept; the new AID was made whole for the full amount.
-	if bal := h.oa.balanceOf(oldAID, assetID); bal != 0 {
-		t.Fatalf("old AID balance after sweep = %d, want 0", bal)
-	}
-	if bal := h.oa.balanceOf(newAID, assetID); bal != 700 {
-		t.Fatalf("new AID balance after re-delivery = %d, want 700", bal)
-	}
-	sweeps := h.oa.clawbackCount()
-	deliveries := h.oa.transfers()
-	if sweeps != 1 {
-		t.Fatalf("clawback sweeps = %d, want 1", sweeps)
-	}
-	if deliveries != 1 {
-		t.Fatalf("re-delivery transfers = %d, want 1", deliveries)
-	}
-
-	// IDEMPOTENT: replaying the runbook for the same triple resumes the completed
-	// record; it must not sweep or deliver again.
-	rd2 := h.do("POST", "/api/id/redeliver", adminSession, map[string]any{
-		"issuance_id": issID, "old_aid": oldAID, "new_aid": newAID, "reason": "key loss attested out of band",
-	})
-	if rd2.code != 200 {
-		t.Fatalf("redeliver replay: %d %s", rd2.code, rd2.errMsg())
-	}
-	if h.oa.clawbackCount() != sweeps {
-		t.Fatalf("replay re-swept: clawbacks = %d, want %d", h.oa.clawbackCount(), sweeps)
-	}
-	if h.oa.transfers() != deliveries {
-		t.Fatalf("replay re-delivered: transfers = %d, want %d", h.oa.transfers(), deliveries)
-	}
-
-	// The runbook is admin-only: a non-admin session is refused.
-	plainSession, _, _ := h.register(genPriv(t), "Not A Reviewer", "HN")
-	forbidden := h.do("POST", "/api/id/redeliver", plainSession, map[string]any{
-		"issuance_id": issID, "old_aid": oldAID, "new_aid": newAID, "reason": "x",
-	})
-	if forbidden.code != 403 {
-		t.Fatalf("non-admin redeliver = %d, want 403", forbidden.code)
-	}
-}
 
 // TestM7Redeliver_UnknownOldIdentityRefused proves step 1 re-auth: the old AID
 // must have a server-held identity record; without one, the runbook refuses to

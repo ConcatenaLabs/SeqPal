@@ -93,13 +93,14 @@ func TestM9Deploy_ExternalKeyIsOwnBrowserKey(t *testing.T) {
 		t.Fatalf("a foreign issuer_pubkey must be refused with 400, got %d: %s", bad.code, bad.raw)
 	}
 
-	// A legacy deploy (no key) stays non-external.
-	legacyIss, legacyAsset, _ := h.deployLivePrivate(session, "LEGA", "HN", 1.0)
-	li, _ := h.s.st.IssuanceByID(legacyIss)
-	if li == nil || li.IssuerExternal {
-		t.Fatalf("a no-key deploy must not be external: %#v", li)
+	// A deploy without an explicit key still uses this account's own key: every asset
+	// is external, so the platform never holds a key that can move a holder's position.
+	extIss, extAsset, _ := h.deployLivePrivate(session, "LEGA", "HN", 1.0)
+	li, _ := h.s.st.IssuanceByID(extIss)
+	if li == nil || !li.IssuerExternal {
+		t.Fatalf("every deploy must be external (the issuer holds the clawback key): %#v", li)
 	}
-	_ = legacyAsset
+	_ = extAsset
 }
 
 // ===========================================================================
@@ -187,39 +188,6 @@ func TestM9Console_ExternalClawbackIsTwoPhase(t *testing.T) {
 	}
 }
 
-// TestM9Console_LegacyClawbackStillSingleCall proves a legacy (server-held issuer
-// key) asset is NOT routed two-phase: the console clawback sweeps in one call with a
-// txid and no sighashes, exactly as before M9.
-func TestM9Console_LegacyClawbackStillSingleCall(t *testing.T) {
-	h := newM7Harness(t, m5opts{})
-	session, _, _ := h.register(genPriv(t), "Issuer", "HN")
-	issID, assetID, _ := h.deployLivePrivate(session, "LEG1", "HN", 1.0)
-
-	holder := h.regHolder("Holder", "HN")
-	h.oa.setBalance(holder, assetID, 300)
-
-	res := h.do("POST", "/api/issuances/"+issID+"/clawback", session, map[string]any{
-		"holder_aid": holder, "reason": "legacy sweep",
-	})
-	if res.code != 200 {
-		t.Fatalf("legacy clawback: %d %s", res.code, res.errMsg())
-	}
-	if _, twoPhase := res.body["two_phase"]; twoPhase {
-		t.Fatalf("a legacy asset must not go two-phase: %s", res.raw)
-	}
-	if _, hasToSign := res.body["to_sign"]; hasToSign {
-		t.Fatalf("a legacy clawback must not surface sighashes: %s", res.raw)
-	}
-	if txid, _ := res.body["txid"].(string); txid == "" {
-		t.Fatalf("a legacy clawback must broadcast in one call: %s", res.raw)
-	}
-	if bal := h.oa.balanceOf(holder, assetID); bal != 0 {
-		t.Fatalf("legacy clawback must sweep: balance = %d, want 0", bal)
-	}
-	if h.oa.pendingClawCount() != 0 {
-		t.Fatalf("a legacy clawback must create no pending build, got %d", h.oa.pendingClawCount())
-	}
-}
 
 // ===========================================================================
 // 3. Stranded-key runbook (external issuer key).

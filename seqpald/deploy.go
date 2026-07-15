@@ -147,27 +147,19 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// M9: external issuer key. When the SPA supplies the entity's own browser key,
-	// that key (not a server-generated one) becomes the enclave issuer half, so
-	// clawback runs two-phase and the server never holds an issuer key for this
-	// asset. The source is the deploying identity itself: this account is the issuer
-	// of record (registered as the clawback authority below), and its browser key is
-	// the one that can later sign the L_claw sweep, so the supplied key must equal
-	// it. A mismatch is refused, like the mandate signer cross-check. Absent = the
-	// legacy server-held key, byte-identical to pre-M9.
-	issuerExternal := false
+	// The enclave issuer half is ALWAYS the issuing entity's own key: this account's
+	// own x-only, whose private half stays in the browser. So clawback runs two-phase
+	// (the issuer signs the L_claw sweep) and the platform never holds a key that can
+	// move a holder's position. This is the only path. If the SPA supplies the key it
+	// must equal this account's; otherwise it defaults to it (this account is the
+	// issuer of record and the browser key that later signs the sweep).
 	issuerPubkey := strings.TrimSpace(req.IssuerPubkey)
-	if issuerPubkey != "" {
-		if !strings.EqualFold(issuerPubkey, acct.XOnly) {
-			refuse(400, "issuer_pubkey must be this account's own key (the issuer of record); the browser signs clawbacks with it")
-			return
-		}
-		issuerPubkey = acct.XOnly
-		issuerExternal = true
+	if issuerPubkey != "" && !strings.EqualFold(issuerPubkey, acct.XOnly) {
+		refuse(400, "issuer_pubkey must be this account's own key (the issuer of record); the browser signs clawbacks with it")
+		return
 	}
-	// Reflect the key path on the in-memory issuance before the documents are
-	// generated, so the offering memorandum's custody risk factor describes this
-	// asset accurately and regenerates to the same bytes (the stored flag matches).
+	issuerPubkey = acct.XOnly
+	issuerExternal := true
 	iss.IssuerExternal = issuerExternal
 
 	// The canonical terms hash is a server-side fact. The browser's value is only
