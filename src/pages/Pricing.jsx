@@ -62,7 +62,7 @@ export default function Pricing() {
         <div className="grid gap-6 lg:grid-cols-2">
           <FeeTable title="Setup fees" rows={SETUP_FEES} />
           <FeeTable title="Annual support" rows={ANNUAL_FEES} />
-          <FeeTable title="Transaction & servicing fees" rows={TRANSACTION_FEES} />
+          <FeeTable title="Servicing & settlement fees" rows={TRANSACTION_FEES} />
           <div className="flex flex-col gap-6">
             <FeeTable title="SeqPal ID" rows={ID_FEES} />
             <div className="card flex-1 p-6">

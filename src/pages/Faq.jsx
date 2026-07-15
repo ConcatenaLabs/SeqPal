@@ -1,11 +1,11 @@
 import { Link } from 'react-router-dom'
 import { Icon } from '../components/icons'
 
-// The public FAQ (plan 4.9). Ungated: reachable with no SeqPal ID and no session,
-// because the people who most need it are deciding whether to trust the platform
-// at all. It is a compliance artifact, not marketing: it draws the boundaries of
-// what SeqPal, Sequentia, and Prospera do and do not do. Plain language, no
-// privileged-asset framing, no promise the platform cannot keep.
+// The public FAQ. Ungated, because the people who most need it are deciding whether
+// to trust the platform at all. It is a compliance artifact, not marketing: it draws
+// the boundaries of what SeqPal is and is not, what it is licensed to do and where
+// (Próspera, by the RFSA), and what stays the issuer's responsibility as principal.
+// Plain language, no privileged-asset framing, no promise the platform cannot keep.
 
 // Each item's answer is an array of paragraphs (strings) or a small element.
 const SECTIONS = [
@@ -15,20 +15,21 @@ const SECTIONS = [
       {
         q: 'What is SeqPal?',
         a: [
-          'SeqPal is a transfer agent and registrar for tokenized securities. It gives issuers tools to programmatically enforce, and therefore comply with, the securities restrictions that apply to their offering across jurisdictions. In this proof of concept the licence and the registrations are labeled simulations, and every page says which parts are simulated.',
-          'Mechanically, SeqPal does identity and eligibility, policy-enforced transfer restrictions, the register, servicing, the documents, and the transparency log. It never chooses your structure for you, warrants that your terms are lawful, acts as your counsel, or absorbs your liability.',
+          'SeqPal is the infrastructure and the transfer agent for tokenized securities. It gives issuers the tooling to structure, issue, and service a compliant offering, and it enforces, on every transfer for the life of the asset, the eligibility restrictions the issuer configures. In this proof of concept the licences and the registration numbers are labeled simulations, and every page says which parts are simulated.',
+          'Mechanically, SeqPal does identity and eligibility, policy-enforced transfer restrictions, the register, escrow and settlement, servicing, the documents, and the transparency log. It never chooses your structure for you, warrants that your terms are lawful, acts as your counsel, or absorbs your liability.',
         ],
       },
       {
         q: 'Is SeqPal a law firm? Is it responsible if I break the law?',
         a: [
-          'No. SeqPal is not a law firm, it does not give legal advice, and it does not opine on your offering. The issuer remains responsible for the lawfulness of its own offering, in every jurisdiction where it makes the offering available. SeqPal is infrastructure, not your counsel, and it does not absorb your liability.',
+          'No. SeqPal is not a law firm, it does not give legal advice, and it does not opine on your offering. On each issuance you, the issuer, are the principal: you own the claim the token represents, you are the party a regulator looks to, and you are responsible for the lawfulness of your offering in every jurisdiction where you make it available. SeqPal is the enforcement agent that operates the configuration you sign off on. It does not absorb your liability.',
         ],
       },
       {
         q: 'Is SeqPal a broker or a placement agent?',
         a: [
-          'No. SeqPal is not a broker-dealer and not a placement agent. The Legal and Licensing page explains, as production analysis, what a platform serving US, EU, or UK investors would actually need, for example US Exchange Act s.15(a) broker-dealer registration. We state that conclusion rather than lean on "agent of the Prospera issuer".',
+          'No. SeqPal does not solicit investors, does not advise or recommend, does not negotiate terms, and does not act as principal or agent in the sale itself. Those are the activities that make a firm a broker-dealer in the US, a MiFID II investment firm in the EU, or an arranger in the UK, and SeqPal performs none of them. You place your own offering as principal.',
+          'SeqPal charges you, the issuer, for the infrastructure and the escrow-and-settlement service. Its escrow fee accrues on the funds held and is payable whether or not the offering closes, so it pays for a custody-and-settlement service rather than a completed sale, which is what keeps it off the placement-commission side of the line the SEC drew in the FundersClub and AngelList no-action letters.',
         ],
       },
     ],
@@ -59,20 +60,21 @@ const SECTIONS = [
     ],
   },
   {
-    title: 'What Prospera gives you, and what it does not replace',
+    title: 'Próspera and the RFSA, and what they do not replace',
     items: [
       {
-        q: 'Why Prospera?',
+        q: 'What are Próspera and the RFSA, and why here?',
         a: [
-          'Prospera (RFSA) is a legitimate issuance jurisdiction with a regime that is genuinely favourable to tokenized issuance, and this platform is built for it. That is a real advantage on the issuance side.',
+          'Próspera is the jurisdiction: a Zone for Employment and Economic Development on Roatán, Honduras, where SeqPal and the issuer’s offering are domiciled. The RFSA is its regulator, the authority for financial-services activity conducted in or from Próspera. They are two different things: Próspera is the place, the RFSA is the regulator.',
+          'SeqPal is licensed by the RFSA for the infrastructure it runs, and Próspera’s regime is genuinely favourable to tokenized issuance. That is a real advantage on the issuance side.',
         ],
       },
       {
-        q: 'Does the Prospera regime cover my investors?',
+        q: 'Does being domiciled in Próspera cover my investors?',
         a: [
-          'No. It does not extend to your investors. You must still abide by the law of every jurisdiction where the offering is made available, and those laws bind the offer, not just the issuer.',
-          'Concretely: a public web page is a financial promotion in many places; US investors normally mean Regulation S offshore or Rule 506(c) verified accreditation, and their tokens are restricted securities whose resale is limited; EU access engages the Prospectus Regulation and, for some structures, AIFMD; the UK requires statutory investor statements. Unanalyzed jurisdictions are excluded by default, and that default protects you.',
-          'This is exactly why the platform compiles your jurisdiction matrix into policy-server rules: the restrictions you configure are enforced by the network on every transfer, not by a promise.',
+          'No. SeqPal’s Próspera licensing is necessary but not sufficient. Every token sold to an investor is also subject to that investor’s home securities law, and that law binds you, the issuer, as the offering party.',
+          'Concretely: a public web page can be a financial promotion in many places; US persons are admitted only through Rule 506(c) verified accreditation, with Reg S offshore as the default, and their tokens are restricted securities whose resale is limited; EU access relies on the Prospectus Regulation qualified-investor exemptions and, for some structures, engages AIFMD; the UK requires statutory investor statements. A country you do not admit is excluded by default, and that default protects you.',
+          'This is why the platform compiles your jurisdiction matrix into policy-server rules: the restrictions you configure are enforced by the network on every transfer, not by a promise. SeqPal supplies a suggested minimum; the final policy is yours, and you can make it stricter or, with documented authority, broader, everywhere except the sanctions floor.',
         ],
       },
     ],
@@ -211,9 +213,9 @@ export default function Faq() {
         Frequently asked questions
       </h1>
       <p className="mt-4 text-lg leading-relaxed text-ink-700/90">
-        No account and no SeqPal ID needed to read this. Its job is to draw the boundaries of what
-        SeqPal is, what it is not, and what the technology and the jurisdiction do and do not do for
-        you. If something is simulated in this proof of concept, it says so.
+        The boundaries, drawn plainly: what SeqPal is and is not, what it is licensed to do and where,
+        and what stays the issuer’s responsibility. Where something is simulated in this proof of
+        concept, it says so.
       </p>
 
       <div className="mt-10 space-y-8">

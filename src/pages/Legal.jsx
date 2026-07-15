@@ -6,33 +6,73 @@ import CopyId from '../components/CopyId'
 import { rfsaLookup } from '../lib/api'
 import { LEGACY_ASSETS } from '../data/honesty'
 
-// Legal & Licensing (plan 4.5). It states conclusions, not aspirations: the
-// custody conclusion, the per-jurisdiction platform-role conclusions as
-// production analysis with simulated numbers, the blast-radius disclosure, the
-// non-custodial USDX model, the legacy-asset deprecation, and the FATCA/CRS note.
-// It carries the public RFSA filing lookup. Public page.
+// Legal & Licensing. The posture, stated as a conclusion and grounded in the
+// business plan (sections 1.8, 5.1-5.9): SeqPal is licensed only in Próspera, by
+// the RFSA, for the infrastructure functions it performs there, and it is scoped
+// so that nothing it does requires a licence in an investor's home country. On
+// every issuance the issuer is the principal and SeqPal is the enforcement agent
+// operating the issuer's signed-off configuration. Próspera is the jurisdiction;
+// the RFSA is its regulator; the two are named separately throughout. Public page.
 
-const REGISTRATIONS = [
-  { fn: 'Transfer agent', num: 'RFSA-TA-2026-0041' },
-  { fn: 'Registrar', num: 'RFSA-RG-2026-0042' },
-  { fn: 'Financial Products Registry operator', num: 'RFSA-OP-2026-0009' },
+// SeqPal's RFSA licence slate. All of these are Próspera-side, under Financial
+// Regulation A and FinTech Regulation A; none is a foreign licence. Numbers are
+// demo. Status notes follow the plan: the transfer-agent category is by Optimal
+// Regulation petition, and the Investment Company licence activates with the first
+// public offering or DR programme.
+const LICENSES = [
+  {
+    fn: 'FinTech services (Crowdfunding Platform)',
+    num: 'RFSA-FT-2026-0007',
+    note: 'The foundational platform licence, under FinTech Regulation A. SeqPal runs no trading venue and executes no orders, so no brokerage or trading-venue licence arises.',
+  },
+  {
+    fn: 'Escrow Agent',
+    num: 'RFSA-EA-2026-0018',
+    note: 'Holding subscription assets in escrow for primary placements.',
+  },
+  {
+    fn: 'Money Transmitting Business',
+    num: 'RFSA-MT-2026-0023',
+    note: 'Moving funds on behalf of issuers and investors: distributions and the cash leg of DR mint and redeem.',
+  },
+  {
+    fn: 'Transfer agent',
+    num: 'RFSA-TA-2026-0041',
+    note: 'By Optimal Regulation petition, modelled on SEC Rule 17Ad, for the on-chain register.',
+  },
+  {
+    fn: 'Trust Company, Class I',
+    num: 'RFSA-TC-2026-0009',
+    note: 'Bare-trust custody for Depository Receipt and SPV structures.',
+  },
+  {
+    fn: 'Investment Company',
+    num: 'RFSA-IC-2026-0031',
+    note: 'For sponsoring and certifying public offerings; activates with the first public offering or DR programme.',
+  },
 ]
 
+// What the ISSUER is responsible for in the investor's home jurisdiction, and why
+// SeqPal's own role does not trigger a licence there. These are the issuer's
+// obligations as principal (plan section 5.3, 5.5, 5.6): the badge names the
+// issuer's regime, and the body states which activity is the issuer's. US, EU and
+// UK are worked examples; the issuer configures the full country matrix, which
+// admits qualified investors only by default and admits nothing outside it.
 const JURISDICTIONS = [
   {
     place: 'United States',
-    verdict: 'Broker-dealer registration, Exchange Act s.15(a)',
-    body: 'A production SeqPal serving US investors effects securities transactions for them and collects per-subscription, transaction-based fees, which is the classic broker hallmark. The issuer-personnel safe harbor of Rule 3a4-1 does not cover a third-party platform. Serving US investors would require Exchange Act s.15(a) broker-dealer registration, or a restructuring to non-transaction-based fees with the issuer placing its own offering. "Agent of the Prospera issuer" answers none of this and is never leaned on to.',
+    regime: 'Issuer: Reg S / Rule 506(c)',
+    body: 'The issuer, not SeqPal, offers and places the securities. Reg S offshore is the default for non-US investors; US persons are admitted only through the Rule 506(c) verified-accredited path, enforced cryptographically by the SeqPal ID gate, and the tokens are restricted securities with limited resale. That gate is the strongest available implementation of the 1998 SEC Internet Guidance safe harbor against a directed selling effort. SeqPal does not solicit, advise, recommend, or place, and takes no compensation contingent on a sale closing, so it is not a broker-dealer.',
   },
   {
     place: 'European Union',
-    verdict: 'MiFID II investment services, third-country firm',
-    body: 'Serving EU retail engages MiFID II investment services, the reception and transmission of orders and placement, by a third-country firm. An active marketing website defeats a reverse-solicitation defence. For some structures AIFMD also engages, which is why an AIF-classified structure disables the EU retail lift and restricts access to professional categories.',
+    regime: 'Issuer: Prospectus Regulation Art. 1(4)',
+    body: 'MiCA does not apply to securities, which are MiFID II financial instruments; tokenized securities are governed by the Prospectus Regulation and national private-placement regimes. The issuer relies on the Article 1(4) exemptions, qualified investors plus the per-member-state offeree tail the platform counts, and an AIF-classified structure additionally engages AIFMD. SeqPal provides no MiFID II investment service, no reception or transmission of orders, no placement, and no advice.',
   },
   {
     place: 'United Kingdom',
-    verdict: 'RAO Article 25 arranging',
-    body: 'Serving UK investors engages Regulated Activities Order Article 25, arranging deals in investments. UK access also requires the statutory investor statements the document engine generates, in SI 2024/301 wording with the income and net-asset thresholds.',
+    regime: 'Issuer: FSMA financial promotion',
+    body: 'The issuer makes the financial promotion, which must carry the statutory high-net-worth and sophisticated-investor statements the document engine generates in SI 2024/301 wording with the income and net-asset thresholds. Arranging deals in investments is the issuer’s activity as principal. SeqPal does not arrange, advise, or deal, so Regulated Activities Order Article 25 is the issuer’s concern, not SeqPal’s.',
   },
 ]
 
@@ -58,15 +98,15 @@ function RfsaLookup() {
     <div className="card p-6">
       <div className="flex items-center gap-2">
         <Icon.receipt width={18} height={18} className="text-btc-600" />
-        <h2 className="font-bold text-ink-900">RFSA Financial Products Registry lookup</h2>
+        <h2 className="font-bold text-ink-900">Financial Products Registry lookup</h2>
         <Badge color="amber" className="ml-auto">
           Simulated regulator
         </Badge>
       </div>
       <p className="mt-1.5 text-sm leading-relaxed text-ink-700/70">
-        Every public offering on the platform files with the registry before it can deploy. Look up a
-        filing by its number. The regulator relationship is simulated; the number, this lookup, the
-        deploy gate, and the anchored filing hash are real.
+        Every public offering files with the RFSA registry before it can deploy. Look up a filing by
+        its number. The regulator relationship is simulated; the number, this lookup, the deploy gate,
+        and the anchored filing hash are real.
       </p>
       <form onSubmit={look} className="mt-4 flex flex-wrap gap-2">
         <input
@@ -128,37 +168,99 @@ export default function Legal() {
         Where SeqPal stands, stated plainly
       </h1>
       <p className="mt-4 text-lg leading-relaxed text-ink-700/90">
-        This page states conclusions rather than promising an analysis. The role analysis below is
-        real production analysis; the entity and the registration numbers are demo. This is a testnet
-        proof of concept with no legal effect.
+        SeqPal is licensed only where it operates: in Próspera, by the RFSA, for the infrastructure
+        services it performs there. It is scoped so that nothing it does requires a licence in an
+        investor’s home country. On every issuance the issuer is the principal, and SeqPal is the
+        enforcement agent that operates the configuration the issuer signs off on. This is a testnet
+        proof of concept with no legal effect; the entity and the registration numbers are demo, and
+        every page says which parts are simulated.
       </p>
 
-      {/* Entity + registrations */}
+      {/* Entity, jurisdiction, regulator: named separately */}
       <div className="card mt-10 p-6">
-        <h2 className="font-bold text-ink-900">Demo entity and registrations</h2>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <h2 className="font-bold text-ink-900">Entity, jurisdiction, and regulator</h2>
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
           <div className="rounded-xl bg-ink-900/[0.03] px-4 py-3">
             <div className="text-xs font-semibold uppercase tracking-wide text-ink-700/60">Entity</div>
             <div className="mt-1 font-semibold text-ink-900">SeqPal LLC</div>
-            <div className="text-sm text-ink-700/80">Prospera ZEDE, Roatan, Honduras</div>
+            <div className="text-sm text-ink-700/80">The demo platform operator.</div>
           </div>
           <div className="rounded-xl bg-ink-900/[0.03] px-4 py-3">
-            <div className="text-xs font-semibold uppercase tracking-wide text-ink-700/60">Role</div>
-            <div className="mt-1 font-semibold text-ink-900">Transfer agent and registrar</div>
-            <div className="text-sm text-ink-700/80">SeqPal operates the policy server that co-signs transfers.</div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-ink-700/60">
+              Jurisdiction
+            </div>
+            <div className="mt-1 font-semibold text-ink-900">Próspera ZEDE</div>
+            <div className="text-sm text-ink-700/80">
+              A Zone for Employment and Economic Development on Roatán, Honduras, where SeqPal and the
+              issuer’s offering are domiciled. A Próspera permit confers intergovernmental immunity
+              within the zone for permitted activities.
+            </div>
+          </div>
+          <div className="rounded-xl bg-ink-900/[0.03] px-4 py-3">
+            <div className="text-xs font-semibold uppercase tracking-wide text-ink-700/60">Regulator</div>
+            <div className="mt-1 font-semibold text-ink-900">The RFSA</div>
+            <div className="text-sm text-ink-700/80">
+              The regulator for financial-services activity conducted in or from Próspera, under
+              Financial Regulation A and FinTech Regulation A. Próspera is the place; the RFSA is the
+              regulator; they are not the same thing.
+            </div>
           </div>
         </div>
+      </div>
+
+      {/* Licence slate */}
+      <div className="card mt-6 p-6">
+        <h2 className="font-bold text-ink-900">SeqPal’s RFSA licence slate</h2>
+        <p className="mt-2 text-sm leading-relaxed text-ink-700/80">
+          SeqPal’s functions span several regulated activities, each with its own RFSA licence. All of
+          them are Próspera-side; none is a foreign licence. SeqPal is paid for these services by the
+          issuer.
+        </p>
         <div className="mt-4 divide-y divide-ink-900/10">
-          {REGISTRATIONS.map((r) => (
-            <div key={r.fn} className="flex items-center justify-between gap-3 py-2.5">
-              <span className="text-sm text-ink-700/80">{r.fn}</span>
-              <span className="flex items-center gap-2">
-                <span className="font-mono text-sm font-medium text-ink-900">{r.num}</span>
-                <Badge color="amber">Simulated number</Badge>
-              </span>
+          {LICENSES.map((l) => (
+            <div key={l.fn} className="py-3">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm font-medium text-ink-900">{l.fn}</span>
+                <span className="flex shrink-0 items-center gap-2">
+                  <span className="font-mono text-sm text-ink-900">{l.num}</span>
+                  <Badge color="amber">Simulated number</Badge>
+                </span>
+              </div>
+              <p className="mt-1 text-xs leading-relaxed text-ink-700/65">{l.note}</p>
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Who is responsible for what: the core positioning (plan 1.8, 5.5.3) */}
+      <div className="card mt-6 p-6">
+        <h2 className="font-bold text-ink-900">Who is responsible for what</h2>
+        <p className="mt-2 text-sm leading-relaxed text-ink-700/85">
+          On each issuance the issuer LLC is the principal: it owns the claim the token represents, it
+          is the offering party the RFSA and any foreign regulator looks to, and it is legally
+          responsible for choosing which investors it accepts. SeqPal’s role is operational. It gives
+          the issuer a tested template of suggested minimum restrictions, a console to make them
+          stricter, and it then enforces the exact configuration the issuer reviewed and signed off on.
+          SeqPal does not, and cannot, take on the per-issuance liability of having chosen the legal
+          posture of someone else’s offering.
+        </p>
+        <p className="mt-2 text-sm leading-relaxed text-ink-700/85">
+          That is also why SeqPal needs no licence in the investor’s home country. It does not solicit
+          investors, does not advise or recommend, does not negotiate terms, does not act as principal
+          or agent in the sale itself, and has no personnel doing any of these. Those are the
+          activities that would trigger a broker-dealer licence in the United States, a MiFID II
+          investment-services authorisation in the European Union, or arranging permission in the
+          United Kingdom. SeqPal performs none of them.
+        </p>
+        <p className="mt-2 text-sm leading-relaxed text-ink-700/85">
+          On compensation: SeqPal’s Escrow and Settlement Fee is a charge for the escrow custody and
+          on-chain settlement of the subscription funds it holds, accruing over the period they are
+          held and payable whether or not the offering closes. Because it is not contingent on a sale
+          completing, it compensates a custody-and-settlement service rather than a placement, which is
+          the line the SEC drew in the FundersClub and AngelList no-action letters. A single focused US
+          Reg D, Reg S, and 506(c) confirmation opinion is commissioned at launch as belt-and-braces,
+          not as a precondition.
+        </p>
       </div>
 
       {/* Custody conclusion */}
@@ -169,24 +271,24 @@ export default function Legal() {
         </div>
         <p className="mt-2 text-sm leading-relaxed text-ink-700/85">
           For a clawback-enabled asset whose issuer key is held by the platform, SeqPal can move any
-          holder's position without the holder's key. That is control amounting to custody under
+          holder’s position without the holder’s key. That is control amounting to custody under
           essentially any test, so we state it as a conclusion rather than a maybe. It is a risk
-          factor in every offering memorandum and it qualifies every "self-custodial" claim for those
+          factor in every offering memorandum and it qualifies every self-custodial claim for those
           assets.
         </p>
         <p className="mt-2 text-sm leading-relaxed text-ink-700/85">
           This now applies to legacy-path assets only: those that predate the external issuer key. A
-          new asset instead uses the issuing entity's own SeqPal ID key as the enclave issuer half, so
-          a clawback is two-phase and cannot be broadcast without the issuer's signature. The platform
-          holds only the policy key on those assets and cannot move a holder's position on its own.
+          new asset instead uses the issuing entity’s own SeqPal ID key as the enclave issuer half, so
+          a clawback is two-phase and cannot be broadcast without the issuer’s signature. The platform
+          holds only the policy key on those assets and cannot move a holder’s position on its own.
           Each asset discloses which path it is on, in its freeze and clawback console.
         </p>
         <p className="mt-2 text-sm leading-relaxed text-ink-700/85">
           The 2-of-2 co-signature is a separate thing and is disclosed separately on both paths: it is
-          negative control, the power to refuse a transfer, not the power to move funds on its own,
-          and the platform continues to operate the policy server that co-signs. The roadmap to
-          remove the custody conclusion for the remaining legacy-path key is the FROST threshold
-          quorum, tracked on the{' '}
+          negative control, the power to refuse a transfer, not the power to move funds on its own, and
+          the platform continues to operate the policy server that co-signs. The roadmap to remove the
+          custody conclusion for the remaining legacy-path key is the FROST threshold quorum, tracked
+          on the{' '}
           <Link to="/status" className="font-medium text-seq-600 hover:underline">
             Status
           </Link>{' '}
@@ -198,40 +300,45 @@ export default function Legal() {
       <div className="card mt-6 p-6">
         <h2 className="font-bold text-ink-900">Single-token blast radius</h2>
         <p className="mt-2 text-sm leading-relaxed text-ink-700/80">
-          The platform-held issuer key, on legacy-path assets, is a single LocalKeySigner: one key,
-          one token, one box, one disk. A compromise of that one credential is a compromise of every
-          legacy asset it can clawback. The mitigation today is operational, a documented backup and
-          restore procedure, and the structural fix is the FROST quorum. A new asset is outside this
-          blast radius entirely: its issuer key never touches the platform, so there is no platform
-          credential that can seize it. We disclose the blast radius rather than imply isolation that
-          does not exist.
+          The platform-held issuer key, on legacy-path assets, is a single LocalKeySigner: one key, one
+          token, one box, one disk. A compromise of that one credential is a compromise of every legacy
+          asset it can clawback. The mitigation today is operational, a documented backup and restore
+          procedure, and the structural fix is the FROST quorum. A new asset is outside this blast
+          radius entirely: its issuer key never touches the platform, so there is no platform credential
+          that can seize it. We disclose the blast radius rather than imply isolation that does not
+          exist.
         </p>
       </div>
 
-      {/* Per-jurisdiction conclusions */}
+      {/* Per-jurisdiction: the ISSUER's obligations, worked examples */}
       <div className="mt-8">
         <h2 className="text-xl font-bold text-ink-900">
-          What a production SeqPal would be in the investor's jurisdiction
+          What the issuer is responsible for, by investor jurisdiction
         </h2>
         <p className="mt-1.5 text-sm leading-relaxed text-ink-700/70">
-          Production analysis with simulated registration numbers. Prospera is a legitimate issuance
-          jurisdiction, but it does not extend to your investors: their home law binds the offer.
+          The RFSA licence covers SeqPal in Próspera; it does not reach the investor’s home country,
+          where the investor’s own securities law binds the offer. That law binds the issuer, as
+          principal. US, EU and UK below are worked examples; the issuer configures the full country
+          matrix, which suggests qualified investors only by default and admits nothing it does not
+          list.
         </p>
         <div className="mt-4 space-y-3">
           {JURISDICTIONS.map((j) => (
             <div key={j.place} className="card p-5">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="font-semibold text-ink-900">{j.place}</h3>
-                <Badge color="seq">{j.verdict}</Badge>
+                <Badge color="seq">{j.regime}</Badge>
               </div>
               <p className="mt-1.5 text-sm leading-relaxed text-ink-700/80">{j.body}</p>
             </div>
           ))}
         </div>
         <p className="mt-3 text-sm leading-relaxed text-ink-700/70">
-          This is exactly why the platform compiles your jurisdiction matrix into policy-server
-          rules: the restrictions you configure are enforced by the network on every transfer, not by
-          a promise. Unanalyzed jurisdictions are excluded by default, and that default protects you.
+          The platform compiles the issuer’s matrix into policy-server rules, so the restrictions the
+          issuer configures are enforced by the network on every transfer, for the life of the asset,
+          not by a promise. A country the issuer has not admitted matches no eligibility category, so a
+          resident of it is refused by the policy server. Only the sanctions floor, OFAC- and
+          FATF-aligned blocks, is fixed and cannot be admitted.
         </p>
       </div>
 
@@ -239,24 +346,26 @@ export default function Legal() {
       <div className="card mt-8 p-6">
         <h2 className="font-bold text-ink-900">Non-custodial USDX commitment model</h2>
         <p className="mt-2 text-sm leading-relaxed text-ink-700/80">
-          The production design for the USDX rail does not put subscription funds in SeqPal custody
-          before settlement. The investor funds a pay-to-taproot address that only they control, and
-          delivery versus payment settles atomically against it, so the funds are never in the
-          platform's custody. This replaces custodial escrow for the USDX rail and is the successor to
-          any escrow-superiority framing.
+          The escrow role above is a real, licensed custody function for the funds it holds. The
+          production design for the USDX rail removes even that: the investor funds a pay-to-taproot
+          address that only they control, and delivery versus payment settles atomically against it, so
+          the funds are never in SeqPal custody before settlement. This is the successor to custodial
+          escrow for the USDX rail, and the platform says which model an offering is on.
         </p>
       </div>
 
-      {/* FATCA/CRS */}
+      {/* Tax + FATCA/CRS (plan 5.8) */}
       <div className="card mt-6 p-6">
-        <h2 className="font-bold text-ink-900">FATCA and CRS classification</h2>
+        <h2 className="font-bold text-ink-900">Tax, FATCA and CRS</h2>
         <p className="mt-2 text-sm leading-relaxed text-ink-700/80">
-          A production registrar and transfer agent that holds investor accounts is plausibly a
-          Financial Institution under CRS, with self-certification and annual reporting duties for
-          foreign account holders. A W-8 or W-9 is not a CRS self-certification, so investor
-          onboarding collects a separate CRS and FATCA self-certification of all tax residencies and
-          TINs, and the servicing engine emits a labeled-simulated annual CRS and FATCA reporting
-          artifact from the registrar entity.
+          Próspera applies a 1% gross-income tax to entities operating under its jurisdiction, which
+          covers SeqPal’s revenues and the issuer LLC’s. There is no Próspera capital-gains tax on
+          token transfers between holders. An investor’s own tax is their home jurisdiction’s: SeqPal’s
+          transfer-agent service produces year-end statements for the investor to use in their domestic
+          filing, and SeqPal does not give tax advice. As a registrar and transfer agent keeping
+          investor accounts, SeqPal is plausibly a Financial Institution under CRS, a Próspera-side
+          obligation, so onboarding collects a CRS and FATCA self-certification and the servicing engine
+          emits a labeled-simulated annual reporting artifact.
         </p>
       </div>
 
@@ -265,8 +374,8 @@ export default function Legal() {
         <h2 className="font-bold text-ink-900">Legacy assets</h2>
         <p className="mt-1.5 text-sm leading-relaxed text-ink-700/70">
           {LEGACY_ASSETS.map((a) => a.ticker).join(' and ')} are pre-overhaul demo assets, deprecated
-          and excluded from the platform. They are unregistered in the asset registry because the
-          entity domain must be committed at issue time and cannot be retrofitted.
+          and excluded from the platform. They are unregistered in the asset registry because the entity
+          domain must be committed at issue time and cannot be retrofitted.
         </p>
       </div>
 

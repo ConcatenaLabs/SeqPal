@@ -867,6 +867,7 @@ export function Step5Compliance({ data, update }) {
   const [previewing, setPreviewing] = useState(false)
   const [advOpen, setAdvOpen] = useState(false)
   const [euPick, setEuPick] = useState({ code: 'DE', n: '' })
+  const [jurQuery, setJurQuery] = useState('')
 
   // (Re)build the default policy whenever the offering type changes so the
   // public-offering overlay is reflected correctly.
@@ -1068,17 +1069,27 @@ export function Step5Compliance({ data, update }) {
           <h3 className="font-bold text-ink-900">Jurisdiction matrix</h3>
           <p className="mt-1 text-sm text-ink-700/70">
             {data.isPublic
-              ? 'Confirm, jurisdiction by jurisdiction, where the public offering is conducted. Unconfirmed jurisdictions stay excluded.'
-              : 'Cross-checked against the SeqPal ID jurisdiction matrix. Blocked jurisdictions are a mandatory floor and cannot be admitted.'}
+              ? 'Confirm, country by country, where the public offering is conducted and on what basis. A country you do not confirm stays excluded.'
+              : 'SeqPal starts you on a suggested minimum: qualified investors only in every country, sanctions floor blocked. This is a suggestion, not advice. You are the principal and set the final policy; make any country stricter, or use upload-to-lift to admit retail with documented authority. The sanctions floor cannot be admitted.'}
           </p>
           <p className="mt-1 text-xs text-ink-700/55">
-            The catch-all is <span className="font-semibold text-ink-700">excluded by default</span>:
-            only a jurisdiction you admit here contributes eligibility categories, so a resident of
-            any jurisdiction you do not list is refused by the policy server.
+            Every country is here, and the catch-all is{' '}
+            <span className="font-semibold text-ink-700">excluded by default</span>: a country you set
+            to Excluded contributes no eligibility category, so a resident of it is refused by the
+            policy server.
           </p>
+          <input
+            className="input mt-3 w-full"
+            placeholder="Search countries by name or ISO code…"
+            value={jurQuery}
+            onChange={(e) => setJurQuery(e.target.value)}
+          />
         </div>
         <div className="max-h-[420px] divide-y divide-ink-900/10 overflow-y-auto">
-          {JURISDICTIONS.map((j) => {
+          {JURISDICTIONS.filter((j) => {
+            const q = jurQuery.trim().toLowerCase()
+            return !q || j.name.toLowerCase().includes(q) || j.code.toLowerCase().includes(q)
+          }).map((j) => {
             const current = policy[j.code]
             const opts = optionsFor(j)
             return (
