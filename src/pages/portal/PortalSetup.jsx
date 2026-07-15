@@ -126,7 +126,7 @@ export default function PortalSetup() {
     return (
       <Notice
         title="Available once the asset is deployed"
-        body="Set up your placement portal after the OpenAMP asset is minted on Sequentia."
+        body="Set up your placement portal after the asset is minted on Sequentia."
       />
     )
 
@@ -168,8 +168,8 @@ export default function PortalSetup() {
             <p className="mt-2 max-w-2xl leading-relaxed text-ink-700/90">
               The portal is brandable software that runs on SeqPal’s stack but is operated
               in <span className="font-semibold">your</span> name, on your own domain and
-              terms of service. SeqPal supplies the software, the SeqPal ID gate, and the
-              escrow, you are the legal operator of the portal.
+              terms of service. You are the legal operator. SeqPal is the technology and
+              services vendor, and supplies the software, the SeqPal ID gate, and the escrow.
             </p>
           </div>
 
@@ -342,7 +342,7 @@ export default function PortalSetup() {
                 <span className="mt-0.5 block text-xs text-ink-700/70">
                   Fiat subscriptions run through a simulated payment rail on the testnet;
                   BTC and USDX go into a per-issuance segregated escrow that SeqPal
-                  operates. Released to you when the closing conditions are met.
+                  operates and releases to you when the closing conditions are met.
                 </span>
               </span>
             </button>

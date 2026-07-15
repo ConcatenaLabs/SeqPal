@@ -7,18 +7,18 @@ import { StructureIcon } from '../components/icons'
 const pillars = [
   {
     icon: Icon.shield,
-    title: 'Smart Compliance',
-    body: 'Investor eligibility is enforced at the protocol level on every transfer, jurisdiction, accreditation, and sanctions screening baked into the asset. Verify once with SeqPal ID, hold every asset you qualify for.',
+    title: 'Compliance built into the asset',
+    body: 'Investor eligibility is enforced by the policy server on every transfer: jurisdiction, accreditation, and sanctions screening travel with the asset. Verify once with SeqPal ID, hold every asset you qualify for.',
   },
   {
     icon: Icon.users,
-    title: 'Consistently User-Centric',
-    body: 'A self-service dashboard takes you from KYB to live deployment with no required human sales call. Fixed, published pricing, no quotes, no weeks of bespoke negotiation.',
+    title: 'Self-service and fixed-price',
+    body: 'A self-service dashboard takes you from KYB to live deployment with no required sales call. Fixed, published pricing: no quotes, no weeks of bespoke negotiation.',
   },
   {
     icon: Icon.bitcoin,
-    title: 'Strategically Bitcoin-First',
-    body: 'Every asset is issued on the Sequentia network via OpenAMP. Transparent by default with opt-in confidential holdings, sub-cent fees, and distributions in BTC or stablecoins.',
+    title: 'Bitcoin-native',
+    body: 'Every asset is issued on Sequentia and settles against native BTC on the parent chain. Transparent by default, with opt-in confidential holdings, network fees payable in any accepted asset, and distributions in BTC or stablecoins.',
   },
 ]
 
@@ -31,7 +31,7 @@ const products = [
   {
     icon: Icon.id,
     name: 'SeqPal ID',
-    body: 'A consolidated KYC/KYB and accreditation passport for anyone, not an issuer login. One role-neutral flow; verified once, it whitelists the holder for every SeqPal-managed asset their profile is eligible to hold.',
+    body: 'A consolidated KYC/KYB and accreditation passport for anyone. One role-neutral flow; verified once, it whitelists the holder for every SeqPal-managed asset their profile is eligible to hold.',
   },
   {
     icon: Icon.exchange,
@@ -100,8 +100,8 @@ export default function Home() {
                 published pricing
               </span>
               <span className="inline-flex items-center gap-2">
-                <Icon.check width={16} height={16} className="text-btc" /> Open
-                secondary transferability
+                <Icon.check width={16} height={16} className="text-btc" /> Openly
+                transferable among eligible holders
               </span>
             </div>
           </div>
@@ -131,7 +131,7 @@ export default function Home() {
                   <div className="flex items-center justify-between rounded-lg bg-ink-900/[0.03] px-3 py-2.5 text-sm">
                     <span className="text-ink-700">Network</span>
                     <span className="font-mono text-xs font-semibold text-seq-600">
-                      Sequentia · OpenAMP
+                      Sequentia
                     </span>
                   </div>
                   <div className="rounded-lg border border-btc/20 bg-btc-50 px-3 py-2.5">
@@ -168,8 +168,8 @@ export default function Home() {
         <SectionHeading
           center
           eyebrow="Why SeqPal"
-          title="Three commandments"
-          sub="The principles behind every issuance on the platform."
+          title="Three principles"
+          sub="What every issuance on the platform is built on."
         />
         <div className="mt-12 grid gap-6 md:grid-cols-3">
           {pillars.map((p) => (
@@ -295,14 +295,14 @@ export default function Home() {
           <div>
             <SectionHeading
               eyebrow="Permissioned transferability"
-              title="Compliance at the protocol level, permissioned transferability"
-              sub="SeqPal embeds investor eligibility checks directly into each token, so a SeqPal-issued asset only moves between eligible holders, with a policy co-signature on every transfer, and it can be listed on any vetted public venue rather than being locked inside a proprietary trading system."
+              title="Permissioned transferability, enforced on every transfer"
+              sub="SeqPal builds investor eligibility into each asset, so it stays openly transferable among eligible, registered holders, with a policy co-signature on every transfer, and it can be listed on any vetted venue rather than confined to a proprietary trading system."
             />
             <ul className="mt-8 space-y-4">
               {[
-                'Transfer-Restricted assets issued via OpenAMP',
-                'Whitelist enforced by SeqPal ID at the protocol level',
-                'Listable on Sequentia-native venues such as SeqDEX (venue-curated), with asset-level KYC',
+                'Transfer-restricted assets issued on Sequentia',
+                'Eligibility enforced by the policy server on every transfer',
+                'Listable on any vetted venue, such as SeqDEX, with eligibility checked at the asset',
                 'Distributions paid pro-rata in BTC or stablecoins',
               ].map((t) => (
                 <li key={t} className="flex items-start gap-3">

@@ -92,7 +92,7 @@ export const STRUCTURES = [
     description:
       'SeqPal acts as a bare-trust holding vehicle, custodying traditional instruments (public stocks, ETFs, T-bills, commodities) in a segregated sub-account. Each token holder has a 1:1, redeemable claim on the underlying asset.',
     example:
-      'Tokenized public equities held on Sequentia, a Bitcoin sidechain, for self-custody and 24/7 transferability, settled in BTC.',
+      'Tokenized public equities held on Sequentia, a Bitcoin sidechain, openly transferable among eligible holders around the clock, settled in BTC.',
     useCases: [
       'Tokenized public equities (e.g. TSLA, NVDA, AAPL, SPY) on-chain',
       'Tokenized Treasuries and money-market funds for retail access',

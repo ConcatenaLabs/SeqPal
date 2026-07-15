@@ -47,7 +47,7 @@ export default function Structures() {
                         {s.name}
                       </h2>
                       {s.requiresCustody && (
-                        <Badge color="amber">requires brokerage custody</Badge>
+                        <Badge color="amber">requires custody</Badge>
                       )}
                     </div>
                     <p className="mt-5 text-lg font-medium leading-relaxed text-ink-900">

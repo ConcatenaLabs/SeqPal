@@ -20,11 +20,11 @@ const products = [
     icon: Icon.id,
     name: 'SeqPal ID',
     tagline: 'A universal compliance passport, for anyone.',
-    body: 'The identity and compliance passport for the whole SeqPal-on-Sequentia world, not an issuer login. One role-neutral registration flow: it never asks whether you intend to issue or invest. Once verified, it carries the eligibility categories the policy server enforces on every transfer, so the holder is whitelisted for every SeqPal-managed asset their profile is eligible to hold, and needs it to hold or trade one anywhere on Sequentia at all.',
+    body: 'The identity and compliance passport for everyone on Sequentia who holds or issues a SeqPal asset. One role-neutral registration flow: it never asks whether you intend to issue or invest. Once verified, it carries the eligibility categories the policy server enforces on every transfer, so the holder is whitelisted for every SeqPal-managed asset their profile is eligible to hold. A SeqPal ID is required to hold or trade these assets anywhere on Sequentia.',
     points: [
       'One flow for everyone, no user-type question',
       'KYC / KYB and accreditation in one profile',
-      'Real sanctions screening on a daily schedule; PEP and adverse-media labeled-simulated',
+      'Real sanctions screening on a daily schedule; PEP and adverse-media screening simulated',
       'Eligibility categories consumed on-chain, honored by venues that list SeqPal assets',
     ],
     cta: { to: '/id', label: 'Create a SeqPal ID' },
@@ -129,7 +129,7 @@ function Architecture() {
             <span className="font-bold text-ink-900">Bitcoin · Sequentia</span>
             <span className="text-ink-700/80">
               {': '}
-              Transfer-Restricted assets issued via OpenAMP, settled in BTC or
+              Transfer-restricted assets issued on Sequentia, settled in BTC or
               stablecoins
             </span>
           </div>
@@ -147,7 +147,7 @@ export default function Products() {
           <SectionHeading
             eyebrow="Products"
             title="The complete issuance stack"
-            sub="Four tightly integrated products. Every third-party integration, KYC, e-signature, escrow, and the OpenAMP issuance layer, is pre-built once, so the platform is plug-and-play for every issuer."
+            sub="Four integrated products. Every third-party integration, KYC, e-signature, escrow, and the issuance layer, is pre-built once, so every issuer starts from a working platform."
           />
           <Architecture />
         </div>

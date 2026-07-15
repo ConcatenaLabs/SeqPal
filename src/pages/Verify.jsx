@@ -295,7 +295,7 @@ export default function Verify() {
 
         <Step n={4} title="The policy key that co-signs every transfer">
           <p>
-            A SeqPal-managed asset is transfer-restricted: it can only move when the OpenAMP policy
+            A SeqPal-managed asset is transfer-restricted: it can only move when the policy
             key co-signs, which is how eligibility is enforced. The contract commits to that policy
             key, so you can confirm the key checking a transfer is the same key the asset was minted
             under. A restricted asset is one row among equals on Sequentia: it is not privileged, it

@@ -80,7 +80,7 @@ export default function Status() {
             detail="An authenticated upstream probe. When this is unavailable, a deploy would fail, and the platform says so before checkout."
           />
           <HealthRow
-            label="OpenAMP reachable"
+            label="Policy co-signer reachable"
             ok={h ? !!h.openamp_ok : null}
             detail="The policy server that co-signs every restricted transfer."
           />
@@ -153,8 +153,8 @@ export default function Status() {
       <div className="mt-6">
         <h2 className="text-xl font-bold text-ink-900">What stays simulated, and how it is labeled</h2>
         <p className="mt-1.5 text-sm leading-relaxed text-ink-700/70">
-          Each row is simulated in one specific way, and the table says what is real about it anyway
-          and the label you will see on that surface.
+          Each row is simulated in one specific way. The table gives what is real about it and the
+          label you will see on that surface.
         </p>
         <div className="mt-4 space-y-3">
           {SIMULATED.map((s) => (

@@ -134,9 +134,9 @@ function DeployCard({ iss, onDeployed }) {
         </ul>
         <p className="mt-2 text-xs text-ink-700/60">
           Incorporation and the RFSA filing produce watermarked simulated artifacts in this build:
-          no Prospera e-registry sandbox exists, so the certificate and entity number are labeled
-          simulations, though their hashes are anchored. SeqPal does not observe these steps, so it
-          does not claim to track them. The deploy below is the part that is real.
+          no Próspera e-registry sandbox exists, so the certificate and entity number are labeled
+          simulations, though their hashes are anchored. These steps happen off the platform, and
+          SeqPal does not track them. The deploy below is real.
         </p>
       </div>
 
@@ -183,8 +183,9 @@ function DeployCard({ iss, onDeployed }) {
           <span className="text-sm">
             <span className="font-medium text-ink-900">Clawback enabled</span>
             <span className="block text-xs leading-relaxed text-ink-700/70">
-              The asset can be recovered from a holder by the issuer of record. On this
-              deployment the clawback key is held by the platform, not by you.
+              The asset can be recovered from a holder by the issuer of record. The clawback
+              key is your own SeqPal ID key, so a clawback needs your signature and the platform
+              cannot move a holder's position on its own.
             </span>
           </span>
         </label>
@@ -242,7 +243,7 @@ function DeployCard({ iss, onDeployed }) {
         )}
       </button>
       <p className="mt-2 text-center text-xs leading-relaxed text-ink-700/60">
-        This mints a real OpenAMP restricted asset on the Sequentia testnet. A repeat of the
+        This mints a real restricted asset on the Sequentia testnet. A repeat of the
         same terms returns the same asset instead of minting a second one.
       </p>
     </div>
@@ -278,7 +279,7 @@ function AssetCard({ iss, watch }) {
         {[
           ['Issuer of record', `${iss.entityName || iss.name} LLC · Próspera`],
           ['Network', 'Sequentia (a Bitcoin sidechain)'],
-          ['Issuance layer', 'OpenAMP · transfer-restricted enclave'],
+          ['Issuance layer', 'Policy server · transfer-restricted enclave'],
           ['Confidentiality', iss.confidential ? 'Confidential (opt-in)' : 'Transparent'],
           ['Asset id', <CopyId key="a" value={iss.assetId} kind="asset" label="asset id" />],
           ['Issuance txid', <CopyId key="t" value={iss.txid} kind="tx" label="issuance txid" />],
@@ -366,8 +367,8 @@ function PortalCard({ iss, portal }) {
       {isRaise && (
         <p className="mt-3 text-[11px] leading-relaxed text-ink-700/55">
           Subscriptions, escrow, and closing are real on the testnet: USDX and native BTC move on
-          chain, and card and bank rails are first-class SIMULATED and labeled. Manage the setup
-          fee, payout mandate, and closing below.
+          chain, and card and bank rails are simulated and labeled. Manage the setup fee, payout
+          mandate, and closing below.
         </p>
       )}
     </div>

@@ -186,7 +186,7 @@ export default function ServicingPanel({ iss }) {
             </div>
           )}
           <p className="text-xs text-ink-700/60">
-            Logged immutably with OpenAMP authorization context. Mocked in the demo.
+            Logged immutably with policy-server authorization context. Mocked in the demo.
           </p>
         </div>
       </Modal>
