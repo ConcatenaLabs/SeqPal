@@ -166,10 +166,13 @@ export default function PortalSetup() {
               Set up your placement portal
             </h1>
             <p className="mt-2 max-w-2xl leading-relaxed text-ink-700/90">
-              The portal is brandable software that runs on SeqPal’s stack but is operated
+              The portal is brandable software that runs on SeqPal’s stack and is operated
               in <span className="font-semibold">your</span> name, on your own domain and
-              terms of service. You are the legal operator. SeqPal is the technology and
-              services vendor, and supplies the software, the SeqPal ID gate, and the escrow.
+              terms of service. You are the legal operator: you set the terms, decide which
+              investors you accept, and answer for the offering’s lawfulness in every
+              jurisdiction where you make it available. SeqPal is your technology and
+              services vendor: it supplies the software, the SeqPal ID gate, and the escrow
+              service.
             </p>
           </div>
 
@@ -342,7 +345,8 @@ export default function PortalSetup() {
                 <span className="mt-0.5 block text-xs text-ink-700/70">
                   Fiat subscriptions run through a simulated payment rail on the testnet;
                   BTC and USDX go into a per-issuance segregated escrow that SeqPal
-                  operates and releases to you when the closing conditions are met.
+                  operates as a licensed Escrow Agent and releases to you when the closing
+                  conditions are met.
                 </span>
               </span>
             </button>

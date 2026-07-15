@@ -3,10 +3,10 @@ import { Link } from 'react-router-dom'
 import { Icon } from '../components/icons'
 import { Badge } from '../components/ui'
 import { health } from '../lib/api'
-import { REAL, SIMULATED, FROST_ROADMAP, LEGACY_ASSETS } from '../data/honesty'
+import { REAL, SIMULATED } from '../data/honesty'
 
-// Status page (M4): policy-server health, the FROST roadmap, the legacy assets,
-// and the master real-vs-simulated list (plan Section 7). Public.
+// Status page: policy-server health, the key-custody posture, and the master
+// real-vs-simulated list (plan Section 7). Public.
 
 function Dot({ ok }) {
   return (
@@ -100,37 +100,27 @@ export default function Status() {
         )}
       </div>
 
-      {/* FROST roadmap */}
+      {/* Key custody */}
       <div className="card mt-6 p-6">
         <div className="flex items-center gap-2">
           <Icon.lock width={18} height={18} className="text-seq-600" />
-          <h2 className="font-bold text-ink-900">Key custody and the FROST roadmap</h2>
+          <h2 className="font-bold text-ink-900">Key custody</h2>
         </div>
-        <p className="mt-2 text-sm leading-relaxed text-ink-700/80">{FROST_ROADMAP}</p>
         <p className="mt-2 text-sm leading-relaxed text-ink-700/80">
-          The full custody conclusion, and what it means for you as a holder, is on the{' '}
+          Every asset uses the issuer’s own key. The enclave issuer half is the issuing entity’s own
+          SeqPal ID key, held in its browser, so deploying an asset, authorising a close, and
+          exercising a clawback each need the issuer’s signature, taken deliberately in the browser.
+          The issuer runs no server.
+        </p>
+        <p className="mt-2 text-sm leading-relaxed text-ink-700/80">
+          SeqPal holds only the policy key. It co-signs every transfer to enforce the issuer’s
+          eligibility rules, and it is negative control: it can refuse a transfer, never originate one
+          or move a holder’s position. The full account is on the{' '}
           <Link to="/legal" className="font-medium text-seq-600 hover:underline">
             Legal and Licensing
           </Link>{' '}
           page.
         </p>
-      </div>
-
-      {/* Legacy assets */}
-      <div className="card mt-6 p-6">
-        <h2 className="font-bold text-ink-900">Legacy assets, deprecated</h2>
-        <p className="mt-1.5 text-sm leading-relaxed text-ink-700/70">
-          These predate the overhaul and are excluded from the platform. They cannot be registered
-          because the entity domain must be committed at issue time and cannot be retrofitted.
-        </p>
-        <ul className="mt-3 space-y-2">
-          {LEGACY_ASSETS.map((a) => (
-            <li key={a.ticker} className="flex items-start gap-3 text-sm">
-              <span className="font-mono font-semibold text-ink-900">{a.ticker}</span>
-              <span className="text-ink-700/80">{a.note}</span>
-            </li>
-          ))}
-        </ul>
       </div>
 
       {/* What is real */}

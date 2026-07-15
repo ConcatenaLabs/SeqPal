@@ -46,12 +46,12 @@ const products = [
     icon: Icon.globe,
     name: 'Placement Portal',
     tagline: 'Your own branded fundraising portal.',
-    body: 'A hosted technology and services stack that issuers use to run their own private placement portals on their own domain (e.g. invest.your-name.com). SeqPal supplies the software, the SeqPal ID identity gate, and the escrow services; the issuer is the legal operator.',
+    body: 'A hosted technology and services stack that issuers use to run their own private placement portals on their own domain (e.g. invest.your-name.com). The issuer is the legal operator of the portal. SeqPal supplies the software, the SeqPal ID identity gate, and, if the issuer hires it, escrow.',
     points: [
       'Offering memorandum & version-controlled data room',
       'SeqPal ID identity and eligibility gate',
       'Subscription-agreement workflow and e-signature',
-      'Escrow in fiat (segregated bank account, tri-party agreement) or BTC / USDX (segregated wallets), released on closing',
+      'Optional escrow in fiat (segregated bank account, tri-party agreement) or BTC / USDX (segregated wallets), released on closing, or subscriptions paid directly to the issuer',
     ],
     cta: { to: '/onboarding', label: 'Configure a portal' },
   },
@@ -75,7 +75,7 @@ function Architecture() {
       icon: Icon.globe,
       n: '3',
       name: 'Placement Portal',
-      body: 'Raise into escrow on your domain; deliver tokens on closing.',
+      body: 'Raise on your domain, with optional escrow; deliver tokens on closing.',
     },
   ]
   return (

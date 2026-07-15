@@ -98,7 +98,7 @@ const SECTIONS = [
       {
         q: 'What can the platform see and do about my holdings?',
         a: [
-          'It depends on which issuer-key path the asset is on, and each asset shows its path. On a legacy-path asset the platform holds the issuer key, so SeqPal can move your holdings, which is control amounting to custody and appears as a risk factor on the Legal and Licensing page and in every offering memorandum. On a new asset the issuer key is the issuing entity’s own browser key, so a clawback needs the issuer’s signature and SeqPal cannot move your position on its own. On both paths the platform operates the policy server that co-signs transfers.',
+          'SeqPal keeps the register and co-signs every transfer with its policy key to enforce the issuer’s rules, so it sees your holdings and can refuse a transfer that breaks a rule. It cannot move your position on its own: the key that can claw back is the issuing entity’s own, held in the issuer’s browser, so a seizure needs the issuer’s signature. An opt-in confidential asset still exposes holdings to the issuer and the policy server, because they enforce eligibility.',
         ],
       },
     ],
@@ -109,13 +109,13 @@ const SECTIONS = [
       {
         q: 'What key do I hold, and what does it control?',
         a: [
-          'You hold one half of a 2-of-2 enclave key, generated in your browser and stored only as an encrypted backup under your passphrase. Your half is negative control: it lets you refuse a transfer. It does not, on its own, move a clawback-enabled asset. The party that can claw back is whoever holds the issuer key: on a new asset that is the issuing entity’s own key, not the platform’s, so the issuer directs a seizure and the registrar co-signs; on a legacy asset the platform holds it.',
+          'You hold one half of a 2-of-2 enclave key, generated in your browser and stored only as an encrypted backup under your passphrase. Your half is negative control: it lets you refuse a transfer, and it does not, on its own, move a clawback-enabled asset. The key that can claw back is the issuing entity’s own, held in the issuer’s browser, so the issuer directs a seizure and the registrar co-signs. The platform holds no key that can move your position.',
         ],
       },
       {
         q: 'What happens if I lose my key?',
         a: [
-          'For a clawback-enabled asset there is a runbook: claw back and re-deliver your position to a fresh AID you control. On a new asset the seizure step needs the issuing entity’s signature, since the issuer key is external to the platform, and the re-delivery runs under a disclosed treasury delegation; on a legacy asset the platform completes both steps. The recovery works, and it carries the same trust implication as the custody conclusion above, which is why self-custodial is qualified for these assets.',
+          'For a clawback-enabled asset there is a runbook: claw back and re-deliver your position to a fresh AID you control. The seizure step needs the issuing entity’s signature, since the issuer key is external to the platform, and the re-delivery runs under a disclosed treasury delegation. Because the platform holds no key that can move your position, self-custodial is accurate for your holding, with the one qualification that a clawback-enabled asset can be seized by the issuer under this runbook.',
         ],
       },
     ],
@@ -132,7 +132,7 @@ const SECTIONS = [
       {
         q: 'What does delivery versus payment mean here?',
         a: [
-          'It means the token and the payment settle together rather than one party trusting the other to follow through. Where a rail supports it, this is atomic; where it does not, it is registrar-settled, and the platform says which. The production USDX design is non-custodial: the investor funds an address only they control, so funds are not in SeqPal custody before settlement.',
+          'It means the token and the payment settle together rather than one party trusting the other to follow through. Where a rail supports it, this is atomic; where it does not, it is registrar-settled, and the platform says which. If the issuer uses SeqPal’s escrow, SeqPal holds the funds and releases the token against payment at settlement; if not, the investor pays the issuer directly.',
         ],
       },
       {

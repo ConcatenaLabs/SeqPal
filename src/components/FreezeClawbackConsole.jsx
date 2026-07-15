@@ -214,9 +214,9 @@ export default function FreezeClawbackConsole({ iss }) {
           </>
         ) : (
           <>
-            <span className="font-semibold">Platform-held issuer key.</span> This asset predates the
-            external-issuer path, so the platform holds the issuer key and completes a clawback in one
-            call. That is control amounting to custody, disclosed on the Legal and Licensing page.
+            <span className="font-semibold">Platform-held issuer key.</span> This asset is not
+            configured with an external issuer key, so the platform holds the issuer key and completes
+            a clawback in one call rather than the two-phase issuer-signed flow.
           </>
         )}
       </div>

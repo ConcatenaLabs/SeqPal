@@ -81,7 +81,7 @@ export function Step1Identity({ data, update }) {
       <StepHeader
         n={1}
         title="Who is forming this issuance?"
-        sub="Choose who applies for and will own the new Próspera LLC. On every issuance that newly formed LLC is the issuer of record, the principal legally responsible for the offering. SeqPal is the enforcement agent for the configuration the issuer signs off on."
+        sub="Choose who applies for and will own the new Próspera LLC. That LLC is the issuer of record and the principal: it runs its own placement portal and is solely responsible for the lawfulness of the offering in every jurisdiction where it makes it available. SeqPal enforces the configuration the issuer signs off on."
       />
 
       <div className="space-y-3">
@@ -207,8 +207,8 @@ export function Step1Identity({ data, update }) {
             </div>
             <DemoNote className="mt-4">
               KYB verification is SIMULATED. The entity is recorded against your SeqPal ID on
-              the server, and it carries no enclave key of its own yet, so the asset is still
-              held by your personal AID.
+              the server. It carries no enclave key of its own, so this issuance uses your own
+              SeqPal ID key and the asset is held by your personal account (AID).
             </DemoNote>
             {err && (
               <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{err}</p>
@@ -485,7 +485,7 @@ export function Step3DataRoom({ data, update }) {
         <p className="mt-1 text-sm text-ink-700/70">
           {lockedPublic
             ? 'Depository Receipts are always a public offering.'
-            : 'Private placements are the launch default. Public offerings carry additional disclosure and a setup surcharge.'}
+            : 'Private placements are the default. Public offerings carry additional disclosure and a setup surcharge.'}
         </p>
         <div className="mt-3 flex gap-2">
           {[
@@ -546,7 +546,7 @@ export function Step3DataRoom({ data, update }) {
             </select>
             <p className="mt-1.5 text-xs text-ink-700/60">
               {data.unit === 'BTC'
-                ? 'Books, raise, and distributions kept in BTC; subscriptions are escrowed in kind.'
+                ? 'Books, raise, and distributions kept in BTC; any escrowed subscriptions are held in kind.'
                 : 'A Próspera entity may instead adopt BTC as its unit of account.'}
             </p>
           </div>
@@ -1814,8 +1814,9 @@ export function Step6Checkout({ data, onDeployed }) {
               , billed after launch.
             </p>
             <p>
-              + Escrow and Settlement Fee: 0.25%/mo on subscription funds held in escrow ($5K
-              min, 3% cap, typically about 1% of the raise).
+              + Escrow and Settlement Fee, when you hire SeqPal for escrow: 0.25%/mo on the
+              subscription funds held ($5K min, 3% cap, typically about 1% of the raise). Escrow
+              is optional; if you do not, subscription payments go directly to you.
             </p>
           </div>
           <DemoNote className="mt-5">

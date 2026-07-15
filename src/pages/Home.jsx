@@ -41,7 +41,7 @@ const products = [
   {
     icon: Icon.globe,
     name: 'Placement Portal',
-    body: 'Brandable fundraising portal software on your own domain, offering memorandum, data room, subscription workflow, and escrow, gated by SeqPal ID.',
+    body: 'Brandable fundraising portal software on your own domain, offering memorandum, data room, subscription workflow, and optional escrow, gated by SeqPal ID.',
   },
 ]
 

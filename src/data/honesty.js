@@ -100,18 +100,3 @@ export const SIMULATED = [
   },
 ]
 
-// The two-tier custody posture after M9, plus the FROST roadmap for the legacy key.
-export const FROST_ROADMAP =
-  'A new asset uses an external issuer key: the enclave issuer half is the issuing entity’s own SeqPal ID key, held in its browser, so a clawback is two-phase and cannot be broadcast without the issuer’s signature. The platform holds only the policy key, which is negative control, so it cannot move a holder’s position on its own. Legacy assets that predate this path still use a platform-held issuer key, a single LocalKeySigner (one key, one token, one box, one disk), and each carries the platform-held-key custody disclosure. The remaining hardening for that legacy key is a FROST threshold quorum, so no single party can move a holder position; until it ships, every legacy asset carries the custody disclosure per asset.'
-
-// Legacy assets that predate the overhaul and are excluded from the platform.
-export const LEGACY_ASSETS = [
-  {
-    ticker: 'SPBOND',
-    note: 'A pre-overhaul demo bond. Unregistered in the asset registry because entity.domain must be committed at issue time and cannot be retrofitted.',
-  },
-  {
-    ticker: 'TCT',
-    note: 'A pre-overhaul demo token, deprecated for the same reason.',
-  },
-]

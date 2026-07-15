@@ -78,7 +78,7 @@ export default function NewIssuance() {
         ) : (
           <SignInGate
             title="Sign in to start an issuance"
-            body="Issuing needs a SeqPal ID. The ID is the identity and compliance passport for SeqPal-managed assets on Sequentia, and it is the identity your issuance is recorded against. Create one and we will bring you straight back."
+            body="Issuing needs a SeqPal ID. The ID is the identity and compliance passport for restricted assets on Sequentia, and it is the identity your issuance is recorded against. Create one and we will bring you straight back."
           />
         )}
       </div>

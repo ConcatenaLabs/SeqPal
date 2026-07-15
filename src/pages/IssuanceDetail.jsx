@@ -88,11 +88,10 @@ function DeployCard({ iss, onDeployed }) {
         precision: Number(form.precision),
         clawback: form.clawback,
         confidential: form.confidential,
-        // M9: the entity's own SeqPal ID key becomes the enclave issuer half, so a
+        // The entity's own SeqPal ID key becomes the enclave issuer half, so a
         // clawback needs the issuer's browser signature (two-phase) and the platform
         // never holds an issuer key for this asset. seqpald cross-checks this against
-        // the deploying account and refuses a mismatch. Omitted when signed out,
-        // which falls back to the legacy server-held key.
+        // the deploying account and refuses a mismatch.
         ...(xonly ? { issuer_pubkey: xonly } : {}),
         // fee_convert_atoms is intentionally not sent: seqpald derives it from
         // the price server (value-preserving conversion), and a nonzero value
@@ -527,8 +526,8 @@ export default function IssuanceDetail() {
                   <DemoNote>
                     This policy is committed to the asset's contract through its terms hash,
                     and the terms hash is real. It is not yet compiled into rules the policy
-                    server enforces on a transfer: that is the next milestone, and until then
-                    no eligibility check runs on this asset.
+                    server enforces on a transfer, so no eligibility check runs on this asset
+                    yet.
                   </DemoNote>
                 </div>
               </div>

@@ -4,7 +4,6 @@ import { Icon } from '../components/icons'
 import { Badge } from '../components/ui'
 import CopyId from '../components/CopyId'
 import { rfsaLookup } from '../lib/api'
-import { LEGACY_ASSETS } from '../data/honesty'
 
 // Legal & Licensing, grounded in the SeqPal business plan (sections 1.8, 5.1-5.9).
 // SeqPal is licensed only in Próspera, by the RFSA, for the infrastructure it runs
@@ -233,68 +232,36 @@ export default function Legal() {
         </p>
         <p className="mt-2 text-sm leading-relaxed text-ink-700/85">
           SeqPal is not a broker: it does not solicit, advise, recommend, negotiate, or act in the sale,
-          and the enclave gives it no key that can move a holder’s asset in a transfer. What it does
-          provide is financial services, keeping the register, co-signing transfers to enforce the
-          issuer’s rules, escrowing subscription funds, and paying distributions. Those services are
-          licensed by the RFSA in Próspera, and they are also regulated where the investor lives. SeqPal,
-          not the issuer, answers for the lawfulness of its own services, and it limits that exposure by
-          how it operates: it never presents or lists an offering, its co-signature is a veto rather
-          than the power to move funds, new assets place the clawback key with the issuer rather than the
-          platform, and the funds rail is moving to a non-custodial design where the investor holds the
-          funds until settlement.
+          and the enclave gives it no key that can move a holder’s asset in a transfer. What it provides
+          is the platform, the SeqPal ID identity gate, the transfer agent, and, if the issuer hires it,
+          escrow. Those services are licensed by the RFSA and structured to require licensing only in
+          Próspera: the no-solicitation posture, and an escrow fee that is due whether or not the offering
+          closes, keep them clear of broker-dealer, MiFID, and arranging licensing anywhere else.
         </p>
         <p className="mt-2 text-sm leading-relaxed text-ink-700/85">
-          Two responsibilities, kept apart: the issuer answers for the offering, SeqPal answers for its
-          services. The Próspera licences authorise SeqPal to perform those services; they do not reach
-          the investor’s jurisdiction and are not a substitute for the issuer’s own compliance there.
-        </p>
-        <p className="mt-2 text-sm leading-relaxed text-ink-700/85">
-          SeqPal is paid by the issuer. Its Escrow and Settlement Fee is charged on the subscription
-          funds it holds, accrues while they are held, and is due whether or not the offering closes, so
-          it pays for the custody-and-settlement service rather than a completed sale.
+          Escrow is optional. The issuer runs its own placement portal, on its own domain and in its own
+          name, as its legal operator. If it does not hire SeqPal for escrow, subscription payments go
+          directly to the issuer. If it does, SeqPal holds the funds in USDX, BTC, or fiat and settles
+          delivery against payment, a custody-and-settlement service under its Próspera Escrow Agent and
+          Money Transmitter licences, charged over the holding period whether or not the offering closes.
         </p>
       </div>
 
-      {/* Custody conclusion */}
-      <div className="card mt-6 border-amber-200 p-6">
-        <div className="flex items-center gap-2">
-          <Icon.shield width={18} height={18} className="text-amber-600" />
-          <h2 className="font-bold text-ink-900">The custody conclusion</h2>
-        </div>
-        <p className="mt-2 text-sm leading-relaxed text-ink-700/85">
-          For a clawback-enabled asset whose issuer key the platform holds, SeqPal can move any
-          holder’s position without the holder’s key. That is control amounting to custody under
-          essentially any test. It appears as a risk factor in every offering memorandum, and it
-          qualifies the self-custodial claim for those assets.
-        </p>
-        <p className="mt-2 text-sm leading-relaxed text-ink-700/85">
-          This applies to legacy-path assets only, the ones that predate the external issuer key. A new
-          asset uses the issuing entity’s own SeqPal ID key as the enclave issuer half, so a clawback
-          needs the issuer’s signature and cannot be broadcast without it; the platform holds only the
-          policy key and cannot move a position on its own. Each asset shows which path it is on, in its
-          freeze and clawback console.
-        </p>
-        <p className="mt-2 text-sm leading-relaxed text-ink-700/85">
-          Your half of the 2-of-2 co-signature is negative control: it can refuse a transfer, not move
-          funds. The platform operates the policy server that co-signs, on both paths. The route to
-          retiring the custody conclusion for the remaining legacy key is the FROST threshold quorum,
-          tracked on the{' '}
-          <Link to="/status" className="font-medium text-seq-600 hover:underline">
-            Status
-          </Link>{' '}
-          page.
-        </p>
-      </div>
-
-      {/* Blast radius */}
+      {/* Keys and control */}
       <div className="card mt-6 p-6">
-        <h2 className="font-bold text-ink-900">Single-token blast radius</h2>
-        <p className="mt-2 text-sm leading-relaxed text-ink-700/80">
-          The platform-held issuer key, on legacy-path assets, is a single LocalKeySigner: one key, one
-          token, one box, one disk. Compromise it and every legacy asset it can clawback is compromised
-          with it. Today’s mitigation is operational, a documented backup and restore procedure; the
-          structural fix is the FROST quorum. A new asset sits outside this entirely: its issuer key
-          never touches the platform, so no platform credential can seize it.
+        <h2 className="font-bold text-ink-900">Keys and control</h2>
+        <p className="mt-2 text-sm leading-relaxed text-ink-700/85">
+          Every asset uses the issuing entity’s own key as the enclave issuer half, held in the issuer’s
+          browser. A clawback is two-phase and needs the issuer’s signature, so the platform holds no key
+          that can move a holder’s position, and SeqPal is not the custodian of investor positions.
+        </p>
+        <p className="mt-2 text-sm leading-relaxed text-ink-700/85">
+          A normal transfer is signed by the holder and by SeqPal’s policy key. That policy co-signature
+          is negative control: it can refuse a transfer to enforce the issuer’s rules, but it cannot
+          originate one. The issuer’s key is used only for the discrete actions the issuer takes in the
+          browser, deploying the asset, authorising a close, and exercising a clawback, never for routine
+          transfers, so the issuer runs no server. Each holder’s assets sit in their own enclave, not a
+          pooled account.
         </p>
       </div>
 
@@ -328,17 +295,6 @@ export default function Legal() {
         </p>
       </div>
 
-      {/* USDX non-custodial model */}
-      <div className="card mt-8 p-6">
-        <h2 className="font-bold text-ink-900">Non-custodial USDX commitment model</h2>
-        <p className="mt-2 text-sm leading-relaxed text-ink-700/80">
-          The escrow role above is a licensed custody function for the funds it holds. The production
-          design for the USDX rail removes even that: the investor funds a taproot address only they
-          control, and delivery versus payment settles against it in one atomic step, so the funds
-          never enter SeqPal custody. Each offering shows which model it uses.
-        </p>
-      </div>
-
       {/* Tax, FATCA and CRS */}
       <div className="card mt-6 p-6">
         <h2 className="font-bold text-ink-900">Tax, FATCA and CRS</h2>
@@ -350,16 +306,6 @@ export default function Legal() {
           gives no tax advice. As a registrar holding investor accounts, SeqPal is likely a Financial
           Institution under CRS, a Próspera-side duty, so onboarding collects a CRS and FATCA
           self-certification and the servicing engine issues a labeled-simulated annual report.
-        </p>
-      </div>
-
-      {/* Legacy assets */}
-      <div className="card mt-6 p-6">
-        <h2 className="font-bold text-ink-900">Legacy assets</h2>
-        <p className="mt-1.5 text-sm leading-relaxed text-ink-700/70">
-          {LEGACY_ASSETS.map((a) => a.ticker).join(' and ')} are pre-overhaul demo assets, deprecated
-          and excluded from the platform. They are unregistered in the asset registry because the entity
-          domain must be committed at issue time and cannot be retrofitted.
         </p>
       </div>
 
