@@ -300,24 +300,20 @@ func matrixTable(ctx docContext) string {
 	return b.String()
 }
 
-// custodyRiskFactor is the mandatory custody risk factor, stated for this asset's
-// actual issuer-key path.
-func custodyRiskFactor(ctx docContext) string {
-	if ctx.IssuerExternal {
-		return "Custody: the issuer key for this asset is the issuing entity's own key, held off the platform. A clawback " +
-			"requires the issuer's signature, so the platform operator (" + demoPlatformName + ") cannot move a holder's " +
-			"position on its own. Your half of the two-of-two policy co-signature is negative control: it can refuse a " +
-			"transfer, not originate one."
-	}
-	return "Custody: the issuer key for this asset is held by the platform operator (" + demoPlatformName + "), so the " +
-		"operator can move any holder's position without the holder's key. That is control amounting to custody under " +
-		"essentially any test. Your half of the two-of-two policy co-signature is negative control: it can refuse a " +
-		"transfer, not originate one. Treat the self-custodial description as qualified accordingly."
+// custodyRiskFactor states who holds the keys. The issuer key is always the issuing
+// entity's own, held off the platform, so the platform never holds a key that can
+// move a holder's position.
+func custodyRiskFactor() string {
+	return "Keys and control: the issuer key for this asset is the issuing entity's own key, held off the platform, so a " +
+		"clawback requires the issuer's signature and the platform operator (" + demoPlatformName + ") cannot move a " +
+		"holder's position on its own. The holder's half of the two-of-two policy co-signature is negative control: it can " +
+		"refuse a transfer, not originate one. The platform's role in a transfer is the policy co-signature that enforces " +
+		"the issuer's rules."
 }
 
 func structureRiskFactors(ctx docContext) []string {
 	base := []string{
-		custodyRiskFactor(ctx),
+		custodyRiskFactor(),
 		"Restricted transfer: this is a permissioned security. Every transfer between eligible holders is policy co-signed, " +
 			"and an ineligible or out-of-window transfer is refused for the life of the asset. A refusal at settlement is an expected outcome.",
 		"Finality: nothing is final at zero confirmations. The Sequentia network follows Bitcoin reorgs in real time by " +
