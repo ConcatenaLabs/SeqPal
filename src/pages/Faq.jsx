@@ -48,13 +48,13 @@ const SECTIONS = [
         q: 'Does Sequentia bring me investors?',
         a: [
           'No. Sequentia does not bring you a primary market. You still have to find and qualify your own investors, and nobody on the network will do that for you. A listing is not a market: the network does not create demand, does not underwrite, and does not make an illiquid asset liquid.',
-          'Secondary trading of a restricted asset is deliberately narrow: only eligible, registered holders may acquire it, venues can check eligibility but can never grant it, and a refusal at settlement is normal rather than a bug.',
+          'Secondary trading of a restricted asset is deliberately narrow: only eligible, registered holders may acquire it, and a venue can check eligibility but never grant it. A refusal at settlement is an expected outcome.',
         ],
       },
       {
         q: 'Can an investor pay in Bitcoin?',
         a: [
-          'Native BTC works, and it settles on the parent chain, not as a wrapped token. The one honest limit is that the restricted leg cannot sit in a hash-locked swap output, so a BTC purchase routes through the mechanisms in the integration spec rather than a plain atomic swap, and their trust properties are disclosed where they are used.',
+          'Native BTC works, and it settles on the parent chain, not as a wrapped token. One limit is real: the restricted leg cannot sit in a hash-locked swap output, so a BTC purchase routes through the cross-chain mechanism in the integration spec instead of a plain atomic swap, and its trust trade-offs are shown at the point of use.',
         ],
       },
     ],
@@ -65,7 +65,7 @@ const SECTIONS = [
       {
         q: 'What are Próspera and the RFSA, and why here?',
         a: [
-          'Próspera is the jurisdiction: a Zone for Employment and Economic Development on Roatán, Honduras, where SeqPal and the issuer’s offering are domiciled. The RFSA is its regulator, the authority for financial-services activity conducted in or from Próspera. They are two different things: Próspera is the place, the RFSA is the regulator.',
+          'Próspera is the jurisdiction: a Zone for Employment and Economic Development on Roatán, Honduras, where SeqPal and the issuer’s offering are domiciled. The RFSA is its financial-services regulator.',
           'SeqPal is licensed by the RFSA for the infrastructure it runs, and Próspera’s regime is genuinely favourable to tokenized issuance. That is a real advantage on the issuance side.',
         ],
       },
@@ -74,7 +74,7 @@ const SECTIONS = [
         a: [
           'No. SeqPal’s Próspera licensing is necessary but not sufficient. Every token sold to an investor is also subject to that investor’s home securities law, and that law binds you, the issuer, as the offering party.',
           'Concretely: a public web page can be a financial promotion in many places; US persons are admitted only through Rule 506(c) verified accreditation, with Reg S offshore as the default, and their tokens are restricted securities whose resale is limited; EU access relies on the Prospectus Regulation qualified-investor exemptions and, for some structures, engages AIFMD; the UK requires statutory investor statements. A country you do not admit is excluded by default, and that default protects you.',
-          'This is why the platform compiles your jurisdiction matrix into policy-server rules: the restrictions you configure are enforced by the network on every transfer, not by a promise. SeqPal supplies a suggested minimum; the final policy is yours, and you can make it stricter or, with documented authority, broader, everywhere except the sanctions floor.',
+          'This is why the platform compiles your jurisdiction matrix into policy-server rules: the restrictions you configure are enforced by the network on every transfer. SeqPal supplies a suggested minimum; the final policy is yours, and you can make it stricter, or with documented authority broader, everywhere except the sanctions floor.',
         ],
       },
     ],
@@ -85,7 +85,7 @@ const SECTIONS = [
       {
         q: 'What is a SeqPal ID?',
         a: [
-          'A SeqPal ID is the identity layer for the whole OpenAMP-on-Sequentia world, and there is one registration flow, identical for everyone. It never asks whether you are an issuer or an investor. What it produces is a verified identity bound to a key you generate in your browser.',
+          'A SeqPal ID is the identity layer, and there is one registration flow, identical for everyone; it never asks whether you are an issuer or an investor. It produces a verified identity bound to a key you generate in your browser.',
           'An investor needs one to be permitted to hold or trade these restricted assets anywhere on Sequentia, including on a venue that lists them, and an issuer uses the same credential to issue. "Issuer" and "investor" are things a verified identity does later, never a type chosen at signup.',
         ],
       },
@@ -98,7 +98,7 @@ const SECTIONS = [
       {
         q: 'What can the platform see and do about my holdings?',
         a: [
-          'It depends on which issuer-key path the asset is on, and each asset discloses its path. For a legacy-path asset the platform holds the issuer key, so SeqPal has transfer power over your holdings: that is control amounting to custody, and we say it out loud on the Legal and Licensing page and in every offering memorandum as a risk factor. For a new asset the issuer key is the issuing entity’s own browser key, not the platform’s, so a clawback needs the issuer’s signature and SeqPal cannot move your position on its own. On both paths the platform still operates the policy server that co-signs transfers.',
+          'It depends on which issuer-key path the asset is on, and each asset shows its path. On a legacy-path asset the platform holds the issuer key, so SeqPal can move your holdings, which is control amounting to custody and appears as a risk factor on the Legal and Licensing page and in every offering memorandum. On a new asset the issuer key is the issuing entity’s own browser key, so a clawback needs the issuer’s signature and SeqPal cannot move your position on its own. On both paths the platform operates the policy server that co-signs transfers.',
         ],
       },
     ],
@@ -115,7 +115,7 @@ const SECTIONS = [
       {
         q: 'What happens if I lose my key?',
         a: [
-          'For a clawback-enabled asset there is a runbook: claw back and re-deliver your position to a fresh AID you control. On a new asset the seizure step needs the issuing entity’s signature, since the issuer key is external to the platform, and the re-delivery leg runs under a disclosed treasury delegation; on a legacy asset the platform completes both steps. That is a real recovery path, and its trust implication is exactly the custody conclusion above, so we state it rather than imply your key alone is the whole story. This is why "self-custodial" is qualified here rather than absolute.',
+          'For a clawback-enabled asset there is a runbook: claw back and re-deliver your position to a fresh AID you control. On a new asset the seizure step needs the issuing entity’s signature, since the issuer key is external to the platform, and the re-delivery runs under a disclosed treasury delegation; on a legacy asset the platform completes both steps. The recovery works, and it carries the same trust implication as the custody conclusion above, which is why self-custodial is qualified for these assets.',
         ],
       },
     ],
@@ -161,7 +161,7 @@ const SECTIONS = [
       {
         q: 'When is a transfer final?',
         a: [
-          'Nothing is final at zero confirmations. Sequentia follows Bitcoin reorgs in real time by design, which is the point rather than a defect, because it is what makes cross-chain settlement with Bitcoin safe. A state is only as final as its Bitcoin anchor is deep. If Bitcoin reorgs, the interface regresses a state rather than lying that it was final.',
+          'Nothing is final at zero confirmations. Sequentia follows Bitcoin reorgs in real time by design, which is what makes cross-chain settlement with Bitcoin safe. A state is only as final as its Bitcoin anchor is deep, and if Bitcoin reorgs, the interface regresses the state instead of showing it as final.',
         ],
       },
     ],
