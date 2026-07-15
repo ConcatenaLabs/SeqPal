@@ -22,6 +22,7 @@ import DRConsole from '../components/DRConsole'
 import ListingCard from '../components/ListingCard'
 import { useStore } from '../lib/store'
 import { view } from '../lib/issuance'
+import { downloadPortalBundle } from '../lib/portalBundle'
 import { getStructure } from '../data/structures'
 import { JURISDICTIONS } from '../data/jurisdictions'
 import { STATUS, offPlatformSteps } from '../lib/lifecycle'
@@ -357,6 +358,12 @@ function PortalCard({ iss, portal }) {
               Edit
             </Link>
           </div>
+          <button
+            onClick={() => downloadPortalBundle(iss, portal)}
+            className="btn-outline w-full"
+          >
+            <Icon.upload width={15} height={15} className="rotate-180" /> Download portal bundle to self-host
+          </button>
         </div>
       ) : (
         <Link to={`/issuance/${iss.id}/portal`} className="btn-primary mt-4 w-full">

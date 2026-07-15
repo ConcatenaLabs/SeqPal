@@ -8,6 +8,7 @@ import { useStore, slugify } from '../../lib/store'
 import { view } from '../../lib/issuance'
 import { unitSymbol } from '../../lib/economics'
 import { getStructure } from '../../data/structures'
+import { downloadPortalBundle, openPortalBundle } from '../../lib/portalBundle'
 
 const ACCENTS = [
   { id: 'btc', label: 'Bitcoin', hex: '#F7931A' },
@@ -404,6 +405,40 @@ export default function PortalSetup() {
               Name your brand, enter your domain, and confirm you host and operate the portal to continue.
             </p>
           )}
+
+          {/* Export the deployable bundle. This is the real artifact of the
+              self-host model: a single static index.html the issuer deploys to
+              their own web host. The in-app preview above stays either way. */}
+          <div className="mt-6 rounded-xl border border-ink-900/10 bg-ink-900/[0.02] p-4">
+            <div className="flex items-center gap-2 text-sm font-semibold text-ink-900">
+              <Icon.upload width={16} height={16} className="rotate-180 text-seq-600" /> Deploy it yourself
+            </div>
+            <p className="mt-1.5 text-xs leading-relaxed text-ink-700/70">
+              Download the portal bundle, a self-contained page you host on your own web host under
+              your own domain. It sends investors to the SeqPal ID gate to verify and subscribe.
+            </p>
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={() => downloadPortalBundle(iss, cfg)}
+                disabled={!cfg.brandName || !cfg.slug}
+                className="btn-primary flex-1 disabled:opacity-50"
+              >
+                <Icon.upload width={15} height={15} className="rotate-180" /> Download bundle
+              </button>
+              <button
+                onClick={() => openPortalBundle(iss, cfg)}
+                disabled={!cfg.brandName || !cfg.slug}
+                className="btn-outline disabled:opacity-50"
+                title="Open the exported file itself in a new tab"
+              >
+                <Icon.external width={15} height={15} /> View file
+              </button>
+            </div>
+            <p className="mt-2 text-[11px] leading-relaxed text-ink-700/55">
+              SeqPal supplies the software and is not your host. In production SeqPal allowlists your
+              domain so the whole gate and subscription flow runs on your page.
+            </p>
+          </div>
         </div>
       </div>
     </div>
