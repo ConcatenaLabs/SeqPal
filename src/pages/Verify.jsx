@@ -298,8 +298,8 @@ export default function Verify() {
             A SeqPal-managed asset is transfer-restricted: it can only move when the policy
             key co-signs, which is how eligibility is enforced. The contract commits to that policy
             key, so you can confirm the key checking a transfer is the same key the asset was minted
-            under. A restricted asset is one row among equals on Sequentia: it is not privileged, it
-            is only permissioned.
+            under. A restricted asset is one row among equals on Sequentia, permissioned rather than
+            privileged: it stays openly transferable among eligible, registered holders.
           </p>
           {asset?.policy_pub && (
             <KV k="policy key commitment">

@@ -18,8 +18,8 @@ import { fmtAssetAmount } from '../lib/format'
 // SeqPal-managed asset, read from the policy server. openampd has no "list every
 // asset I hold" endpoint, so we can only read balances for assets we know the id
 // of. Those are the issuances this SeqPal ID has deployed (its own issuer
-// treasury). Investor-side positions require the escrow and delivery rails,
-// which are a later milestone, so they are honestly absent rather than faked.
+// treasury). A position delivered to a holder through another issuer's portal
+// has no id we can enumerate here, so it is absent rather than faked.
 export default function Holdings() {
   const { loading, isSignedIn, account, issuances, watchFor } = useStore()
   const [rows, setRows] = useState(null) // null = loading
@@ -102,8 +102,8 @@ export default function Holdings() {
             <h3 className="mt-5 text-lg font-bold text-ink-900">No holdings yet</h3>
             <p className="mt-2 max-w-md text-sm leading-relaxed text-ink-700/80">
               This account holds no SeqPal-managed asset that the policy server can see. When
-              you deploy an asset it mints into this enclave and appears here. Investor
-              delivery from a placement portal is a later milestone.
+              you deploy an asset it mints into this enclave and appears here. A position you
+              received through another issuer's portal is not enumerated on this page.
             </p>
             <Link to="/dashboard" className="btn-primary mt-6">
               Go to the issuer dashboard

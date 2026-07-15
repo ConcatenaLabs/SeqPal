@@ -39,11 +39,11 @@ export default function Privacy() {
     <section className="container-x max-w-4xl py-14">
       <div className="eyebrow">Privacy</div>
       <h1 className="mt-3 text-3xl font-extrabold tracking-tight text-ink-900 sm:text-4xl">
-        Privacy, scoped to what actually ships
+        Privacy, scoped to what ships
       </h1>
       <p className="mt-4 text-lg leading-relaxed text-ink-700/90">
-        This page describes exactly what the platform does with your data today, not an aspiration.
-        It is a testnet proof of concept, and it is updated as data minimization lands.
+        This page describes what the platform does with your data today. It is a testnet proof of
+        concept, and it is updated as data minimization lands.
       </p>
 
       {/* Partial erasure */}
@@ -75,8 +75,8 @@ export default function Privacy() {
         <p className="mt-2 text-sm leading-relaxed text-ink-700/80">
           Actively targeting investors in the European Union triggers GDPR Article 3(2), even though
           the platform entity is in Próspera, and SeqPal treats it as applicable. International
-          transfers of EU investor data processed on the Próspera-side platform are covered by Standard
-          Contractual Clauses in the production design.
+          transfers of EU investor data processed on the Próspera-side platform are governed by
+          Standard Contractual Clauses.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg bg-ink-900/[0.03] px-4 py-3">
           <span className="text-sm font-medium text-ink-900">Article 27 EU representative</span>
@@ -112,10 +112,9 @@ export default function Privacy() {
           publicly queryable per AID. Once category tokens encode a jurisdiction and an eligibility
           tier, for example <span className="font-mono text-xs">j:US:acc</span>, they are
           identity-adjacent. The SeqDEX eligibility preflight depends on this surface staying readable,
-          so a venue can check what you are eligible to hold. The transparency log now records only a
-          hash of your category set, but the live user endpoint still returns the raw tokens, because
-          eligibility enforcement needs them. Hashing category tokens behind a resolver for authorized
-          venues is a possible follow-up, not shipped here.
+          so a venue can check what you are eligible to hold. The transparency log records only a hash
+          of your category set, but the live user endpoint returns the raw tokens, because eligibility
+          enforcement needs them, so your category tokens are readable today.
         </p>
       </div>
 

@@ -19,7 +19,7 @@ import { useStore } from '../lib/store'
 const KIND_META = {
   'offering-memorandum': {
     label: 'Offering memorandum',
-    note: 'Per-structure risk factors, including the mandatory custody risk factor.',
+    note: 'Per-structure risk factors, including the mandatory clawback risk factor.',
   },
   'subscription-agreement': {
     label: 'Subscription agreement',
@@ -306,17 +306,18 @@ export default function DataRoom({ iss }) {
 
           <Characterization structureId={iss.structureId} />
 
-          {/* Mandatory custody risk factor, surfaced out of the memorandum. */}
+          {/* Mandatory clawback risk factor, surfaced out of the memorandum. */}
           <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
             <div className="flex items-center gap-2 text-sm font-semibold text-amber-800">
-              <Icon.shield width={15} height={15} /> Mandatory risk factor: custody
+              <Icon.shield width={15} height={15} /> Mandatory risk factor: clawback
             </div>
             <p className="mt-1.5 text-sm leading-relaxed text-amber-800/90">
-              This asset is clawback-enabled and its issuer key is held by the platform. SeqPal can
-              move any holder's position without the holder's key, which is control amounting to
-              custody until the FROST quorum ships. The 2-of-2 co-signature is negative control, the
-              power to refuse a transfer, not the power to move funds on its own. This same
-              conclusion is a risk factor in the offering memorandum above.
+              This asset is clawback-enabled. The issuer can seize a holder's position through a
+              two-phase clawback: the issuer signs with its own key, held in its browser, and the
+              registrar co-signs. SeqPal holds no key that can move a holder's position on its own.
+              Every routine transfer carries SeqPal's policy co-signature, which is negative control,
+              the power to refuse a transfer that breaks the issuer's rules, not the power to
+              originate one. This same risk factor appears in the offering memorandum above.
             </p>
           </div>
 

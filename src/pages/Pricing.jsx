@@ -73,14 +73,15 @@ export default function Pricing() {
                 The Escrow & Settlement Fee, explained
               </h3>
               <p className="mt-2 text-sm leading-relaxed text-ink-700/90">
-                A charge for the escrow custody, compliance-conditioned release, and
-                on-chain settlement of the subscription funds SeqPal holds for your
-                raise, 0.25% per month on the funds in escrow, accrued daily, with a
-                $5,000 minimum and a cap of 3% of the funds held. It compensates a
-                custody-and-settlement service performed, payable for the holding
-                period whether or not the offering closes, not a placement
-                commission. Over a typical multi-month raise it works out to roughly
-                1% of the amount raised.
+                Escrow is optional. When you hire SeqPal to hold subscription funds,
+                this fee covers the custody, compliance-conditioned release, and
+                on-chain settlement of those funds: 0.25% per month on the funds in
+                escrow, accrued daily, with a $5,000 minimum and a cap of 3% of the
+                funds held. It pays for the custody-and-settlement service over the
+                holding period, due whether or not the offering closes, rather than a
+                placement commission. Over a typical multi-month raise it works out to
+                roughly 1% of the amount raised. If you do not use escrow, subscription
+                payments go directly to you.
               </p>
             </div>
           </div>
