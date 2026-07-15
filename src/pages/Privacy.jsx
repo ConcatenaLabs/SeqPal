@@ -50,16 +50,15 @@ export default function Privacy() {
       <div className="card mt-10 border-amber-200 p-6">
         <div className="flex items-center gap-2">
           <Icon.shield width={18} height={18} className="text-amber-600" />
-          <h2 className="font-bold text-ink-900">Erasure is partial, and here is why</h2>
+          <h2 className="font-bold text-ink-900">Erasure is partial</h2>
         </div>
         <p className="mt-2 text-sm leading-relaxed text-ink-700/85">
-          We can delete your server-side identity records. We cannot delete the chain or the anchored
-          transparency log: they retain pseudonymous AIDs and opaque hashes that no one can remove. An
-          AID with balance history linked to a server-side identity record is arguably personal data,
-          so the strongest available remedy on an erasure request is destruction of the AID-to-identity
-          mapping, plus optional AID rotation, which claws back and re-delivers your holdings to a
-          fresh AID. That procedure is documented, and we state its limits plainly rather than promise
-          a clean delete we cannot perform.
+          SeqPal can delete your server-side identity records. It cannot delete the chain or the
+          anchored transparency log, which retain pseudonymous AIDs and opaque hashes that no one can
+          remove. An AID with balance history linked to a server-side identity record is arguably
+          personal data, so an erasure request destroys the AID-to-identity mapping and, optionally,
+          rotates the AID, clawing back and re-delivering your holdings to a fresh AID. A clean delete
+          of the chain records is not possible.
         </p>
         <p className="mt-2 text-sm leading-relaxed text-ink-700/85">
           Transparency-log minimization has shipped. A category event in the public transparency log
@@ -75,9 +74,9 @@ export default function Privacy() {
         <h2 className="font-bold text-ink-900">GDPR Article 3(2) applicability</h2>
         <p className="mt-2 text-sm leading-relaxed text-ink-700/80">
           Actively targeting investors in the European Union triggers GDPR Article 3(2), even though
-          the platform entity is in Prospera. We treat it as applicable. International transfers of EU
-          investor data processed on the Prospera-side platform are covered by Standard Contractual
-          Clauses in the production design.
+          the platform entity is in Próspera, and SeqPal treats it as applicable. International
+          transfers of EU investor data processed on the Próspera-side platform are covered by Standard
+          Contractual Clauses in the production design.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg bg-ink-900/[0.03] px-4 py-3">
           <span className="text-sm font-medium text-ink-900">Article 27 EU representative</span>
@@ -108,21 +107,21 @@ export default function Privacy() {
       <div className="card mt-8 p-6">
         <h2 className="font-bold text-ink-900">What is public about your AID</h2>
         <p className="mt-2 text-sm leading-relaxed text-ink-700/80">
-          This is a real exposure, and we disclose it. The policy server publicly returns each AID's
-          category tokens and frozen status at <span className="font-mono text-xs">GET /v1/users/&#123;aid&#125;</span>,
-          and balances are publicly queryable per AID. Once category tokens encode a jurisdiction and
-          an eligibility tier, for example <span className="font-mono text-xs">j:US:acc</span>, they
-          are identity-adjacent. The SeqDEX eligibility preflight depends on this surface staying
-          readable, so a venue can check what you are eligible to hold. This is distinct from the
-          transparency log, which now records only a hash of your category set: the live user endpoint
-          still returns the raw tokens because eligibility enforcement needs them. Hashing category
-          tokens behind a resolver for authorized venues is a possible follow-up, not shipped here.
+          The policy server publicly returns each AID's category tokens and frozen status at{' '}
+          <span className="font-mono text-xs">GET /v1/users/&#123;aid&#125;</span>, and balances are
+          publicly queryable per AID. Once category tokens encode a jurisdiction and an eligibility
+          tier, for example <span className="font-mono text-xs">j:US:acc</span>, they are
+          identity-adjacent. The SeqDEX eligibility preflight depends on this surface staying readable,
+          so a venue can check what you are eligible to hold. The transparency log now records only a
+          hash of your category set, but the live user endpoint still returns the raw tokens, because
+          eligibility enforcement needs them. Hashing category tokens behind a resolver for authorized
+          venues is a possible follow-up, not shipped here.
         </p>
       </div>
 
       {/* Confidentiality reminder */}
       <div className="card mt-6 p-6">
-        <h2 className="font-bold text-ink-900">Confidentiality is opt-in, and it is not privacy from us</h2>
+        <h2 className="font-bold text-ink-900">Confidentiality is opt-in, and not privacy from your registrar</h2>
         <p className="mt-2 text-sm leading-relaxed text-ink-700/80">
           Sequentia is transparent by default. Confidentiality is opt-in per asset. An opt-in
           confidential asset blinds amounts and the asset tag on chain, but the issuer and the policy

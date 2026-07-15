@@ -15,7 +15,7 @@ export const STATUS = {
   live: {
     label: 'Deployed',
     color: 'emerald',
-    blurb: 'The OpenAMP restricted asset is minted on Sequentia',
+    blurb: 'The restricted asset is minted on Sequentia',
   },
 }
 

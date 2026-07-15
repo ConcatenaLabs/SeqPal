@@ -81,7 +81,7 @@ export function Step1Identity({ data, update }) {
       <StepHeader
         n={1}
         title="Who is forming this issuance?"
-        sub="Choose who applies for and will own the new Próspera LLC. On every issuance that newly formed LLC is the issuer of record, the principal legally responsible for the offering, and SeqPal acts only as enforcement agent for the configuration it signs off on."
+        sub="Choose who applies for and will own the new Próspera LLC. On every issuance that newly formed LLC is the issuer of record, the principal legally responsible for the offering. SeqPal is the enforcement agent for the configuration the issuer signs off on."
       />
 
       <div className="space-y-3">
@@ -263,7 +263,7 @@ export function Step2Structure({ data, update }) {
       <StepHeader
         n={2}
         title="Choose your issuance structure"
-        sub="Four structures, each backed by a Próspera LLC and templated paperwork. Pick the one that matches your asset, you can always start another issuance in a different structure later."
+        sub="Four structures, each backed by a Próspera LLC and templated paperwork. Pick the one that matches your asset. You can always start another issuance in a different structure later."
       />
       <div className="grid gap-4 sm:grid-cols-2">
         {STRUCTURES.map((s) => {
@@ -567,7 +567,7 @@ export function Step3DataRoom({ data, update }) {
           ))}
         </div>
         <p className="mt-5 text-xs text-ink-700/60">
-          All fields are optional in this demo, enter as much or as little as you like.
+          All fields are optional in this demo. Enter as much or as little as you like.
         </p>
       </div>
 
@@ -1030,9 +1030,10 @@ export function Step5Compliance({ data, update }) {
             <span className="block text-ink-700/70">
               Blind amounts and the asset tag on-chain. Your issuer still sees and
               reports every holding through the policy server; outside observers see
-              nothing. Sequentia is transparent by default, so this is opt-in per
-              asset. Requires a confidentiality-enabled node; on this public testnet
-              issuances stay transparent and this is enabled on mainnet.
+              nothing. Sequentia is transparent by default, so confidentiality is
+              opt-in per asset. It requires a confidentiality-enabled node: on this
+              public testnet issuances stay transparent, and confidentiality is
+              available on mainnet.
             </span>
           </span>
         </label>
@@ -1058,7 +1059,7 @@ export function Step5Compliance({ data, update }) {
             <span className="font-semibold">DR, US persons excluded at launch.</span>{' '}
             Depository Receipts mirroring US-listed securities carry SEC unregistered-ADR
             and synthetic-equity enforcement risk, so US persons are not admitted at launch. Admitting them
-            requires your own US counsel (e.g. a Reg S structure), confirm US here only on
+            requires your own US counsel (for example a Reg S structure). Confirm US here only on
             that basis.
           </p>
         </div>
@@ -1699,7 +1700,7 @@ export function Step6Checkout({ data, onDeployed }) {
             <div>
               <h3 className="font-bold text-ink-900">Asset minted</h3>
               <p className="text-sm text-ink-700/80">
-                {data.name} ({data.ticker}) is a real OpenAMP restricted asset on the
+                {data.name} ({data.ticker}) is a real restricted asset on the
                 Sequentia testnet.
               </p>
             </div>
@@ -1742,7 +1743,7 @@ export function Step6Checkout({ data, onDeployed }) {
       <StepHeader
         n={6}
         title="Checkout and deployment"
-        sub="Review the summary and deploy. The setup fee is simulated in this build; the deploy is real and mints the OpenAMP restricted asset on Sequentia."
+        sub="Review the summary and deploy. The setup fee is simulated in this build; the deploy is real and mints the restricted asset on Sequentia."
       />
 
       <div className="grid gap-5 lg:grid-cols-5">
@@ -1768,7 +1769,7 @@ export function Step6Checkout({ data, onDeployed }) {
               ['Initial mint to', mintTarget],
               ['Initial supply', supply.toLocaleString() + ' ' + (data.ticker || 'tokens')],
               ['Confidentiality', data.confidential ? 'Confidential (opt-in)' : 'Transparent'],
-              ['Network', 'Sequentia · OpenAMP'],
+              ['Network', 'Sequentia'],
             ].map(([k, v]) => (
               <div key={k} className="flex items-center justify-between py-2.5">
                 <dt className="text-ink-700/70">{k}</dt>

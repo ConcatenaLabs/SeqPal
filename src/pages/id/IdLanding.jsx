@@ -18,11 +18,11 @@ const unlocks = [
   ],
   [
     'Issue an asset, if you ever want to',
-    'The same identity signs you in to the issuance platform and is what the issuance is recorded against. You never choose this at signup.',
+    'The same identity signs you in to the issuance platform and is recorded against the issuance. Issuing is something the identity does later.',
   ],
   [
     'Add a company later',
-    'A corporate (KYB) entity is added to an existing personal SeqPal ID. It is never a separate kind of signup.',
+    'A corporate (KYB) entity is added to your existing personal SeqPal ID.',
   ],
 ]
 
@@ -33,7 +33,7 @@ const holds = [
   ['Eligibility categories', 'Jurisdiction and investor-class tokens the policy server enforces on every transfer'],
   [
     'Sequentia enclave key',
-    'The x-only key OpenAMP registers as your account. Assets you hold live in its 2-of-2 enclave, and one half of that 2-of-2 is the key in your browser.',
+    'The x-only key registered as your Sequentia account. Assets you hold live in its 2-of-2 enclave, and one half of that 2-of-2 is the key in your browser.',
   ],
 ]
 
@@ -54,7 +54,7 @@ export default function IdLanding() {
             sub={
               isSignedIn
                 ? 'Your identity and compliance passport for SeqPal-managed assets on Sequentia.'
-                : 'SeqPal ID is the identity and compliance layer for SeqPal-managed OpenAMP assets on Sequentia. Anyone who wants to hold, trade, or issue one needs it. One flow, the same for everybody.'
+                : 'SeqPal ID is the identity and compliance layer for SeqPal-managed assets on Sequentia. Anyone who wants to hold, trade, or issue one needs it. One flow, the same for everybody.'
             }
           />
           {next && !isSignedIn && (
@@ -171,17 +171,16 @@ export default function IdLanding() {
                     One credential, every door
                   </div>
                   <p className="mt-2 text-sm leading-relaxed text-ink-700/75">
-                    Create a SeqPal ID once. It is not an issuer login: it is the compliance
-                    passport a counterparty or a regulator would ask to see, and the credential
-                    every SeqPal-managed asset is gated on.
+                    Create a SeqPal ID once. It is the compliance passport a counterparty or a
+                    regulator would ask to see, and the credential every SeqPal-managed asset is
+                    gated on.
                   </p>
                   <Link to={registerTo} className="btn-primary mt-5 w-full">
                     Get started
                     <Icon.arrowRight width={16} height={16} />
                   </Link>
                   <p className="mt-3 text-center text-xs text-ink-700/60">
-                    Registration takes a passphrase and a mandatory encrypted backup. No
-                    user-type question, ever.
+                    Registration takes a passphrase and a mandatory encrypted backup.
                   </p>
                 </div>
               )}

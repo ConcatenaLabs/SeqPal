@@ -303,7 +303,7 @@ export default function Dashboard() {
             <h3 className="mt-5 text-lg font-bold text-ink-900">No issuances yet</h3>
             <p className="mt-2 max-w-sm text-sm leading-relaxed text-ink-700/80">
               Start your first issuance and walk the six-step flow, from structure choice to a
-              real OpenAMP mint on the Sequentia testnet.
+              real mint on the Sequentia testnet.
             </p>
             <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
               <Link to="/onboarding" className="btn-primary">

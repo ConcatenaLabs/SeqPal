@@ -7,7 +7,7 @@
 
 export const REAL = [
   'Enclave keys and the SeqPal ID, generated in your browser',
-  'OpenAMP restricted assets minted on the Sequentia testnet',
+  'Restricted assets minted on the Sequentia testnet',
   'Policy co-signed transfers and their real refusals',
   'The register and cap table, read from the chain in atoms',
   'The hash-chained transparency log and its on-chain anchors',
@@ -23,7 +23,7 @@ export const REAL = [
   'The rules-amendment chain: the live on-chain rules always equal the anchored chain head, which is the genesis terms_hash plus N anchored amendments',
   'Category expiry enforced at the policy server, so an expired accreditation becomes a real transfer refusal',
   'Holder-to-holder secondary transfers, policy co-signed, with the browser signing the enclave sighash and both travel-rule counterparties captured',
-  'Secondary-transfer refusals surfaced as a first-class result: an ineligible recipient, a lockup-window resale, or a Reg S window returns a real policy-server refusal with the reason in the public log',
+  'Secondary-transfer refusals surfaced explicitly: an ineligible recipient, a lockup-window resale, or a Reg S window returns a real policy-server refusal with the reason in the public log',
   'The Depository-Receipt programme: mint is a real reissuance and redeem a real burn, with circulating supply chain-derived, never a stored counter',
   'The Depository-Receipt US-person exclusion, enforced as a real policy-server j:US category deny applied through the amendment chain, not a display string',
   'Transparency-log minimization: a category event logs the hash of the category set, which recomputes from the known set, instead of the raw list',
@@ -49,7 +49,7 @@ export const SIMULATED = [
     label: 'Cryptographically real signature; provider-grade e-signature simulated',
   },
   {
-    element: 'Prospera incorporation and e-registry',
+    element: 'Próspera incorporation and e-registry',
     real: 'A watermarked certificate artifact and entity number, hash anchored, with server-driven timers.',
     label: 'Watermark: no e-registry sandbox exists',
   },
@@ -71,7 +71,7 @@ export const SIMULATED = [
   {
     element: 'Market-abuse / insider-dealing acknowledgment',
     real: 'A real once-per-investor record, optionally signed by your SeqPal ID key, that gates the platform transfer surfaces.',
-    label: 'Platform-layer control, disclosed as such; not enforced at the policy co-signature',
+    label: 'Platform-layer control, not enforced at the policy co-signature',
   },
   {
     element: 'Tax forms and remittance',

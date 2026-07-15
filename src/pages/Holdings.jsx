@@ -54,7 +54,7 @@ export default function Holdings() {
     return (
       <SignInGate
         title="Sign in to see your holdings"
-        body="Your holdings are read from the chain against your SeqPal ID, the identity and compliance passport that lets you hold SeqPal-managed assets at all."
+        body="Your holdings are read from the chain against your SeqPal ID, the identity and compliance passport for holding SeqPal-managed assets."
         backTo="/id"
         backLabel="SeqPal ID home"
       />

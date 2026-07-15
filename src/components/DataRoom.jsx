@@ -27,7 +27,7 @@ const KIND_META = {
   },
   'operating-agreement': {
     label: 'Operating agreement',
-    note: 'Declares the on-chain register dispositive under Prospera law.',
+    note: 'Declares the on-chain register dispositive under Próspera law.',
   },
   'escrow-terms': {
     label: 'Escrow terms',

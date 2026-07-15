@@ -74,16 +74,17 @@ type docManifest struct {
 
 // docContext is the resolved, deterministic input to the pure document builder.
 type docContext struct {
-	IssuerName    string
-	OfferingName  string
-	Ticker        string
-	Structure     string // canonical
-	Char          Characterization
-	Jurisdictions []jurisdictionRow
-	EUCaps        []capRow
-	Lockup        string
-	RegS          string
-	Price         string
+	IssuerName     string
+	OfferingName   string
+	Ticker         string
+	Structure      string // canonical
+	Char           Characterization
+	Jurisdictions  []jurisdictionRow
+	EUCaps         []capRow
+	Lockup         string
+	RegS           string
+	Price          string
+	IssuerExternal bool // M9: this asset's issuer key is the entity's own key, held off the platform
 }
 
 type jurisdictionRow struct {
@@ -187,16 +188,17 @@ func (s *server) docContextFor(iss *Issuance, cleanTerms map[string]any) docCont
 	}
 
 	return docContext{
-		IssuerName:    issuerName,
-		OfferingName:  iss.Name,
-		Ticker:        iss.Ticker,
-		Structure:     structure,
-		Char:          ch,
-		Jurisdictions: jurs,
-		EUCaps:        caps,
-		Lockup:        lockupStatement(mt),
-		RegS:          regSStatement(mt),
-		Price:         price,
+		IssuerName:     issuerName,
+		OfferingName:   iss.Name,
+		Ticker:         iss.Ticker,
+		Structure:      structure,
+		Char:           ch,
+		Jurisdictions:  jurs,
+		EUCaps:         caps,
+		Lockup:         lockupStatement(mt),
+		RegS:           regSStatement(mt),
+		Price:          price,
+		IssuerExternal: iss.IssuerExternal,
 	}
 }
 
@@ -283,7 +285,7 @@ func riskFactors(items []string) string {
 
 func matrixTable(ctx docContext) string {
 	if len(ctx.Jurisdictions) == 0 {
-		return para("No jurisdiction access rows are configured. Every jurisdiction not named here is excluded by default, which is the conservative and intended posture.")
+		return para("No jurisdiction access rows are configured. Every jurisdiction not named here is excluded by default.")
 	}
 	var b strings.Builder
 	b.WriteString("<table border=\"1\" cellpadding=\"4\"><thead><tr><th>Jurisdiction</th><th>Access</th><th>Eligibility categories</th></tr></thead><tbody>")
@@ -298,24 +300,28 @@ func matrixTable(ctx docContext) string {
 	return b.String()
 }
 
-// custodyRiskFactor is the mandatory custody-conclusion risk factor. It states
-// the conclusion, not a promise to analyze.
-func custodyRiskFactor() string {
-	return "Custody conclusion: for a clawback-enabled asset whose issuer key is held by the platform operator (" +
-		demoPlatformName + "), the operator can move any holder's position without the holder's key. That is control " +
-		"amounting to custody under essentially any test, until the external-issuer-key milestone removes the operator " +
-		"key from new issuances. The two-of-two policy co-signature is negative control, which is the power to refuse a " +
-		"transfer, not the power to originate one. Holders should treat the self-custodial description as qualified " +
-		"accordingly."
+// custodyRiskFactor is the mandatory custody risk factor, stated for this asset's
+// actual issuer-key path.
+func custodyRiskFactor(ctx docContext) string {
+	if ctx.IssuerExternal {
+		return "Custody: the issuer key for this asset is the issuing entity's own key, held off the platform. A clawback " +
+			"requires the issuer's signature, so the platform operator (" + demoPlatformName + ") cannot move a holder's " +
+			"position on its own. Your half of the two-of-two policy co-signature is negative control: it can refuse a " +
+			"transfer, not originate one."
+	}
+	return "Custody: the issuer key for this asset is held by the platform operator (" + demoPlatformName + "), so the " +
+		"operator can move any holder's position without the holder's key. That is control amounting to custody under " +
+		"essentially any test. Your half of the two-of-two policy co-signature is negative control: it can refuse a " +
+		"transfer, not originate one. Treat the self-custodial description as qualified accordingly."
 }
 
 func structureRiskFactors(ctx docContext) []string {
 	base := []string{
-		custodyRiskFactor(),
+		custodyRiskFactor(ctx),
 		"Restricted transfer: this is a permissioned security. Every transfer between eligible holders is policy co-signed, " +
-			"and an ineligible or out-of-window transfer is refused for the life of the asset. A refusal at settlement is normal, not a defect.",
+			"and an ineligible or out-of-window transfer is refused for the life of the asset. A refusal at settlement is an expected outcome.",
 		"Finality: nothing is final at zero confirmations. The Sequentia network follows Bitcoin reorgs in real time by " +
-			"design, and a state may regress rather than be misreported.",
+			"design, so a state is only as final as its Bitcoin anchor is deep and may regress if that anchor is reorged.",
 		"Confidentiality: the Sequentia network is transparent by default and confidentiality is opt-in per asset. An " +
 			"opt-in confidential asset still exposes holdings to the issuer and the policy server; it is not privacy from your registrar.",
 		"Liquidity: a listing is not a market. The network provides a secondary market with access to Bitcoin liquidity, " +
@@ -444,7 +450,7 @@ func docKIDSummary(ctx docContext) (string, string) {
 	}
 	b.WriteString(heading("Risk and holding period"))
 	b.WriteString(para(ctx.Lockup))
-	b.WriteString(para("This is a restricted, illiquid security. You could lose your entire investment. A refusal at settlement is normal for a permissioned asset."))
+	b.WriteString(para("This is a restricted, illiquid security. You could lose your entire investment. A refusal at settlement is expected for a permissioned asset."))
 	if ctx.Char.PRIIPs {
 		b.WriteString(para("PRIIPs applies to this structure for EU retail; a compliant KID must be produced before any such offer in production."))
 	}

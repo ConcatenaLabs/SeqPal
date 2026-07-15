@@ -165,6 +165,10 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		issuerPubkey = acct.XOnly
 		issuerExternal = true
 	}
+	// Reflect the key path on the in-memory issuance before the documents are
+	// generated, so the offering memorandum's custody risk factor describes this
+	// asset accurately and regenerates to the same bytes (the stored flag matches).
+	iss.IssuerExternal = issuerExternal
 
 	// The canonical terms hash is a server-side fact. The browser's value is only
 	// a cross-check: if the two disagree, the terms the user saw are not the terms

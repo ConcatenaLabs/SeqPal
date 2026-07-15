@@ -126,7 +126,7 @@ const SECTIONS = [
       {
         q: 'Which payment rails are real?',
         a: [
-          'USDX and native testnet BTC are real settlement assets. Card and bank transfer are honestly simulated: the full checkout flow, state machine, receipts, and refund path run, but the funds are marked simulated, and every money surface derived from them carries a simulated badge at the checkout itself, not in a side note.',
+          'USDX and native testnet BTC are real settlement assets. Card and bank transfer are simulated: the full checkout flow, state machine, receipts, and refund path run, but the funds are marked simulated, and every money surface derived from them carries a simulated badge at the checkout itself.',
         ],
       },
       {

@@ -66,9 +66,8 @@ export default function MarketAbuseGate({ children }) {
         SeqPal ID.
       </p>
       <p className="mt-2 text-[13px] leading-relaxed text-ink-700/70">
-        We disclose exactly what this is. It is a platform-layer control that gates this interface.
-        It is not enforced at the policy co-signature, so it does not by itself block a chain
-        transfer. It is recorded once.
+        This is a platform-layer control that gates this interface. It is not enforced at the
+        policy co-signature, so it does not by itself block a chain transfer. It is recorded once.
       </p>
 
       {err && <p className="mt-3 text-sm font-medium text-rose-600">{err}</p>}
