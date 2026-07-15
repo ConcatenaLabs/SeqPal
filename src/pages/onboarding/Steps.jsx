@@ -13,6 +13,7 @@ import {
   CATCH_ALL_ROW,
   ELIG_CATEGORIES,
   EU_MEMBER_STATES,
+  RESIDENCE_OPTIONS,
 } from '../../data/jurisdictions'
 import { computeSetupCost } from '../../data/pricing'
 import { parseMoney } from '../../lib/economics'
@@ -192,15 +193,8 @@ export function Step1Identity({ data, update }) {
                   value={form.jurisdiction}
                   onChange={(e) => setForm({ ...form, jurisdiction: e.target.value })}
                 >
-                  {[
-                    'United Arab Emirates',
-                    'Switzerland',
-                    'Singapore',
-                    'Cayman Islands',
-                    'United States',
-                    'El Salvador',
-                  ].map((j) => (
-                    <option key={j}>{j}</option>
+                  {RESIDENCE_OPTIONS.map((r) => (
+                    <option key={r.code}>{r.name}</option>
                   ))}
                 </select>
               </div>
@@ -609,9 +603,9 @@ const DOC_PACKAGE = (structureId, isPublic) => {
   } else if (structureId === 'depository-receipt') {
     docs.push('Depository Agreement', 'Brokerage Custody Mandate (Power of Attorney)')
   }
-  // Capital-raise structures use a tri-party placement escrow; DRs use the
-  // brokerage custody mandate (added above) instead.
-  if (structureId !== 'depository-receipt') docs.push('Tri-party escrow agreement')
+  // Capital-raise structures include the terms for the optional SeqPal escrow;
+  // DRs use the brokerage custody mandate (added above) instead.
+  if (structureId !== 'depository-receipt') docs.push('Escrow terms (optional SeqPal escrow)')
   if (isPublic || structureId === 'depository-receipt')
     docs.push('RFSA registration & Offering Memorandum package (Financial Products Registry)')
   if (isPublic) docs.push('Board & governance attestations')
@@ -1724,9 +1718,9 @@ export function Step6Checkout({ data, onDeployed }) {
           </dl>
 
           <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-900">
-            The transaction is broadcast. SeqPal does not yet track confirmations or Bitcoin
-            anchor depth, so this is not final at 0 confirmations. Verify the identifiers on a
-            Sequentia explorer.
+            The transaction is broadcast, and nothing is final at 0 confirmations. Your issuance
+            page tracks confirmations and the Bitcoin anchor depth as they land, and you can
+            verify the identifiers on a Sequentia explorer.
           </div>
 
           <button onClick={() => onDeployed(result.issuanceId)} className="btn-primary mt-6 w-full">

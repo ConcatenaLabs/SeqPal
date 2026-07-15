@@ -321,10 +321,14 @@ export default function DataRoom({ iss }) {
             </p>
           </div>
 
-          {/* Subscription acknowledgment surface. The Subscribe action is M5; the
-              acknowledgment lands here so an investor sees the binding first. */}
+          {/* The investor acknowledgment, previewed for the issuer. Investors
+              read and accept this on the placement portal before they subscribe;
+              here it shows the issuer the binding their investors will see. */}
           <div className="mt-4 rounded-xl border border-ink-900/10 px-4 py-3">
-            <label className="flex cursor-pointer items-start gap-3">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-ink-700/60">
+              Investor acknowledgment, as your investors see it
+            </div>
+            <label className="mt-2 flex cursor-pointer items-start gap-3">
               <input
                 type="checkbox"
                 className="mt-0.5 h-4 w-4 accent-btc"
@@ -337,15 +341,11 @@ export default function DataRoom({ iss }) {
                 transfer is policy co-signed between eligible holders.
               </span>
             </label>
-            <div className="mt-3 flex items-center gap-3">
-              <button className="btn-primary disabled:opacity-50" disabled={!ack} title="Subscription settles in a later milestone">
-                Subscribe
-              </button>
-              <span className="text-xs text-ink-700/60">
-                Subscription and settlement are a later milestone. The acknowledgment and the
-                document e-signature are what land now.
-              </span>
-            </div>
+            <p className="mt-3 text-xs leading-relaxed text-ink-700/60">
+              Investors accept this and subscribe on your placement portal, where subscription and
+              settlement run on the Sequentia testnet. On-chain USDX and BTC settle for real, and
+              card and bank rails are simulated and labeled.
+            </p>
           </div>
 
           <div className="mt-4 rounded-lg bg-ink-900/[0.03] px-4 py-3 text-xs leading-relaxed text-ink-700/70">

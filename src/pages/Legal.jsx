@@ -6,10 +6,9 @@ import CopyId from '../components/CopyId'
 import { rfsaLookup } from '../lib/api'
 
 // Legal & Licensing, grounded in the SeqPal business plan (sections 1.8, 5.1-5.9).
-// SeqPal is licensed only in Próspera, by the RFSA, for the infrastructure it runs
-// there, and it is scoped so that nothing it does needs a licence where the investor
-// lives. On every issuance the issuer is the principal and SeqPal enforces the
-// issuer's signed-off configuration. Public page.
+// The issuer is the principal and answers for the offering in every jurisdiction
+// where it makes the offering available; SeqPal's services are licensed by the RFSA
+// and structured to require licensing only in Próspera. Public page.
 
 // SeqPal's RFSA licence slate, all Próspera-side under Financial Regulation A and
 // FinTech Regulation A. Numbers are demo.
@@ -271,8 +270,7 @@ export default function Legal() {
           What the issuer is responsible for, by investor jurisdiction
         </h2>
         <p className="mt-1.5 text-sm leading-relaxed text-ink-700/70">
-          The RFSA licence covers SeqPal in Próspera; it does not reach the investor’s home country,
-          where the investor’s securities law binds the offer, and binds the issuer as principal. US,
+          An investor’s home securities law binds the offer, and it binds the issuer as principal. US,
           EU and UK are worked examples. The issuer sets policy across the full country matrix, which
           starts at qualified investors only and admits nothing the issuer has not added.
         </p>

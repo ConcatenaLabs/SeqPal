@@ -31,7 +31,7 @@ const products = [
   {
     icon: Icon.id,
     name: 'SeqPal ID',
-    body: 'A consolidated KYC/KYB and accreditation passport for anyone. One role-neutral flow; verified once, it whitelists the holder for every SeqPal-managed asset their profile is eligible to hold.',
+    body: 'A consolidated KYC/KYB and accreditation passport, one flow for everyone. Verified once, it whitelists the holder for every SeqPal-managed asset their profile qualifies for.',
   },
   {
     icon: Icon.exchange,
@@ -294,9 +294,9 @@ export default function Home() {
         <div className="grid gap-12 lg:grid-cols-2 lg:items-center">
           <div>
             <SectionHeading
-              eyebrow="Permissioned transferability"
+              eyebrow="Secondary market"
               title="Permissioned transferability, enforced on every transfer"
-              sub="SeqPal builds investor eligibility into each asset, so it stays openly transferable among eligible, registered holders, with a policy co-signature on every transfer, and it can be listed on any vetted venue rather than confined to a proprietary trading system."
+              sub="SeqPal builds investor eligibility into each asset. A policy co-signature checks every transfer, so the asset stays openly transferable among eligible, registered holders and can be listed on any vetted venue rather than confined to a proprietary trading system."
             />
             <ul className="mt-8 space-y-4">
               {[

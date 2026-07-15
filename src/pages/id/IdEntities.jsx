@@ -6,6 +6,7 @@ import SignInGate from '../../components/SignInGate'
 import { Field, ErrorNote, Spinner } from '../../components/IdAuth'
 import { useStore } from '../../lib/store'
 import { verifyEntity, idPassport } from '../../lib/api'
+import { RESIDENCE_OPTIONS } from '../../data/jurisdictions'
 
 const UBO_TAG = 'seqpal-ubo-v1'
 
@@ -60,16 +61,8 @@ function EntityForm({ onAdded, onCancel }) {
             value={form.jurisdiction}
             onChange={(e) => setForm({ ...form, jurisdiction: e.target.value })}
           >
-            {[
-              'United Arab Emirates',
-              'Switzerland',
-              'Singapore',
-              'Cayman Islands',
-              'United States',
-              'El Salvador',
-              'Honduras',
-            ].map((j) => (
-              <option key={j}>{j}</option>
+            {RESIDENCE_OPTIONS.map((r) => (
+              <option key={r.code}>{r.name}</option>
             ))}
           </select>
         </Field>

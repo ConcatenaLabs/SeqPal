@@ -89,7 +89,7 @@ export default function Pricing() {
 
         <p className="mx-auto mt-10 max-w-3xl text-center text-sm leading-relaxed text-ink-700/70">
           Issuers electing a public offering should also expect costs outside the SeqPal
-          fee schedule, an issuer audit or audit review, and per-jurisdiction
+          fee schedule: an issuer audit or audit review, and per-jurisdiction
           local-counsel opinions or filings where applicable. These are borne by the
           issuer. SeqPal is not a law firm and does not provide legal advice.
         </p>

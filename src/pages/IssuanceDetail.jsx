@@ -331,7 +331,7 @@ function PortalCard({ iss, portal }) {
       </div>
       <p className="mt-1.5 text-sm leading-relaxed text-ink-700/70">
         {isRaise
-          ? 'A branded fundraising portal on your own domain, where an investor clears the SeqPal ID gate, signs the subscription agreement, and funds escrow.'
+          ? 'A branded fundraising portal on your own domain, where an investor clears the SeqPal ID gate, signs the subscription agreement, and funds the subscription.'
           : 'Depository Receipts are minted and redeemed directly rather than raised through a subscription portal.'}
       </p>
 
