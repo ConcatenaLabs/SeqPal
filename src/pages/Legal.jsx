@@ -159,11 +159,12 @@ export default function Legal() {
         Where SeqPal stands, stated plainly
       </h1>
       <p className="mt-4 text-lg leading-relaxed text-ink-700/90">
-        SeqPal is licensed only in Próspera, by the RFSA, for the infrastructure it runs there, and it
-        is scoped so that nothing it does needs a licence where the investor lives. On every issuance
-        the issuer is the principal, and SeqPal enforces the configuration the issuer signs off on.
-        This is a testnet proof of concept with no legal effect; the entity and the registration
-        numbers are demo, and every page marks what is simulated.
+        SeqPal is a Próspera platform, licensed by the RFSA for the registrar, transfer-agent, escrow,
+        and platform services it provides. On every issuance the issuer is the principal and carries
+        the responsibility for the offering's lawfulness in each investor's jurisdiction; SeqPal
+        enforces the configuration the issuer signs off on. This is a testnet proof of concept with no
+        legal effect; the entity and the registration numbers are demo, and every page marks what is
+        simulated.
       </p>
 
       {/* Entity, jurisdiction, regulator */}
@@ -224,25 +225,33 @@ export default function Legal() {
         <h2 className="font-bold text-ink-900">Who is responsible for what</h2>
         <p className="mt-2 text-sm leading-relaxed text-ink-700/85">
           On each issuance the issuer LLC is the principal. It owns the claim the token represents, it
-          is the offering party a regulator looks to, and it decides which investors it accepts.
-          SeqPal’s part is operational: it hands the issuer a tested default set of restrictions and a
-          console to tighten them, then enforces exactly what the issuer signed off on. The legal
-          posture of the offering is the issuer’s, and SeqPal does not carry the issuer’s liability for
-          it.
+          is the offering party a regulator looks to, and it decides which investors it accepts. The
+          lawfulness of the offering in every jurisdiction where the issuer makes it available, the
+          registration or exemption, the promotion, and the resale limits, is the issuer’s. SeqPal
+          supplies a tested default set of restrictions and a console to tighten them, enforces exactly
+          what the issuer signed off on, and does not carry the issuer’s liability for the offering.
         </p>
         <p className="mt-2 text-sm leading-relaxed text-ink-700/85">
-          This is also why SeqPal needs no licence where the investor lives. It does not solicit
-          investors, advise, recommend, negotiate terms, or act as principal or agent in the sale.
-          Those are the activities that make a firm a broker-dealer in the United States, a MiFID II
-          investment firm in the European Union, or an arranger in the United Kingdom.
+          SeqPal is not a broker: it does not solicit, advise, recommend, negotiate, or act in the sale,
+          and the enclave gives it no key that can move a holder’s asset in a transfer. What it does
+          provide is financial services, keeping the register, co-signing transfers to enforce the
+          issuer’s rules, escrowing subscription funds, and paying distributions. Those services are
+          licensed by the RFSA in Próspera, and they are also regulated where the investor lives. SeqPal,
+          not the issuer, answers for the lawfulness of its own services, and it limits that exposure by
+          how it operates: it never presents or lists an offering, its co-signature is a veto rather
+          than the power to move funds, new assets place the clawback key with the issuer rather than the
+          platform, and the funds rail is moving to a non-custodial design where the investor holds the
+          funds until settlement.
         </p>
         <p className="mt-2 text-sm leading-relaxed text-ink-700/85">
-          SeqPal is paid by the issuer. Its Escrow and Settlement Fee covers the custody and on-chain
-          settlement of the subscription funds it holds; it accrues while the funds are held and is due
-          whether or not the offering closes. A fee earned for holding and settling funds, not for
-          completing a sale, is what the SEC’s FundersClub and AngelList no-action letters treat as a
-          technology-and-services fee. A focused US Reg D, Reg S, and 506(c) opinion confirms the
-          posture at launch.
+          Two responsibilities, kept apart: the issuer answers for the offering, SeqPal answers for its
+          services. The Próspera licences authorise SeqPal to perform those services; they do not reach
+          the investor’s jurisdiction and are not a substitute for the issuer’s own compliance there.
+        </p>
+        <p className="mt-2 text-sm leading-relaxed text-ink-700/85">
+          SeqPal is paid by the issuer. Its Escrow and Settlement Fee is charged on the subscription
+          funds it holds, accrues while they are held, and is due whether or not the offering closes, so
+          it pays for the custody-and-settlement service rather than a completed sale.
         </p>
       </div>
 
