@@ -90,7 +90,10 @@ func prune(ts []time.Time, cutoff time.Time) []time.Time {
 type deployReq struct {
 	IssuanceID     string          `json:"issuance_id"`
 	Supply         uint64          `json:"supply"`
-	Precision      int             `json:"precision"`
+	// Pointer so an OMITTED precision (nil) is distinct from an explicit 0. Precision 0
+	// is a valid integer-only asset; a plain int would let an omitted field masquerade
+	// as 0 (or, as before, forced 1..8 to reject 0 entirely and make 0dp assets unissuable).
+	Precision      *int            `json:"precision"`
 	Clawback       *bool           `json:"clawback"`
 	Confidential   bool            `json:"confidential"`
 	FeeConvertAtom uint64          `json:"fee_convert_atoms"`
@@ -128,8 +131,13 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		refuse(400, "supply must be at least 1 token")
 		return
 	}
-	if req.Precision < 1 || req.Precision > 8 {
-		refuse(400, "precision must be between 1 and 8")
+	if req.Precision == nil {
+		refuse(400, "precision is required")
+		return
+	}
+	precision := *req.Precision
+	if precision < 0 || precision > 8 {
+		refuse(400, "precision must be between 0 and 8")
 		return
 	}
 	if err := validateTicker(iss.Ticker); err != nil {
@@ -137,7 +145,7 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// atoms = supply * 10^precision, guarded against uint64 overflow.
-	atoms, ok := atomsFor(req.Supply, req.Precision)
+	atoms, ok := atomsFor(req.Supply, precision)
 	if !ok {
 		refuse(400, "supply is too large for the chosen precision")
 		return
@@ -268,7 +276,7 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	}
 	s.st.Audit(acct.AID, "deploy.attempt", map[string]any{
 		"issuance_id": iss.ID, "ticker": iss.Ticker, "supply": req.Supply,
-		"precision": req.Precision, "confidential": req.Confidential,
+		"precision": precision, "confidential": req.Confidential,
 		"clawback": clawback, "terms_hash": termsHash, "idem_key": idem,
 		"issuer_external": issuerExternal,
 	})
@@ -346,7 +354,7 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	issueBody := map[string]any{
 		"name":         iss.Name,
 		"ticker":       iss.Ticker,
-		"precision":    req.Precision,
+		"precision":    precision,
 		"atoms":        atoms,
 		"holder_aid":   escrow.AID,
 		"issuer_aid":   aid,
@@ -421,7 +429,7 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		"status":          "live",
 		"terms":           string(canonical),
 		"supply":          req.Supply,
-		"precision":       req.Precision,
+		"precision":       precision,
 		"confidential":    boolInt(req.Confidential),
 		"clawback":        boolInt(clawback),
 		"asset_id":        issued.Asset,
