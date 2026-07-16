@@ -231,8 +231,9 @@ func (s *server) handlePatchIssuance(w http.ResponseWriter, r *http.Request) {
 		fields["supply"] = *req.Supply
 	}
 	if req.Precision != nil {
-		if *req.Precision < 1 || *req.Precision > 8 {
-			writeErr(w, 400, "precision must be between 1 and 8")
+		// 0 is a valid integer-only asset (nDenomination 0); only nil means "unchanged".
+		if *req.Precision < 0 || *req.Precision > 8 {
+			writeErr(w, 400, "precision must be between 0 and 8")
 			return
 		}
 		fields["precision"] = *req.Precision
