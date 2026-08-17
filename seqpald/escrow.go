@@ -73,7 +73,11 @@ func ensureWalletVia(nodeCall func(method string, params ...any) (json.RawMessag
 	switch code := rpcCode(err); {
 	case code == -35: // RPC_WALLET_ALREADY_LOADED
 		return nil
-	case code == -4 && strings.Contains(strings.ToLower(err.Error()), "already loaded"):
+	// "already loaded" is success whatever code carries it: newer node builds
+	// phrase it inside a wallet-file-verification error ("Data file '...' is
+	// already loaded") under a different code, and a loaded wallet is exactly
+	// the state this function exists to reach.
+	case strings.Contains(strings.ToLower(err.Error()), "already loaded"):
 		return nil
 	}
 	// Not loadable: try to create it, then tolerate a concurrent create.
@@ -82,7 +86,8 @@ func ensureWalletVia(nodeCall func(method string, params ...any) (json.RawMessag
 		return nil
 	}
 	if strings.Contains(strings.ToLower(cerr.Error()), "already exists") || rpcCode(cerr) == -4 {
-		if _, lerr := nodeCall("loadwallet", name); lerr == nil || rpcCode(lerr) == -35 {
+		if _, lerr := nodeCall("loadwallet", name); lerr == nil || rpcCode(lerr) == -35 ||
+			strings.Contains(strings.ToLower(fmt.Sprint(lerr)), "already loaded") {
 			return nil
 		}
 	}
