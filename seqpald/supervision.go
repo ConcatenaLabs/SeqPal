@@ -448,9 +448,9 @@ func (s *server) handleSupervisionUnfreezeComplete(w http.ResponseWriter, r *htt
 			{"txid": freezeOp.Txid, "vout": freezeOp.RecordVout}, // input 0: the record (scriptSig = the signature)
 			{"txid": op.FundTxid, "vout": op.FundVout},           // input 1: fees
 		}
-		outputs := map[string]any{
-			changeAddr: amount8(op.FundAtoms - supervisionFeeAtoms),
-			"fee":      amount8(supervisionFeeAtoms),
+		outputs := []map[string]any{
+			{changeAddr: amount8(op.FundAtoms - supervisionFeeAtoms)},
+			{"fee": amount8(supervisionFeeAtoms)},
 		}
 		rawRes, rerr := s.walletRPC(seqEscrowWallet, "createrawtransaction", inputs, outputs)
 		if rerr != nil {
@@ -675,9 +675,9 @@ func (s *server) assembleRecordTx(op *SupervisionOp, recordScript string) (signe
 		return "", "", -1, err
 	}
 	inputs := []map[string]any{{"txid": op.FundTxid, "vout": op.FundVout}}
-	outputs := map[string]any{
-		changeAddr: amount8(op.FundAtoms - supervisionFeeAtoms),
-		"fee":      amount8(supervisionFeeAtoms),
+	outputs := []map[string]any{
+		{changeAddr: amount8(op.FundAtoms - supervisionFeeAtoms)},
+		{"fee": amount8(supervisionFeeAtoms)},
 	}
 	rawRes, err := s.walletRPC(seqEscrowWallet, "createrawtransaction", inputs, outputs)
 	if err != nil {
