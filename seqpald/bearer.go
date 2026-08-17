@@ -260,6 +260,24 @@ func (s *server) deployBearer(w http.ResponseWriter, acct *Account, iss *Issuanc
 	}
 	prevTxid, prevVout := dec.Vin[0].Txid, dec.Vin[0].Vout
 
+	// fundrawtransaction locked the chosen inputs (lockUnspents). Every failure
+	// from here on must release them, or an aborted deploy strands the escrow
+	// wallet's coins and the next attempt reports insufficient funds. Success
+	// consumes the coins by broadcast, at which point the locks are moot.
+	deployed := false
+	defer func() {
+		if deployed {
+			return
+		}
+		var pts []map[string]any
+		for _, in := range dec.Vin {
+			pts = append(pts, map[string]any{"txid": in.Txid, "vout": in.Vout})
+		}
+		if _, uerr := s.walletRPC(seqEscrowWallet, "lockunspent", true, pts); uerr != nil {
+			s.st.Audit("", "deploy.bearer.unlock_failed", map[string]any{"error": uerr.Error()})
+		}
+	}()
+
 	// Derive the supervised asset id from vin[0] + the descriptor, so the mint
 	// below can be cross-checked against an independent derivation.
 	supRes, err := s.nodeRPC("getsupervisedassetid", prevTxid, prevVout, operationalKey, p.recoveryKey, contractHash, p.pause)
@@ -395,6 +413,11 @@ func (s *server) deployBearer(w http.ResponseWriter, acct *Account, iss *Issuanc
 		refuse(500, "the deploy record could not be stored; nothing was broadcast")
 		return
 	}
+	// The anchor record exists: from here the transaction is the deploy, and
+	// the funded inputs must STAY locked even on a broadcast error (the
+	// operator re-broadcasts this exact tx; unlocking would let a later build
+	// double-spend it).
+	deployed = true
 
 	if _, err := s.nodeRPC("sendrawtransaction", signed.Hex); err != nil && !txAlreadyKnown(err) {
 		// The record exists (the anchor), the tx did not observably broadcast.
