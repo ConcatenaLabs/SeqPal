@@ -933,6 +933,10 @@ func (n *fakeNode) dispatch(method string, params []json.RawMessage) (any, int, 
 		return map[string]any{"name": n.prefix}, 0, ""
 	case "createwallet":
 		return map[string]any{"name": n.prefix}, 0, ""
+	case "dumpassetlabels":
+		// The open fee market has no default fee asset, so every asset send
+		// names one; the real node answers this from its label table.
+		return map[string]any{"bitcoin": strings.Repeat("c8", 32)}, 0, ""
 	case "getnewaddress":
 		n.addrN++
 		return fmt.Sprintf("%s-addr-%d", n.prefix, n.addrN), 0, ""
