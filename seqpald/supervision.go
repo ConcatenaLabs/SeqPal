@@ -107,6 +107,19 @@ func (s *server) handleSupervisionFreeze(w http.ResponseWriter, r *http.Request)
 	unlock := s.supMu.lock(iss.ID)
 	defer unlock()
 
+	// The consensus supervision registry only learns an asset when its
+	// issuance CONFIRMS (records are validated against the registry through
+	// the previous block), so a freeze built against an unconfirmed mint
+	// would broadcast a record the chain rejects as naming an unsupervised
+	// asset. Refuse with the real reason instead.
+	if known, err := s.supervisedAssetKnown(iss.AssetID); err != nil {
+		refuse(502, "getsupervisedassets: "+err.Error())
+		return
+	} else if !known {
+		refuse(409, "the issuance has not confirmed yet; a freeze can be built once the asset is in the chain's supervision registry (wait for one confirmation)")
+		return
+	}
+
 	// Probe first: whether the target is even freezable (single-owner) and
 	// whether it is already frozen; both are surfaced, neither is guessed.
 	probe, err := s.isAssetFrozen(iss.AssetID, target)
@@ -778,4 +791,25 @@ func isHexStr(s string) bool {
 		}
 	}
 	return len(s) > 0
+}
+
+// supervisedAssetKnown reports whether the chain's supervision registry knows
+// this asset, i.e. its supervised issuance has confirmed.
+func (s *server) supervisedAssetKnown(assetID string) (bool, error) {
+	res, err := s.nodeRPC("getsupervisedassets")
+	if err != nil {
+		return false, err
+	}
+	var list []struct {
+		Asset string `json:"asset"`
+	}
+	if err := json.Unmarshal(res, &list); err != nil {
+		return false, err
+	}
+	for _, a := range list {
+		if a.Asset == assetID {
+			return true, nil
+		}
+	}
+	return false, nil
 }
