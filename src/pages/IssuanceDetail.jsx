@@ -257,7 +257,27 @@ function AssetCard({ iss, watch }) {
           ['Issuance txid', <CopyId key="t" value={iss.txid} kind="tx" label="issuance txid" />],
           ['Contract hash', <CopyId key="c" value={iss.contractHash} label="contract hash" />],
           ['Holder account (AID)', <CopyId key="h" value={iss.holderAid} label="holder AID" />],
-          ['Enclave address', <CopyId key="e" value={iss.enclaveAddress} label="enclave address" />],
+          ...(iss.enforcement === 'network'
+            ? [
+                [
+                  'Holding address',
+                  <CopyId key="hc" value={iss.holderAddress} label="holding address" />,
+                ],
+                [
+                  'Rules address',
+                  <CopyId key="vc" value={iss.rulesAddress} label="rules address" />,
+                ],
+                [
+                  'Policy commitment',
+                  <CopyId key="pc" value={iss.policyCommitment} label="policy commitment" />,
+                ],
+              ]
+            : [
+                [
+                  'Enclave address',
+                  <CopyId key="e" value={iss.enclaveAddress} label="enclave address" />,
+                ],
+              ]),
           ...(live && iss.assetId
             ? [['Asset registry', <RegistryBadge key="r" assetId={iss.assetId} />]]
             : []),
@@ -275,6 +295,14 @@ function AssetCard({ iss, watch }) {
           </div>
         ))}
       </dl>
+      {iss.enforcement === 'network' && (
+        <p className="mt-4 rounded-xl border border-ink-900/10 bg-ink-900/[0.02] px-4 py-3 text-xs leading-relaxed text-ink-700/85">
+          Holders hold this token at addresses the network itself polices. Transfers do not need
+          SeqPal to be online. The rules address is where your published policy lives on chain:
+          every transfer of this token has to spend it, which is what makes the rules bind. Changing
+          the policy, or halting the token, is done from that address with your issuer key.
+        </p>
+      )}
       {live && iss.assetId && (
         <Link
           to={`/docs/verify?asset=${encodeURIComponent(iss.assetId)}`}

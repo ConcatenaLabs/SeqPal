@@ -811,6 +811,42 @@ CREATE TABLE action_claim_outpoints (
 	`
 ALTER TABLE p2p_transfers ADD COLUMN confidential INTEGER NOT NULL DEFAULT 0;
 `,
+	// M12: network-enforced issuance. A network-enforced asset is policed on chain
+	// rather than by the policy server, so the facts worth keeping are different
+	// ones: the verifier asset and its fixed amount, the policy commitment the
+	// deployed program is instantiated with, the whitelist root that commitment
+	// covers, and the two addresses holders and auditors actually look at. None of
+	// them is a secret and none of them is a key.
+	//
+	// damp_prepares is the two-phase handoff. A network deploy cannot complete in
+	// one call: the on-chain programs are compiled outside this platform, and the
+	// values needed to compile them are only fixed once the policy server has
+	// chosen the funding outpoint. So the first deploy attempt prepares, records
+	// what the issuer's registrar must run, and refuses; the second attempt carries
+	// the two values back and completes. One row per issuance keeps that resumable
+	// and stops a retry preparing (and minting a verifier asset) twice.
+	// All additive; an M11 database migrates forward in place.
+	`
+ALTER TABLE issuances ADD COLUMN verifier_asset TEXT NOT NULL DEFAULT '';
+ALTER TABLE issuances ADD COLUMN verifier_amount INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE issuances ADD COLUMN policy_commitment TEXT NOT NULL DEFAULT '';
+ALTER TABLE issuances ADD COLUMN whitelist_root TEXT NOT NULL DEFAULT '';
+ALTER TABLE issuances ADD COLUMN holder_covenant_address TEXT NOT NULL DEFAULT '';
+ALTER TABLE issuances ADD COLUMN verifier_covenant_address TEXT NOT NULL DEFAULT '';
+CREATE TABLE damp_prepares (
+    issuance_id          TEXT PRIMARY KEY,
+    prepare_id           TEXT    NOT NULL,
+    asset_id             TEXT    NOT NULL,
+    verifier_asset       TEXT    NOT NULL,
+    verifier_amount      INTEGER NOT NULL DEFAULT 0,
+    policy_commitment    TEXT    NOT NULL,
+    whitelist_root       TEXT    NOT NULL,
+    whitelist            TEXT    NOT NULL DEFAULT '[]',
+    derive_document      TEXT    NOT NULL DEFAULT '{}',
+    snapshot_sig_message TEXT    NOT NULL DEFAULT '',
+    created_at           INTEGER NOT NULL
+);
+`,
 }
 
 // Store is seqpald's persistent state. Every financial fact the UI shows is
@@ -929,8 +965,88 @@ type Issuance struct {
 	Enforcement      string `json:"enforcement,omitempty"`
 	RecoveryPubkey   string `json:"recovery_pubkey,omitempty"`
 	SupervisionPause bool   `json:"supervision_pause,omitempty"`
-	CreatedAt        int64  `json:"created_at"`
-	UpdatedAt        int64  `json:"updated_at"`
+	// M12, network enforcement only. The verifier asset and its fixed amount, the
+	// policy commitment the deployed on-chain program is instantiated with, the
+	// whitelist root that commitment covers, and the two addresses that matter to
+	// a holder: where they hold the token, and where the rules themselves live.
+	// All empty for every other election, so existing rows read unchanged.
+	VerifierAsset           string `json:"verifier_asset,omitempty"`
+	VerifierAmount          uint64 `json:"verifier_amount,omitempty"`
+	PolicyCommitment        string `json:"policy_commitment,omitempty"`
+	WhitelistRoot           string `json:"whitelist_root,omitempty"`
+	HolderCovenantAddress   string `json:"holder_covenant_address,omitempty"`
+	VerifierCovenantAddress string `json:"verifier_covenant_address,omitempty"`
+	CreatedAt               int64  `json:"created_at"`
+	UpdatedAt               int64  `json:"updated_at"`
+}
+
+// DampPrepare is the two-phase handoff for a network-enforced deploy: what the
+// policy server fixed in phase 1, and the document the issuer's registrar runs
+// its derivation against before phase 2 can complete. It holds no key material.
+type DampPrepare struct {
+	IssuanceID         string          `json:"issuance_id"`
+	PrepareID          string          `json:"prepare_id"`
+	AssetID            string          `json:"asset_id"`
+	VerifierAsset      string          `json:"verifier_asset"`
+	VerifierAmount     uint64          `json:"verifier_amount"`
+	PolicyCommitment   string          `json:"policy_commitment"`
+	WhitelistRoot      string          `json:"whitelist_root"`
+	Whitelist          json.RawMessage `json:"whitelist"`
+	DeriveDocument     json.RawMessage `json:"derive_document"`
+	SnapshotSigMessage string          `json:"snapshot_sig_message,omitempty"`
+	CreatedAt          int64           `json:"created_at"`
+}
+
+// PutDampPrepare records (or replaces) the handoff for an issuance.
+func (s *Store) PutDampPrepare(p *DampPrepare) error {
+	wl, dd := string(p.Whitelist), string(p.DeriveDocument)
+	if wl == "" {
+		wl = "[]"
+	}
+	if dd == "" {
+		dd = "{}"
+	}
+	_, err := s.db.Exec(
+		`INSERT INTO damp_prepares (issuance_id, prepare_id, asset_id, verifier_asset, verifier_amount,
+            policy_commitment, whitelist_root, whitelist, derive_document, snapshot_sig_message, created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?)
+         ON CONFLICT(issuance_id) DO UPDATE SET
+            prepare_id=excluded.prepare_id, asset_id=excluded.asset_id,
+            verifier_asset=excluded.verifier_asset, verifier_amount=excluded.verifier_amount,
+            policy_commitment=excluded.policy_commitment, whitelist_root=excluded.whitelist_root,
+            whitelist=excluded.whitelist, derive_document=excluded.derive_document,
+            snapshot_sig_message=excluded.snapshot_sig_message`,
+		p.IssuanceID, p.PrepareID, p.AssetID, p.VerifierAsset, p.VerifierAmount,
+		p.PolicyCommitment, p.WhitelistRoot, wl, dd, p.SnapshotSigMessage, p.CreatedAt)
+	return err
+}
+
+// DampPrepare returns the handoff for an issuance, or (nil, nil) when there is
+// none.
+func (s *Store) DampPrepare(issuanceID string) (*DampPrepare, error) {
+	var p DampPrepare
+	var wl, dd string
+	err := s.db.QueryRow(
+		`SELECT issuance_id, prepare_id, asset_id, verifier_asset, verifier_amount,
+                policy_commitment, whitelist_root, whitelist, derive_document, snapshot_sig_message, created_at
+           FROM damp_prepares WHERE issuance_id = ?`, issuanceID).
+		Scan(&p.IssuanceID, &p.PrepareID, &p.AssetID, &p.VerifierAsset, &p.VerifierAmount,
+			&p.PolicyCommitment, &p.WhitelistRoot, &wl, &dd, &p.SnapshotSigMessage, &p.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	p.Whitelist = json.RawMessage(wl)
+	p.DeriveDocument = json.RawMessage(dd)
+	return &p, nil
+}
+
+// DeleteDampPrepare consumes a handoff once its issuance is live.
+func (s *Store) DeleteDampPrepare(issuanceID string) error {
+	_, err := s.db.Exec(`DELETE FROM damp_prepares WHERE issuance_id = ?`, issuanceID)
+	return err
 }
 
 type DeployRecord struct {
@@ -1033,7 +1149,9 @@ func (s *Store) EntityByID(id string) (*Entity, error) {
 // choice now, so the issuance record neither writes nor reads it.
 const issuanceCols = `id, owner_aid, COALESCE(entity_id,''), name, ticker, structure_id, status, terms,
     supply, precision, clawback, asset_id, txid, contract_hash, holder_aid, enclave_address,
-    issuer_external, issuer_pubkey, enforcement, recovery_pubkey, supervision_pause, created_at, updated_at`
+    issuer_external, issuer_pubkey, enforcement, recovery_pubkey, supervision_pause,
+    verifier_asset, verifier_amount, policy_commitment, whitelist_root,
+    holder_covenant_address, verifier_covenant_address, created_at, updated_at`
 
 func (s *Store) CreateIssuance(i *Issuance) error {
 	var entity any
@@ -1101,7 +1219,10 @@ func scanIssuanceInto(sc scanner) (*Issuance, error) {
 	err := sc.Scan(&i.ID, &i.OwnerAID, &i.EntityID, &i.Name, &i.Ticker, &i.StructureID, &i.Status, &terms,
 		&i.Supply, &i.Precision, &clawback, &i.AssetID, &i.Txid, &i.ContractHash,
 		&i.HolderAID, &i.EnclaveAddress, &issuerExternal, &i.IssuerPubkey, &i.Enforcement,
-		&i.RecoveryPubkey, &supervisionPause, &i.CreatedAt, &i.UpdatedAt)
+		&i.RecoveryPubkey, &supervisionPause,
+		&i.VerifierAsset, &i.VerifierAmount, &i.PolicyCommitment, &i.WhitelistRoot,
+		&i.HolderCovenantAddress, &i.VerifierCovenantAddress,
+		&i.CreatedAt, &i.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
