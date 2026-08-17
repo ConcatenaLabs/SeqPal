@@ -156,6 +156,104 @@ test('recovery key: an independent keypair with the same envelope round-trip', a
   await assert.rejects(() => decryptKey(envelope, 'wrong'), /Wrong passphrase/)
 })
 
+// ── the live-drill drivers' primitives (scripts/e2e) ────────────────────────
+//
+// The action drill derives the holder's P2TR key-path address and an ordinary
+// P2WPKH payout address with its own bech32/bech32m encoder (the repo carries
+// no bech32 dependency), and signs the server's exact holding-proof statement
+// bytes. Both are pinned here: the encoder against address vectors taken from
+// the Sequentia node's own src/test/data/key_io_valid.json (chain "test"), and
+// the statement signer against the SPA's field-based signHoldingProof.
+
+test('drill bech32m: the P2TR key-path address matches the node key_io vector', async () => {
+  const { p2trAddress, decodeSegwit } = await import('../scripts/e2e/lib/bech32.mjs')
+  // Sequentia src/test/data/key_io_valid.json, chain "test":
+  //   tb1ph9v3e8nxct57hknlkhkz75p5pnxnkn05cw8ewpxu6tek56g29xgqydzfu7
+  //   = 5120 b9591c9e66c2e9ebda7fb5ec2f50340ccd3b4df4c38f9704dcd2f36a690a2990
+  const xonly = 'b9591c9e66c2e9ebda7fb5ec2f50340ccd3b4df4c38f9704dcd2f36a690a2990'
+  assert.equal(
+    p2trAddress(xonly, 'tb'),
+    'tb1ph9v3e8nxct57hknlkhkz75p5pnxnkn05cw8ewpxu6tek56g29xgqydzfu7',
+    'the bech32m encoding must match what the node itself decodes'
+  )
+  // Round trip: the address decodes back to witness v1 over exactly the key,
+  // i.e. the 5120||xonly script seqpald's claim derivation expects.
+  const dec = decodeSegwit(p2trAddress(xonly, 'tb'))
+  assert.equal(dec.hrp, 'tb')
+  assert.equal(dec.version, 1)
+  assert.equal(dec.program, xonly)
+  // A corrupted character must fail the checksum.
+  assert.throws(() => decodeSegwit('tb1ph9v3e8nxct57hknlkhkz75p5pnxnkn05cw8ewpxu6tek56g29xgqydzfu8'))
+})
+
+test('drill bech32: the P2WPKH payout address matches the node key_io vector and its claim script', async () => {
+  const { encodeSegwit, decodeSegwit, p2wpkhAddressFromPriv, compressedPubkey, hash160 } = await import(
+    '../scripts/e2e/lib/bech32.mjs'
+  )
+  const { bytesToHex } = await import('@noble/curves/abstract/utils')
+  // Sequentia src/test/data/key_io_valid.json, chain "test":
+  //   tb1q74fxwnvhsue0l8wremgq66xzvn48jlc5zthsvz = 0014 f552674d...797f14
+  assert.equal(
+    encodeSegwit('tb', 0, 'f552674d978732ff9dc3ced00d68c264ea797f14'),
+    'tb1q74fxwnvhsue0l8wremgq66xzvn48jlc5zthsvz',
+    'the bech32 (v0) encoding must match what the node itself decodes'
+  )
+  // The payout address derives from the REAL compressed key: its program is
+  // hash160(compressed), which is exactly the 0014||hash160 script seqpald's
+  // scriptForClaimKey derives for a 66-hex claim key.
+  const { priv } = generateEnclaveKey()
+  const compressed = compressedPubkey(priv)
+  const dec = decodeSegwit(p2wpkhAddressFromPriv(priv, 'tb'))
+  assert.equal(dec.version, 0)
+  assert.equal(dec.program, bytesToHex(hash160(hexToBytes(compressed))))
+})
+
+test('drill holding-proof signer: signing the server statement bytes equals the SPA field signer', async () => {
+  const { signHoldingStatement } = await import('../scripts/e2e/lib/drill.mjs')
+  const { priv, xonly } = generateEnclaveKey()
+  const fields = {
+    action_id: 'act_drill',
+    asset: 'c'.repeat(64),
+    record_height: 97600,
+    outpoints: ['b'.repeat(64) + ':1', 'a'.repeat(64) + ':0'],
+    purpose: 'dividend',
+    payout_address: 'tb1q74fxwnvhsue0l8wremgq66xzvn48jlc5zthsvz',
+    aid: 'd'.repeat(40),
+  }
+  // The server's sign_this bytes are the canonical JSON of its statement
+  // (sorted keys, sorted outpoints), which the driver signs verbatim in the
+  // two-phase claim. That signature must be byte-identical to the SPA's
+  // field-based signer for the same claim, so seqpald verifies both alike.
+  const serverStatement = canonicalJSON({
+    v: 1,
+    action_id: fields.action_id,
+    asset: fields.asset,
+    record_height: fields.record_height,
+    outpoints: [...fields.outpoints].sort(),
+    purpose: 'dividend',
+    aid: fields.aid,
+    payout_address: fields.payout_address,
+  })
+  assert.equal(signHoldingStatement(priv, serverStatement), signHoldingProof(priv, fields))
+  // And the vote shape too.
+  const voteFields = { ...fields, purpose: 'vote', choice: 'for' }
+  delete voteFields.payout_address
+  const voteStatement = canonicalJSON({
+    v: 1,
+    action_id: fields.action_id,
+    asset: fields.asset,
+    record_height: fields.record_height,
+    outpoints: [...fields.outpoints].sort(),
+    purpose: 'vote',
+    aid: fields.aid,
+    choice: 'for',
+  })
+  assert.equal(signHoldingStatement(priv, voteStatement), signHoldingProof(priv, voteFields))
+  // Sanity: it stays a tagged signer, never a raw digest oracle.
+  const raw = sha256(enc.encode(serverStatement))
+  assert.ok(!schnorr.verify(hexToBytes(signHoldingStatement(priv, serverStatement)), raw, hexToBytes(xonly)))
+})
+
 test('terms: the enforcement election is committed, and bearer terms carry no transfer rules', () => {
   const base = {
     structureId: 'native-equity',

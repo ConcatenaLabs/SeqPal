@@ -48,6 +48,25 @@ var docKinds = []string{
 	"lift-artifact",
 }
 
+// bearerDocKinds is the document set for a bearer (freely tradable, supervised)
+// issuance. The compiled-matrix artifacts that only describe transfer
+// restrictions (the operating agreement's restricted register, the KID summary,
+// the lift artifact) are omitted, because a bearer asset has no transfer
+// restrictions; in their place the charter set is emitted: the articles of
+// incorporation electing a ledger-securities framework and designating the
+// on-chain share ledger, the freeze-power charter, the dual-state shareholder
+// terms, and the risk-acceptance instrument.
+var bearerDocKinds = []string{
+	"offering-memorandum",
+	"subscription-agreement",
+	"escrow-terms",
+	"uk-investor-statement",
+	"articles-of-incorporation",
+	"freeze-power-charter",
+	"shareholder-terms",
+	"risk-acceptance-instrument",
+}
+
 // GeneratedDoc is one produced artifact before it is stored.
 type GeneratedDoc struct {
 	Kind  string
@@ -85,6 +104,17 @@ type docContext struct {
 	RegS           string
 	Price          string
 	IssuerExternal bool // M9: this asset's issuer key is the entity's own key, held off the platform
+	// Bearer marks the bearer enforcement election (a freely tradable,
+	// consensus-supervised asset): the charter document set replaces the
+	// matrix artifacts, and the shared documents drop their restricted-transfer
+	// language. Resolved from terms.enforcement, falling back to the issuance
+	// row's persisted election, so the browser's pre-deploy generation and the
+	// deploy-time regeneration agree.
+	Bearer bool
+	// EntityJurisdiction fills the registered-office term in the articles of
+	// incorporation when the issuance is bound to an entity record. Only bearer
+	// documents read it, so non-bearer output is unaffected.
+	EntityJurisdiction string
 }
 
 type jurisdictionRow struct {
@@ -166,10 +196,22 @@ func (s *server) docContextFor(iss *Issuance, cleanTerms map[string]any) (docCon
 	structure := ch.Structure
 
 	issuerName := iss.Name
+	entityJurisdiction := ""
 	if iss.EntityID != "" {
-		if e, _ := s.st.EntityByID(iss.EntityID); e != nil && e.Name != "" {
-			issuerName = e.Name
+		if e, _ := s.st.EntityByID(iss.EntityID); e != nil {
+			if e.Name != "" {
+				issuerName = e.Name
+			}
+			entityJurisdiction = strings.TrimSpace(e.Jurisdiction)
 		}
+	}
+
+	// The bearer election: terms.enforcement when the terms name it (the SPA
+	// always commits the election into the terms), else the issuance row's
+	// persisted election (the deploy path sets it before generating documents).
+	enforcement := strings.ToLower(strings.TrimSpace(iss.Enforcement))
+	if v, ok := cleanTerms["enforcement"].(string); ok && strings.TrimSpace(v) != "" {
+		enforcement = strings.ToLower(strings.TrimSpace(v))
 	}
 
 	jurs := make([]jurisdictionRow, 0, len(mt.Jurisdictions))
@@ -196,17 +238,19 @@ func (s *server) docContextFor(iss *Issuance, cleanTerms map[string]any) (docCon
 	}
 
 	return docContext{
-		IssuerName:     issuerName,
-		OfferingName:   iss.Name,
-		Ticker:         iss.Ticker,
-		Structure:      structure,
-		Char:           ch,
-		Jurisdictions:  jurs,
-		EUCaps:         caps,
-		Lockup:         lockupStatement(mt),
-		RegS:           regSStatement(mt),
-		Price:          price,
-		IssuerExternal: iss.IssuerExternal,
+		IssuerName:         issuerName,
+		OfferingName:       iss.Name,
+		Ticker:             iss.Ticker,
+		Structure:          structure,
+		Char:               ch,
+		Jurisdictions:      jurs,
+		EUCaps:             caps,
+		Lockup:             lockupStatement(mt),
+		RegS:               regSStatement(mt),
+		Price:              price,
+		IssuerExternal:     iss.IssuerExternal,
+		Bearer:             enforcement == "bearer",
+		EntityJurisdiction: entityJurisdiction,
 	}, nil
 }
 
@@ -242,18 +286,28 @@ func regSStatement(mt matrixTerms) string {
 }
 
 // buildDocumentSet is the pure generator: docContext in, sorted-by-kind set out.
+// A bearer context selects the bearer charter set; everything else emits the
+// standard set, byte-identical to what it always produced.
 func buildDocumentSet(ctx docContext) []GeneratedDoc {
 	builders := map[string]func(docContext) (string, string){
-		"offering-memorandum":    docOfferingMemorandum,
-		"subscription-agreement": docSubscriptionAgreement,
-		"operating-agreement":    docOperatingAgreement,
-		"escrow-terms":           docEscrowTerms,
-		"kid-summary":            docKIDSummary,
-		"uk-investor-statement":  docUKInvestorStatement,
-		"lift-artifact":          docLiftArtifact,
+		"offering-memorandum":        docOfferingMemorandum,
+		"subscription-agreement":     docSubscriptionAgreement,
+		"operating-agreement":        docOperatingAgreement,
+		"escrow-terms":               docEscrowTerms,
+		"kid-summary":                docKIDSummary,
+		"uk-investor-statement":      docUKInvestorStatement,
+		"lift-artifact":              docLiftArtifact,
+		"articles-of-incorporation":  docArticlesOfIncorporation,
+		"freeze-power-charter":       docFreezePowerCharter,
+		"shareholder-terms":          docShareholderTerms,
+		"risk-acceptance-instrument": docRiskAcceptanceInstrument,
 	}
-	out := make([]GeneratedDoc, 0, len(docKinds))
-	for _, kind := range docKinds {
+	kinds := docKinds
+	if ctx.Bearer {
+		kinds = bearerDocKinds
+	}
+	out := make([]GeneratedDoc, 0, len(kinds))
+	for _, kind := range kinds {
 		title, body := builders[kind](ctx)
 		out = append(out, GeneratedDoc{Kind: kind, Title: title, HTML: []byte(body), Hash: sha256Hex([]byte(body))})
 	}
@@ -367,6 +421,30 @@ func structureRiskFactors(ctx docContext) []string {
 	return base
 }
 
+// bearerRiskFactors is the risk-factor list for a bearer offering: the freeze
+// power, finality, confidentiality, liquidity, key loss, and the regulatory
+// position replace the restricted-transfer factors, which do not apply.
+func bearerRiskFactors(ctx docContext) []string {
+	return []string{
+		"Court-ordered freeze: the issuing company holds a supervised-asset freeze power over this asset, exercisable only on a " +
+			"binding order of a court of competent jurisdiction or of the RFSA. A frozen balance cannot move until the order is " +
+			"lifted, and every freeze and lift is a signed public chain record beside the order document's fingerprint.",
+		"Finality: nothing is final at zero confirmations. The Sequentia network follows Bitcoin reorgs in real time by " +
+			"design, so a state is only as final as its Bitcoin anchor is deep and may regress if that anchor is reorged.",
+		"Confidentiality: the Sequentia network is transparent by default and confidentiality is a per-transfer choice. A " +
+			"confidential transfer hides that transfer's amount and asset from outside observers only; a holder claiming " +
+			"corporate rights proves their holding to the transfer agent.",
+		"Liquidity: free tradability is not a market. The network provides a secondary market with access to Bitcoin " +
+			"liquidity, but it does not create demand, underwrite, or make an illiquid asset liquid.",
+		"Key loss: this is a bearer instrument. If you lose the key that controls your holding there is no clawback path; " +
+			"recovery is limited to what a binding order can direct through the supervised-asset freeze and reissue powers.",
+		"Regulatory position: the offering is made on the issuer's signed acceptance that its company has no United States " +
+			"operations, assets, or banking, and that regulators may object. The risk acceptance instrument in this document " +
+			"set records that acceptance; the issuing company, not the platform, bears the stated risk.",
+		ctx.Char.Instrument + ": " + ctx.Char.Analysis,
+	}
+}
+
 func docOfferingMemorandum(ctx docContext) (string, string) {
 	title := "Offering Memorandum: " + ctx.OfferingName + " (" + ctx.Ticker + ")"
 	var b strings.Builder
@@ -378,6 +456,15 @@ func docOfferingMemorandum(ctx docContext) (string, string) {
 	b.WriteString(heading("Instrument characterization"))
 	b.WriteString(para("Structure: " + ctx.Structure + ". Instrument: " + ctx.Char.Instrument + "."))
 	b.WriteString(para(ctx.Char.Analysis))
+	if ctx.Bearer {
+		b.WriteString(heading("Transferability"))
+		b.WriteString(para("This is a freely tradable token: anyone may hold and trade it, no eligibility matrix is enforced on chain, and no transfer requires the company's approval. The company has waived transfer approval in its articles of incorporation. Economic and transfer rights pass with the token; dividends and voting require registering as a holder of record, as the shareholder terms state."))
+		b.WriteString(heading("Supervision"))
+		b.WriteString(para("The asset is a supervised Sequentia asset. The company holds a freeze power exercisable only on a binding order of a court or of the RFSA, exercised as a signed public chain record beside the order's fingerprint. The freeze power charter in this document set states the powers, their limits, and the custody of the keys."))
+		b.WriteString(heading("Risk factors"))
+		b.WriteString(riskFactors(bearerRiskFactors(ctx)))
+		return title, docPage("offering-memorandum", title, b.String())
+	}
 	b.WriteString(heading("Jurisdictional access"))
 	b.WriteString(matrixTable(ctx))
 	b.WriteString(para(ctx.Char.Marketing["eu"]))
@@ -398,6 +485,19 @@ func docSubscriptionAgreement(ctx docContext) (string, string) {
 	title := "Subscription Agreement: " + ctx.OfferingName + " (" + ctx.Ticker + ")"
 	var b strings.Builder
 	b.WriteString("<h1>" + html.EscapeString(title) + "</h1>")
+	if ctx.Bearer {
+		b.WriteString(para("The subscriber agrees to acquire tokens of " + ctx.Ticker + " issued by " + ctx.IssuerName + ". The token is freely tradable; corporate rights attach as stated in the shareholder terms."))
+		b.WriteString(heading("Representations"))
+		b.WriteString(riskFactors([]string{
+			"The subscriber has read the offering memorandum, the shareholder terms, the freeze power charter, and the risk acceptance instrument.",
+			"The subscriber acknowledges that the issuing company holds a freeze power over the asset, exercisable only on a binding order of a court or of the RFSA, and that every freeze and lift is a signed public chain record.",
+			"The subscriber acknowledges that economic and transfer rights pass with the token, and that dividends and voting require registering as a holder of record through the transfer agent.",
+			"The subscriber acknowledges the finality and reorg behavior stated in the offering memorandum, and that key loss has no clawback path.",
+		}))
+		b.WriteString(heading("Acknowledgment"))
+		b.WriteString(para("The subscriber has read the offering memorandum and the risk factors."))
+		return title, docPage("subscription-agreement", title, b.String())
+	}
 	b.WriteString(para("The subscriber agrees to acquire tokens of " + ctx.Ticker + " issued by " + ctx.IssuerName + ", subject to the eligibility and transfer restrictions enforced by the policy server for the life of the asset."))
 	b.WriteString(heading("Representations"))
 	b.WriteString(riskFactors([]string{
@@ -494,6 +594,81 @@ func docLiftArtifact(ctx docContext) (string, string) {
 	b.WriteString(heading("Configured access"))
 	b.WriteString(matrixTable(ctx))
 	return title, docPage("lift-artifact", title, b.String())
+}
+
+// --- bearer charter documents ------------------------------------------------
+//
+// The four charter documents a bearer election adds. Terms shown in brackets
+// are fillable fields completed at execution; everything else is generated
+// deterministically from the issuance and its entity record, so the on-chain
+// terms_hash commits to these exact bytes like every other document.
+
+func docArticlesOfIncorporation(ctx docContext) (string, string) {
+	title := "Articles of Incorporation: " + ctx.IssuerName
+	regOffice := "[Registered Office]"
+	if ctx.EntityJurisdiction != "" {
+		regOffice = ctx.EntityJurisdiction
+	}
+	var b strings.Builder
+	b.WriteString("<h1>" + html.EscapeString(title) + "</h1>")
+	b.WriteString(para("Articles of incorporation of " + ctx.IssuerName + ", an entity of Próspera (Roatán, Honduras). Registered office: " + regOffice + ". The company issues under " + issuanceRegime + "."))
+	b.WriteString(heading("Article 1: Regulatory election"))
+	b.WriteString(para("The incorporator elects that the shares of the company be issued as register-based uncertificated securities under [Ledger-Securities Framework], the ledger-securities framework the incorporator designates under the RFSA. The election follows the model of articles 973d to 973i of the Swiss Code of Obligations, register-based uncertificated securities, adapted as an election made under the RFSA: the shares exist as entries in a securities ledger whose technical design guarantees that only the holder of a ledger entry can dispose of the corresponding share, and the ledger's integrity is secured by the joint recording of entries."))
+	b.WriteString(heading("Article 2: Share ledger designation"))
+	b.WriteString(para("The share ledger of the company is the Sequentia network asset created by the issuance whose on-chain contract commits to the terms containing these articles. Each token of that asset is one entry in the share ledger. Legal title to a share passes with the on-chain transfer of the token that represents it, automatically and without further act of the company: no book entry, approval, or registration by the company is required for a transfer of title, and none has any effect on it."))
+	b.WriteString(heading("Article 3: Transfer approval waived"))
+	b.WriteString(para("The company waives, for the life of the asset, any right or duty to approve, register, or restrict secondary transfers of its tokens. The company will not maintain, and no person may require it to maintain, any transfer restriction, approval step, or eligibility condition on a secondary transfer. The only powers the company retains over outstanding tokens are those in the freeze power charter, exercisable solely on a binding order of a court or of the RFSA."))
+	b.WriteString(heading("Article 4: Incorporator and board"))
+	b.WriteString(para("Company name: " + ctx.IssuerName + ". Incorporator: [Incorporator]. Directors: [Directors]. Officers: [Officers]. These terms are completed from the company's entity record at execution; a term shown in brackets is a fillable field."))
+	return title, docPage("articles-of-incorporation", title, b.String())
+}
+
+func docFreezePowerCharter(ctx docContext) (string, string) {
+	title := "Freeze Power Charter: " + ctx.OfferingName + " (" + ctx.Ticker + ")"
+	var b strings.Builder
+	b.WriteString("<h1>" + html.EscapeString(title) + "</h1>")
+	b.WriteString(para("This charter states the supervised-asset powers " + ctx.IssuerName + " holds over " + ctx.Ticker + ", their sole trigger, the custody of the keys that exercise them, and their limits."))
+	b.WriteString(heading("The freeze power"))
+	b.WriteString(para("The company holds a freeze power over single-owner balances of the asset, exercisable only on a binding order of a court of competent jurisdiction or of the RFSA. The company does not freeze on its own initiative, on a counterparty's request, or on commercial grounds. The order is the sole trigger, and lifting a freeze requires the same: a binding order."))
+	b.WriteString(heading("Two-key custody"))
+	b.WriteString(para("The powers are held under a two-key arrangement. The operational key is held by the company and signs day-to-day exercises. The recovery key is held offline and has one power only: replacing the supervision keys if the operational key is lost or compromised. Recovery key custody: [Recovery Key Custody Option]."))
+	b.WriteString(heading("The public record"))
+	b.WriteString(para("Every freeze and every lift is a signed public record on the Sequentia network, recorded beside the fingerprint (hash) of the order document that authorized it. Anyone can enumerate the asset's freeze register from the chain and verify each record's signature; no freeze can be exercised or lifted invisibly."))
+	b.WriteString(heading("The single-owner limitation"))
+	b.WriteString(para("A freeze binds single-owner balances only. A balance held inside a shared contract, such as a payment channel, is out of a freeze's reach until it returns to a single-owner balance. This is stated plainly because it is parity, not a gap: on account-based chains a freeze reaches an account's own balance and likewise cannot reach value locked inside a shared contract."))
+	b.WriteString(heading("The pause power"))
+	b.WriteString(para("Where the pause capability is elected in the supervision descriptor committed in the asset id, the company may pause all transfers of the asset on the same condition as a freeze: a binding order of a court or of the RFSA, recorded the same public way, and lifted the same way. Where the capability is not elected it does not exist and can never be added, because the descriptor is committed in the asset id."))
+	return title, docPage("freeze-power-charter", title, b.String())
+}
+
+func docShareholderTerms(ctx docContext) (string, string) {
+	title := "Shareholder Terms: " + ctx.OfferingName + " (" + ctx.Ticker + ")"
+	var b strings.Builder
+	b.WriteString("<h1>" + html.EscapeString(title) + "</h1>")
+	b.WriteString(heading("The dual state"))
+	b.WriteString(para("Anyone may hold and trade the token. Holding carries full economic and transfer rights: the token moves like any freely tradable asset, with no eligibility check and no approval by the company. Corporate rights, dividends and voting, attach only to a holder of record: a holder who has registered through the transfer agent's identity verification and presented a signed proof of holding over their on-chain positions at the record height."))
+	b.WriteString(heading("Record dates"))
+	b.WriteString(para("A corporate action fixes a record height, a Sequentia block height. The holder set for the action is the chain snapshot of the asset's outputs at that height, taken and published by the transfer agent and verifiable by anyone against the chain itself. A holder participates by proving key control over outputs in that snapshot; the proof binds the action, the outputs, and the use it is presented for."))
+	b.WriteString(heading("Unclaimed distributions"))
+	b.WriteString(para("A distribution that is not claimed by a holder of record is retained by the transfer agent for the benefit of the entitled holder. After [Escheat Period] years an unclaimed amount reverts to the company."))
+	return title, docPage("shareholder-terms", title, b.String())
+}
+
+func docRiskAcceptanceInstrument(ctx docContext) (string, string) {
+	title := "Risk Acceptance Instrument: " + ctx.OfferingName + " (" + ctx.Ticker + ")"
+	var b strings.Builder
+	b.WriteString("<h1>" + html.EscapeString(title) + "</h1>")
+	b.WriteString(para("This instrument records the risk acceptance the issuer of " + ctx.Ticker + " signs with its own key before a freely tradable deployment. The signature is a real cryptographic signature over the statements below, verified against the issuer's registered key and recorded with the issuance."))
+	b.WriteString(heading("The attested statements"))
+	b.WriteString(riskFactors([]string{
+		"My company has no United States operations, assets, or banking.",
+		"I accept in writing that United States regulators may object, and that this is my company’s risk.",
+	}))
+	b.WriteString(heading("Annual refresh"))
+	b.WriteString(para("The attestation is valid for one year from signature and is refreshed by signing it again. An expired attestation blocks a new deployment under this election until it is refreshed."))
+	b.WriteString(heading("Who bears the risk"))
+	b.WriteString(para("The company, not the platform, bears the stated risk. " + demoPlatformName + " records the attestation and requires its presence before a freely tradable deployment; the election, the statements, and their consequences are the company's own."))
+	return title, docPage("risk-acceptance-instrument", title, b.String())
 }
 
 // trimFloat renders a price without a trailing ".000000" noise while staying

@@ -184,6 +184,10 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	if iss.Status != "live" {
 		_ = s.st.UpdateIssuanceFields(iss.ID, map[string]any{"enforcement": enforcement})
 	}
+	// The in-memory issuance carries the election too, so the document
+	// generation below selects the bearer charter set even when the supplied
+	// terms object does not name the election itself.
+	iss.Enforcement = enforcement
 	if enforcement == "network" {
 		if !s.cfg.damp {
 			refuse(501, "network enforcement is not available on this deployment")
@@ -265,9 +269,26 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	termsHash := sha256Hex(canonical)
+	// The cross-check proves the client hashed the terms it sent: it is a body
+	// integrity check, not a prediction of the server's document binding. Two
+	// client shapes are both correct, so both are accepted: one hashes the terms
+	// as sent (it cannot know the manifest the server is about to bind), and one
+	// that already called the documents endpoint hashes the document-bound terms
+	// and reproduces the server's hash exactly. Comparing ONLY against the bound
+	// hash rejects every deploy from a client that did not pre-fetch its own
+	// manifest, which is the ordinary wizard path.
 	if req.TermsHash != "" && !strings.EqualFold(req.TermsHash, termsHash) {
-		refuse(400, "terms_hash mismatch: the terms the browser hashed are not the terms it sent")
-		return
+		var sentObj any
+		sentOK := false
+		if err := json.Unmarshal(rawOrEmpty(terms), &sentObj); err == nil {
+			if sentCanonical, cerr := canonicalJSON(sentObj); cerr == nil {
+				sentOK = strings.EqualFold(req.TermsHash, sha256Hex(sentCanonical))
+			}
+		}
+		if !sentOK {
+			refuse(400, "terms_hash mismatch: the terms the browser hashed are not the terms it sent")
+			return
+		}
 	}
 
 	// Publish the terms document (manifest + canonical bytes) so GET /api/terms
@@ -363,7 +384,7 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	s.st.Audit(acct.AID, "deploy.attempt", map[string]any{
 		"issuance_id": iss.ID, "ticker": iss.Ticker, "supply": req.Supply,
 		"precision": precision,
-		"clawback": clawback, "terms_hash": termsHash, "idem_key": idem,
+		"clawback":  clawback, "terms_hash": termsHash, "idem_key": idem,
 		"issuer_external": issuerExternal, "enforcement": enforcement,
 	})
 

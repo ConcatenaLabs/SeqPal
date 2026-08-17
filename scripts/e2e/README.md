@@ -70,3 +70,28 @@ live read-only surfaces (`/seqpal/api/health`, `/openamp/v1/assets`) are reached
 Live: each step completes its fund movement once the operator funds the printed
 deposit, and prints the on-chain txid / evidence. See `../../ACCEPTANCE.md` for
 the full Section 8 mapping and which steps need operator funding.
+
+## The bearer drivers
+
+- `bearer-live.mjs` deploys a freely-tradable (bearer, supervised) issuance
+  through the real API path and runs the court-order freeze/unfreeze drill.
+  Fresh keys per run; env `SEQPAL_BASE` (default
+  `https://sequentiatestnet.com/seqpal/api`).
+- `action-drill.mjs` is the live corporate-action drill: bearer deploy, a
+  second verified SeqPal ID as the holder, share delivery to the holder's P2TR
+  key-path address, a funded dividend claimed with a holding proof and paid to
+  an ordinary P2WPKH address, and a weighted vote with the public per-outpoint
+  proof list. Steps are idempotent against `scripts/e2e/.drill-state.json`
+  (gitignored, mode 0600; it holds the generated private keys), so a rerun
+  resumes where the last run stopped.
+- `lib/drill.mjs` the shared client + flows both bearer drivers use;
+  `lib/bech32.mjs` the bech32/bech32m encoder, pinned in
+  `test/enforcement.test.js` against address vectors from the node's own
+  `src/test/data/key_io_valid.json`.
+
+Drill env: `SEQPAL_BASE`, `SEQPAL_ELECTRS` (default
+`https://sequentiatestnet.com/api`), `SEQPAL_DRILL_SSH` (an ssh host such as
+`seq`; when set the driver runs the operator sends itself, when unset it prints
+the exact `sequentia-cli -rpcwallet=seqpal-escrow sendtoaddress ...` command and
+waits for the funds on electrs), `SEQPAL_USDX`, `DRILL_SHARES` (default 1000),
+`DRILL_DIVIDEND_ATOMS` (default 100000000, i.e. 1 USDX).

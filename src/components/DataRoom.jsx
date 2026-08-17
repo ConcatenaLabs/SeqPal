@@ -45,6 +45,23 @@ const KIND_META = {
     label: 'Basis of admission',
     note: 'The lift artifact recording why each jurisdiction is admitted.',
   },
+  // The bearer charter set (freely tradable issuances).
+  'articles-of-incorporation': {
+    label: 'Articles of incorporation',
+    note: 'The ledger-securities election, the on-chain share ledger designation, and the transfer approval waiver.',
+  },
+  'freeze-power-charter': {
+    label: 'Freeze power charter',
+    note: 'The court-order-only freeze and pause powers, two-key custody, and the public record property.',
+  },
+  'shareholder-terms': {
+    label: 'Shareholder terms',
+    note: 'Anyone may hold and trade; dividends and voting attach by registering as a holder of record.',
+  },
+  'risk-acceptance-instrument': {
+    label: 'Risk acceptance instrument',
+    note: 'The signed no-US-nexus and regulator-objection acceptance, refreshed annually; the company bears the stated risk.',
+  },
 }
 
 function kindMeta(kind) {
