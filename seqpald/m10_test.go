@@ -154,6 +154,8 @@ func (sn *supNode) dispatch(method string, params []json.RawMessage) (any, int, 
 			vouts = append(vouts, map[string]any{"scriptPubKey": map[string]any{"hex": v.script}})
 		}
 		return map[string]any{"txid": tx.txid, "vin": tx.vins, "vout": vouts}, 0, "", true
+	case "dumpassetlabels":
+		return map[string]any{"bitcoin": strings.Repeat("c8", 32)}, 0, "", true
 	case "getsupervisedassetid":
 		asset := supAssetFor(str(0), num(1), str(2), str(3), str(4), boolean(5))
 		return map[string]any{
