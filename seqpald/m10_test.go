@@ -669,10 +669,9 @@ func TestM10BearerDeployGateSequence(t *testing.T) {
 	}
 
 	// 4. real attestation, then the deploy succeeds through the raw node flow.
+	// (The old bearer+confidential 400 is moot: deploys no longer carry a
+	// confidential election at all; confidentiality is per transfer.)
 	h.attest(t, session, priv, issID)
-	if r := deploy(map[string]any{"recovery_pubkey": recovery, "confidential": true}); r.code != 400 {
-		t.Fatalf("confidential bearer = %d, want 400 (all-explicit is consensus-required)", r.code)
-	}
 	ok := deploy(map[string]any{"recovery_pubkey": recovery})
 	if ok.code != 200 {
 		t.Fatalf("bearer deploy = %d %s", ok.code, ok.errMsg())

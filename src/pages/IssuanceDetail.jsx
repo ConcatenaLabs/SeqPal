@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Icon, StructureIcon } from '../components/icons'
 import { Badge, DemoNote } from '../components/ui'
@@ -29,7 +29,6 @@ import { getStructure } from '../data/structures'
 import { JURISDICTIONS } from '../data/jurisdictions'
 import { STATUS, offPlatformSteps } from '../lib/lifecycle'
 import { termsHash } from '../lib/openamp'
-import { health } from '../lib/api'
 
 // What the server's refusal means, in one line. The server's own message is
 // always shown verbatim above this: this only adds context it cannot know.
@@ -40,7 +39,7 @@ const DEPLOY_HINT = {
   404: 'This issuance no longer exists on the server.',
   409: 'Pick a different ticker. Tickers are checked against the assets already live on the policy server.',
   429: 'The deploy rate limit is per account and per platform, over a rolling hour. Wait and try again.',
-  501: 'This deployment cannot run what the deploy asked for: either confidential holdings on a deployment without confidentiality, or network-enforced rules on a deployment without them. Pick a supported option and deploy again; nothing was minted.',
+  501: 'This deployment cannot run network-enforced rules. Pick a supported enforcement model and deploy again; nothing was minted.',
   502: 'The policy server refused or could not be reached. Nothing was minted.',
   503: 'The platform has no issuer token configured, so no deployment can be made from here right now.',
 }
@@ -51,28 +50,9 @@ function DeployCard({ iss, onDeployed }) {
     supply: iss.supply > 0 ? String(iss.supply) : '1000000',
     precision: iss.precision >= 1 && iss.precision <= 8 ? iss.precision : 8,
     clawback: iss.clawback !== false,
-    confidential: !!iss.confidential,
   })
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
-  // Whether this deployment's node is confidentiality-enabled (OA-8 +
-  // SEQPALD_CONFIDENTIAL). health.ok is an authenticated upstream probe, so this
-  // tells the issuer honestly whether the confidential toggle will succeed before
-  // they mint, rather than surfacing a 501 only at deploy time.
-  const [confAvailable, setConfAvailable] = useState(null)
-  useEffect(() => {
-    let cancelled = false
-    health()
-      .then((h) => {
-        if (!cancelled) setConfAvailable(!!h.confidential)
-      })
-      .catch(() => {
-        if (!cancelled) setConfAvailable(null)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   const steps = offPlatformSteps(iss.structureId)
 
@@ -93,9 +73,6 @@ function DeployCard({ iss, onDeployed }) {
         // committed terms; the deploy restates it.
         enforcement: iss.enforcement || 'serviced',
         clawback: form.clawback,
-        // Confidential holdings only exist in the standard (serviced) model;
-        // the other elections publish who holds what.
-        confidential: (iss.enforcement || 'serviced') === 'serviced' && form.confidential,
         // The entity's own SeqPal ID key becomes the enclave issuer half, so a
         // clawback needs the issuer's browser signature (two-phase) and the platform
         // never holds an issuer key for this asset. seqpald cross-checks this against
@@ -196,37 +173,6 @@ function DeployCard({ iss, onDeployed }) {
             </span>
           </span>
         </label>
-        {(iss.enforcement || 'serviced') === 'serviced' && (
-        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-ink-900/10 px-4 py-3">
-          <input
-            type="checkbox"
-            className="mt-1 h-4 w-4 accent-seq-600"
-            checked={form.confidential}
-            onChange={(e) => setForm({ ...form, confidential: e.target.checked })}
-          />
-          <span className="text-sm">
-            <span className="font-medium text-ink-900">Confidential holdings (opt-in)</span>
-            <span className="block text-xs leading-relaxed text-ink-700/70">
-              Blind amounts and the asset tag on chain. Sequentia is transparent by default,
-              so this is opt-in per asset. It is requested per call with a blinded (blech32)
-              address, so it works without changing the shared node's default. Holdings stay
-              visible to the issuer and the policy server, which enforce eligibility.
-            </span>
-            {confAvailable === true && form.confidential && (
-              <span className="mt-1 block text-xs font-medium text-emerald-700">
-                This deployment is confidentiality-enabled.
-              </span>
-            )}
-            {confAvailable === false && form.confidential && (
-              <span className="mt-1 block text-xs font-medium text-amber-700">
-                This deployment is not confidentiality-enabled, so a confidential mint would be
-                refused. Deploy transparently, the Sequentia default, or use a confidentiality-enabled
-                deployment.
-              </span>
-            )}
-          </span>
-        </label>
-        )}
       </div>
 
       {err && (
@@ -307,7 +253,6 @@ function AssetCard({ iss, watch }) {
                 ? 'Network-enforced rules · verified holders'
                 : 'Policy server · transfer-restricted enclave',
           ],
-          ['Confidentiality', iss.confidential ? 'Confidential (opt-in)' : 'Transparent'],
           ['Asset id', <CopyId key="a" value={iss.assetId} kind="asset" label="asset id" />],
           ['Issuance txid', <CopyId key="t" value={iss.txid} kind="tx" label="issuance txid" />],
           ['Contract hash', <CopyId key="c" value={iss.contractHash} label="contract hash" />],

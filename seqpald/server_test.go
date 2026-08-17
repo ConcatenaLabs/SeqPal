@@ -445,8 +445,6 @@ func TestDeployValidationMatrix(t *testing.T) {
 		{"precision negative", map[string]any{"issuance_id": id, "supply": 1000, "precision": -1}, 400},
 		{"supply overflows atoms", map[string]any{"issuance_id": id, "supply": uint64(1) << 62, "precision": 8}, 400},
 		{"unknown issuance", map[string]any{"issuance_id": "nope", "supply": 10, "precision": 2}, 404},
-		{"confidential on a transparent node", map[string]any{
-			"issuance_id": id, "supply": 1000, "precision": 2, "confidential": true}, 501},
 		{"terms_hash mismatch", map[string]any{
 			"issuance_id": id, "supply": 1000, "precision": 2,
 			"terms": map[string]any{"structure": "native-equity"}, "terms_hash": strings.Repeat("0", 64)}, 400},
@@ -501,9 +499,16 @@ func TestDeployValidationMatrix(t *testing.T) {
 	// Precision 0 is a REAL value (an integer-only asset), not "unset": it must
 	// deploy, never be refused (the repo's documented trap). Only an OMITTED
 	// precision is refused, which the matrix above already proves.
+	//
+	// The legacy "confidential" deploy field rides along here to prove it is
+	// IGNORED for backward compatibility: confidentiality is a per-transfer
+	// choice now, so a deploy carrying it still mints an ordinary transparent
+	// asset (200), never a 501.
 	zid := h.draftIssuance(ida, "Integer Fund", "INTF", map[string]any{"structure": "native-equity"})
-	if r := h.do("POST", "/api/deploy", ida, map[string]any{"issuance_id": zid, "supply": 1000, "precision": 0}); r.code != 200 {
-		t.Fatalf("precision-0 deploy = %d, want 200 (%s)", r.code, r.errMsg())
+	if r := h.do("POST", "/api/deploy", ida, map[string]any{
+		"issuance_id": zid, "supply": 1000, "precision": 0, "confidential": true,
+	}); r.code != 200 {
+		t.Fatalf("precision-0 deploy (with a legacy confidential field) = %d, want 200 (%s)", r.code, r.errMsg())
 	}
 }
 

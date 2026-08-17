@@ -5,8 +5,10 @@
 // and policy co-signed between eligible holders, not permissionless); never "the
 // SEQ chain" (the network is "the Sequentia network"; SEQ is the token ticker);
 // never "confidential by default" (Sequentia is transparent by default,
-// confidentiality is opt-in). Comments and URLs are out of scope by instruction,
-// so both are stripped before a line is inspected.
+// confidentiality is opt-in); never "confidential asset" (confidentiality is a
+// per-transfer choice, so there are no confidential assets, only confidential
+// transfers). Comments and URLs are out of scope by instruction, so both are
+// stripped before a line is inspected.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -26,6 +28,14 @@ const RULES = [
   { name: 'permissionless', test: (s) => /permissionless/i.test(s), why: 'assets are permissioned and policy co-signed, never "permissionless"' },
   { name: 'the-SEQ-chain', test: (s) => /\bthe\s+SEQ\s+(chain|network)\b/i.test(s) || /\bSEQ\s+chain\b/i.test(s), why: 'the network is "the Sequentia network"; SEQ is the token ticker' },
   { name: 'confidential-by-default', test: (s) => /confidential[\s-]by[\s-]default/i.test(s), why: 'Sequentia is transparent by default; confidentiality is opt-in' },
+  // A rule may carry `allow`: relative file paths where the phrase is permitted
+  // (the Documentation surface may need it to explain the model's history).
+  {
+    name: 'confidential-asset',
+    test: (s) => /confidential[\s-]assets?\b/i.test(s),
+    why: 'there are no confidential assets, only confidential transfers (confidentiality is a per-transfer choice)',
+    allow: ['src/pages/Docs.jsx', 'src/pages/Verify.jsx'],
+  },
 ]
 
 function walk(dir) {
@@ -136,15 +146,17 @@ test('flow surfaces: no protocol names (plain business language everywhere but /
   }
 })
 
-test('SPA copy: no em dashes, no permissionless / the SEQ chain / confidential by default', () => {
+test('SPA copy: no em dashes, no permissionless / the SEQ chain / confidential by default / confidential asset', () => {
   const violations = []
   for (const file of walk(SRC)) {
+    const rel = relative(join(SRC, '..'), file)
     const stripped = stripComments(readFileSync(file, 'utf8'))
     stripped.split('\n').forEach((line, idx) => {
       for (const rule of RULES) {
+        if (rule.allow?.includes(rel)) continue
         if (rule.test(line)) {
           violations.push({
-            file: relative(join(SRC, '..'), file),
+            file: rel,
             line: idx + 1,
             rule: rule.name,
             why: rule.why,

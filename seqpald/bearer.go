@@ -397,7 +397,6 @@ func (s *server) deployBearer(w http.ResponseWriter, acct *Account, iss *Issuanc
 		"terms":             string(p.canonicalTerms),
 		"supply":            p.supply,
 		"precision":         p.precision,
-		"confidential":      0,
 		"clawback":          0,
 		"asset_id":          mint.Asset,
 		"txid":              txid,

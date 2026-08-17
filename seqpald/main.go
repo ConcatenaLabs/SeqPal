@@ -32,7 +32,7 @@ type config struct {
 	dbPath       string
 	openampURL   string // e.g. http://127.0.0.1:8722 (no trailing slash, no /v1)
 	issuerToken  string
-	confidential bool // does this deployment's node support confidential issuance?
+	confidential bool // does this deployment support per-transfer confidential transfers?
 	network      string
 	webroot      string   // built SPA to serve at / (empty = API only)
 	devOrigins   []string // extra allowed CORS origins for local development
@@ -179,7 +179,7 @@ func main() {
 	flag.StringVar(&cfg.issuerToken, "issuertoken", env("OPENAMPD_ISSUER_TOKEN", ""), "OpenAMP issuer bearer token")
 	flag.StringVar(&cfg.network, "network", env("SEQPALD_NETWORK", "sequentia-testnet"), "network label reported to the UI")
 	confDefault := env("SEQPALD_CONFIDENTIAL", "") == "1" || env("SEQPALD_CONFIDENTIAL", "") == "true"
-	flag.BoolVar(&cfg.confidential, "confidential", confDefault, "node supports confidential issuance")
+	flag.BoolVar(&cfg.confidential, "confidential", confDefault, "deployment accepts per-transfer confidential transfers")
 	flag.StringVar(&cfg.webroot, "webroot", env("SEQPALD_WEBROOT", ""), "built SPA directory to serve at / (empty = API only)")
 	flag.StringVar(&devOrigins, "devorigins", env("SEQPALD_DEV_ORIGINS", ""), "comma-separated extra CORS origins for local development")
 	var adminAIDs string
