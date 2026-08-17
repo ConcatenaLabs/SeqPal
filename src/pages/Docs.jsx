@@ -53,9 +53,13 @@ export default function Docs() {
               Refusals are real and recorded in the public transparency log. Because the
               co-signature sits on every spend, the rule set can be rich and rule changes
               take effect immediately; the trade-off is that transfers pause if the policy
-              server is down. Amounts can optionally be blinded on chain while the issuer
-              and the policy server keep full sight, which is how holdings stay hidden from
-              the public in this model.
+              server is down. Confidentiality is per transfer, not per asset: any holder
+              can elect, transfer by transfer, to blind the amount and asset tag on chain
+              (a confidential transaction to a blinded address the policy server derives),
+              while the issuer and the policy server keep full sight through the policy
+              server&rsquo;s blinding keys. Transparent stays the default, and a supervised
+              (freely-tradable) asset is always transparent, because consensus must read
+              its outputs to enforce a freeze.
             </p>
           </div>
           <div className="rounded-xl border border-ink-900/10 bg-ink-900/[0.02] p-4">

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Icon } from './icons'
 import { Badge } from './ui'
 import CopyId from './CopyId'
@@ -86,10 +86,30 @@ export default function TransferConsole({ holdings }) {
   const [asset, setAsset] = useState('')
   const [toAid, setToAid] = useState('')
   const [amount, setAmount] = useState('')
+  const [confidential, setConfidential] = useState(false) // per-transfer choice, off by default
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
   const [built, setBuilt] = useState(null) // { transfer_id, to_sign, travel_rule, recipient_preflight }
   const [result, setResult] = useState(null) // { kind:'settled'|'refused', ... }
+
+  // Whether this deployment accepts confidential transfers, probed once from
+  // /api/health. The checkbox only renders when it does, so a transfer here
+  // never discovers a 501 at build time.
+  const [confAvailable, setConfAvailable] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    api
+      .health()
+      .then((h) => {
+        if (!cancelled) setConfAvailable(!!h.confidential)
+      })
+      .catch(() => {
+        if (!cancelled) setConfAvailable(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const selected = sendable.find((h) => h.assetId === asset) || null
   const atoms = selected ? scaleUp(amount, selected.precision || 8) : null
@@ -126,7 +146,12 @@ export default function TransferConsole({ holdings }) {
     }
     setBusy(true)
     try {
-      const res = await api.buildTransfer({ asset, to_aid: to, atoms: Number(atoms) })
+      const res = await api.buildTransfer({
+        asset,
+        to_aid: to,
+        atoms: Number(atoms),
+        confidential: confAvailable && confidential,
+      })
       setBuilt(res)
     } catch (e) {
       // The server's message is user-presentable and shown verbatim (unregistered
@@ -263,6 +288,28 @@ export default function TransferConsole({ holdings }) {
             )}
           </div>
 
+          {confAvailable && (
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-ink-900/10 bg-ink-900/[0.02] px-4 py-3">
+              <input
+                type="checkbox"
+                className="mt-1 h-4 w-4 accent-seq-600"
+                checked={confidential}
+                onChange={(e) => {
+                  setConfidential(e.target.checked)
+                  reset()
+                }}
+              />
+              <span className="text-sm">
+                <span className="font-medium text-ink-900">Transfer confidentially</span>
+                <span className="block text-xs leading-relaxed text-ink-700/70">
+                  Hide the amount and asset of this transfer from outside observers. Your registrar
+                  still sees it, as the rules require. The other party receives it like any other
+                  transfer.
+                </span>
+              </span>
+            </label>
+          )}
+
           {err && <p className="text-sm font-medium text-rose-600">{err}</p>}
 
           {!built && !result && (
@@ -385,6 +432,7 @@ export default function TransferConsole({ holdings }) {
                       {Number(t.atoms).toLocaleString('en-US')} atoms
                     </span>
                     <Badge color="slate">{t.source === 'wallet' ? 'Wallet' : 'In-app'}</Badge>
+                    {t.confidential && <Badge color="seq">Confidential</Badge>}
                   </div>
                   {t.txid && (
                     <a

@@ -326,8 +326,10 @@ func structureRiskFactors(ctx docContext) []string {
 			"and an ineligible or out-of-window transfer is refused for the life of the asset. A refusal at settlement is an expected outcome.",
 		"Finality: nothing is final at zero confirmations. The Sequentia network follows Bitcoin reorgs in real time by " +
 			"design, so a state is only as final as its Bitcoin anchor is deep and may regress if that anchor is reorged.",
-		"Confidentiality: the Sequentia network is transparent by default and confidentiality is opt-in per asset. An " +
-			"opt-in confidential asset still exposes holdings to the issuer and the policy server; it is not privacy from your registrar.",
+		"Confidentiality: the Sequentia network is transparent by default and confidentiality is a per-transfer choice. Any " +
+			"holder may move this token confidentially in a given transfer, which hides that transfer's amount and asset from " +
+			"outside observers only. The issuer and the registrar still see every holding and every transfer through the policy " +
+			"server; it is not privacy from your registrar.",
 		"Liquidity: a listing is not a market. The network provides a secondary market with access to Bitcoin liquidity, " +
 			"but it does not create demand, underwrite, or make an illiquid asset liquid.",
 		"Investor-jurisdiction law: the offering is subject to the law of every jurisdiction where it is made available. " +

@@ -49,8 +49,9 @@ async function req(path, { method = 'GET', body } = {}) {
 // authenticated upstream probe, so a false here means deployment really would
 // fail, and the UI can say so before checkout instead of at the mint.
 // `confidential` and `damp` are per-deployment capabilities: whether a
-// confidential mint, respectively a network-enforced (damp) deploy, would
-// succeed here rather than be refused with a 501.
+// confidential TRANSFER (confidentiality is a per-transfer choice, never an
+// asset property), respectively a network-enforced (damp) deploy, would succeed
+// here rather than be refused with a 501.
 export const health = () => req('/health')
 
 export const challenge = (xonly) =>
@@ -328,7 +329,10 @@ export const marketAbuseAckGet = () => req('/id/market-abuse-ack')
 export const marketAbuseAck = (body = {}) =>
   req('/id/market-abuse-ack', { method: 'POST', body })
 
-// Build a policy-co-signed holder-to-holder transfer. Body { asset, to_aid, atoms }.
+// Build a policy-co-signed holder-to-holder transfer. Body { asset, to_aid,
+// atoms, confidential? }. confidential is the per-transfer choice: blind this
+// transfer's amount and asset from outside observers (the registrar still sees
+// everything); it needs health.confidential, else the build is refused 501.
 // Returns { transfer_id, oa_id, tx, to_sign:[{input,sighash,pubkey}],
 // recipient_preflight:{eligible,reasons}, travel_rule:{originator,beneficiary,
 // captured_via} }. A 403 with data.requirement === 'market_abuse_ack' means the

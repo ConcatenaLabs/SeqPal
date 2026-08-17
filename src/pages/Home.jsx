@@ -18,7 +18,7 @@ const pillars = [
   {
     icon: Icon.bitcoin,
     title: 'Bitcoin-native',
-    body: 'Every asset is issued on Sequentia and settles against native BTC on the parent chain. Transparent by default, with opt-in confidential holdings, network fees payable in any accepted asset, and distributions in BTC or stablecoins.',
+    body: 'Every asset is issued on Sequentia and settles against native BTC on the parent chain. Transparent by default, with the option to make any transfer confidential, network fees payable in any accepted asset, and distributions in BTC or stablecoins.',
   },
 ]
 

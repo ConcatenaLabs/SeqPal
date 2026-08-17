@@ -57,8 +57,11 @@ not move any key material server-side.
   deliberately.
 - **The on-chain contract commits to a `terms_hash`** binding the compliance configuration to the
   asset. Changing what goes into that hash changes every derived asset id.
-- **Confidentiality is opt-in per asset and requires a confidentiality-enabled node.** Sequentia is
-  transparent by default; the public testnet node runs transparent, so leave the flag unset there.
+- **Confidentiality is per transfer, never per asset.** Sequentia is transparent by default; every
+  deploy is a transparent mint, and a holder elects confidentiality on an individual transfer
+  (`confidential: true` on POST /api/transfers), gated per deployment by `SEQPALD_CONFIDENTIAL`.
+  There is no such thing as a confidential asset; do not reintroduce an issuance-time election.
+  Supervised bearer assets stay transparent by consensus.
 - Clearing browser state resets the demo but does **not** undo an already-minted on-chain asset.
 - Public copy has been rewritten several times to correct licensing and regulatory positioning.
   Treat copy changes as substantive, not cosmetic.
