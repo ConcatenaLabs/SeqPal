@@ -407,11 +407,17 @@ func (s *server) handleCompile(w http.ResponseWriter, r *http.Request) {
 // compileForIssuance builds the compile env (chain tip, primary AIDs already
 // provisioned for this offering) and runs the pure compiler.
 func (s *server) compileForIssuance(iss *Issuance, terms json.RawMessage) (CompiledRules, error) {
+	// Fail closed (W-7): an unrecognized structure cannot be compiled, because
+	// the characterization decides the marketing clamp the rules encode.
+	ch, err := characterize(structureName(iss, terms))
+	if err != nil {
+		return CompiledRules{}, err
+	}
 	env := compileEnv{
 		TipHeight:        s.tipHeight(),
 		BlocksPerDay:     s.cfg.blocksPerDay,
 		PrimaryAIDs:      s.primaryAIDsFor(iss),
-		Characterization: characterize(structureName(iss, terms)),
+		Characterization: ch,
 	}
 	return compileRules(terms, env)
 }

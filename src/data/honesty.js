@@ -30,6 +30,11 @@ export const REAL = [
   'Opt-in confidential issuance requested per call with a blinded address, so it works without changing the shared node default',
   'Issuer venue-listing authorization, readable at the public listings endpoint, which a venue reads to list an asset but can never use to grant eligibility',
   'The issuer key: on every asset the enclave issuer half is the issuing entity’s own browser key, so a clawback is two-phase and cannot be broadcast without the issuer’s signature, which the platform does not hold',
+  'The enforcement election: who can hold the token and who enforces the rules is chosen at issuance, committed in the terms, and each model is enforced for real',
+  'Freely-tradable (bearer) issuance, where a court-ordered freeze is enforced by the network’s consensus rules and the order document’s fingerprint is recorded publicly beside the freeze',
+  'Corporate-action snapshots and claims: the register snapshot is taken from the chain at the first pass at or after the record height, and a claim is a real signed holding proof over named outpoints',
+  'The recovery key for a freely-tradable asset: a second real browser keypair, exported to an encrypted backup before deploy, whose public half is registered on the asset',
+  'The bearer attestation: a real signature by the issuer’s own key over the two US-exposure statements, recorded before a freely-tradable deploy is accepted',
 ]
 
 export const SIMULATED = [
@@ -90,7 +95,7 @@ export const SIMULATED = [
   },
   {
     element: 'Legal-world corporate actions (voting proxy, default workflow)',
-    real: 'Notices and records.',
+    real: 'Notices and records. Distinct from the on-chain shareholder actions, whose snapshots, holding-proof claims, and tallies are real; only the off-chain legal process around a corporate action is simulated.',
     label: 'Off-chain legal process, simulated',
   },
   {

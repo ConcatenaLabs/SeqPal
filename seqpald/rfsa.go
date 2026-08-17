@@ -51,7 +51,13 @@ func (s *server) handleRFSAFile(w http.ResponseWriter, r *http.Request) {
 	if issuer == "" {
 		issuer = acct.DisplayName
 	}
-	structure := canonicalStructure(req.Structure)
+	structure, ok := canonicalStructure(req.Structure)
+	if !ok {
+		// Fail closed (W-7): a filing must name a structure the pipeline can
+		// classify; never silently file an unknown one as equity.
+		writeErr(w, 400, "unrecognized structure %q", req.Structure)
+		return
+	}
 
 	number, err := s.nextFilingNumber()
 	if err != nil {

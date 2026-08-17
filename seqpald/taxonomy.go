@@ -162,6 +162,26 @@ func signSighash(privHex, sighashHex string) (string, error) {
 	return hex.EncodeToString(sig.Serialize()), nil
 }
 
+// TAG REGISTRY. Every platform signature is BIP340 over a TAGGED hash, one tag
+// per purpose, so no two signatures can ever be replayed across purposes:
+//
+//	openamp-challenge-v1            auth challenge (auth.go)
+//	seqpal-claims-v1                platform-signed claims record (below)
+//	seqpal-ubo-v1                   UBO link statement (id.go)
+//	openamp-document-v1             document e-signature (docapi.go)
+//	seqpal-payout-mandate-v1        issuer + investor payout mandates (platform.go)
+//	seqpal-close-v1                 closing authorization (closing.go)
+//	seqpal-market-abuse-ack-v1      market-abuse acknowledgment (secondary.go)
+//	seqpal-listing-v1               listing authorization (listings.go)
+//	seqpal-bearer-attestation-v1    bearer no-US-nexus attestation (bearer.go)
+//	seqpal-holding-proof-v1         corporate-action holding proof (actions.go)
+//
+// The ONLY raw (untagged) signatures are over 32-byte messages a signer cannot
+// choose: real transfer sighashes (signSighash above, and the SPA's
+// signClawbackSighash), and the supervision freeze/unfreeze messages the node
+// produces (getsupervisionrecordhash / getsupervisionunfreezehash; see
+// supervision.go), which bind a specific prevout or record outpoint and so can
+// never collide with anything else worth signing.
 const claimsTag = "seqpal-claims-v1"
 
 // verifyTaggedByKey checks a BIP340 signature over a tagged hash of msg against

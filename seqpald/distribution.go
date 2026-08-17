@@ -32,6 +32,15 @@ import (
 // servicing wallet.
 func distMarker(runID, holderAID string) string { return "seqpal-dist-" + runID + "-" + holderAID }
 
+// isDepositoryReceipt reports whether a structure name resolves to the
+// depository-receipt canonical id (an unrecognized name is simply not a DR;
+// the fail-closed refusal belongs to the deploy path, not to this rendering
+// predicate).
+func isDepositoryReceipt(name string) bool {
+	cs, ok := canonicalStructure(name)
+	return ok && cs == "depository-receipt"
+}
+
 // holdersReport mirrors openampd GET /v1/issuer/holders: confirmed enclave
 // balances per AID (in atoms) captured WITH the Sequentia block height.
 type holdersReport struct {
@@ -135,7 +144,7 @@ func (s *server) handleCreateDistribution(w http.ResponseWriter, r *http.Request
 		Memo:           strings.TrimSpace(req.Memo),
 		State:          "awaiting_funding",
 		DepositAddress: addr,
-		DividendEquiv:  canonicalStructure(iss.StructureID) == "depositary-receipt",
+		DividendEquiv:  isDepositoryReceipt(iss.StructureID),
 	}
 	if err := s.st.InsertDistribution(d); err != nil {
 		writeErr(w, 500, "could not create the distribution run")
@@ -608,7 +617,7 @@ func holderStatementDoc(iss *Issuance, d *Distribution, p *DistPayment) (string,
 	}
 	b.WriteString("</tbody></table>")
 	if d.DividendEquiv {
-		b.WriteString(para("Dividend-equivalent line (section 871(m)): this asset is a depositary receipt mirroring an underlying listed security, so the amount above is treated as a dividend-equivalent payment for chapter 3 withholding on non-US persons. US persons are excluded from 871(m) and receive a 1099-style report rather than a 1042-S."))
+		b.WriteString(para("Dividend-equivalent line (section 871(m)): this asset is a depository receipt mirroring an underlying listed security, so the amount above is treated as a dividend-equivalent payment for chapter 3 withholding on non-US persons. US persons are excluded from 871(m) and receive a 1099-style report rather than a 1042-S."))
 	}
 	return title, docPage("distribution-statement", title, b.String())
 }

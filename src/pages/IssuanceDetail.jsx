@@ -17,6 +17,8 @@ import PayoutMandateCard from '../components/PayoutMandateCard'
 import ClosingCard from '../components/ClosingCard'
 import DistributionConsole from '../components/DistributionConsole'
 import FreezeClawbackConsole from '../components/FreezeClawbackConsole'
+import SupervisionConsole from '../components/SupervisionConsole'
+import CorporateActionsCard from '../components/CorporateActionsCard'
 import AmendmentChainCard from '../components/AmendmentChainCard'
 import DRConsole from '../components/DRConsole'
 import ListingCard from '../components/ListingCard'
@@ -38,7 +40,7 @@ const DEPLOY_HINT = {
   404: 'This issuance no longer exists on the server.',
   409: 'Pick a different ticker. Tickers are checked against the assets already live on the policy server.',
   429: 'The deploy rate limit is per account and per platform, over a rolling hour. Wait and try again.',
-  501: 'This deployment runs against a node that is not confidentiality-enabled. Turn off confidential holdings to deploy transparently, which is the Sequentia default.',
+  501: 'This deployment cannot run what the deploy asked for: either confidential holdings on a deployment without confidentiality, or network-enforced rules on a deployment without them. Pick a supported option and deploy again; nothing was minted.',
   502: 'The policy server refused or could not be reached. Nothing was minted.',
   503: 'The platform has no issuer token configured, so no deployment can be made from here right now.',
 }
@@ -87,8 +89,13 @@ function DeployCard({ iss, onDeployed }) {
         issuance_id: iss.id,
         supply: Number(form.supply.replace(/[^0-9]/g, '')) || 0,
         precision: Number(form.precision),
+        // The enforcement election was made in the wizard and lives in the
+        // committed terms; the deploy restates it.
+        enforcement: iss.enforcement || 'serviced',
         clawback: form.clawback,
-        confidential: form.confidential,
+        // Confidential holdings only exist in the standard (serviced) model;
+        // the other elections publish who holds what.
+        confidential: (iss.enforcement || 'serviced') === 'serviced' && form.confidential,
         // The entity's own SeqPal ID key becomes the enclave issuer half, so a
         // clawback needs the issuer's browser signature (two-phase) and the platform
         // never holds an issuer key for this asset. seqpald cross-checks this against
@@ -189,6 +196,7 @@ function DeployCard({ iss, onDeployed }) {
             </span>
           </span>
         </label>
+        {(iss.enforcement || 'serviced') === 'serviced' && (
         <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-ink-900/10 px-4 py-3">
           <input
             type="checkbox"
@@ -218,6 +226,7 @@ function DeployCard({ iss, onDeployed }) {
             )}
           </span>
         </label>
+        )}
       </div>
 
       {err && (
@@ -229,7 +238,18 @@ function DeployCard({ iss, onDeployed }) {
         </div>
       )}
 
-      <button onClick={deploy} disabled={busy} className="btn-primary mt-5 w-full disabled:opacity-60">
+      {iss.enforcement === 'bearer' && (
+        <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-800">
+          This is a freely-tradable issuance. Deploy it from the issuance wizard&rsquo;s
+          checkout step, which collects the two things it requires: the exported emergency
+          recovery key and the signed attestation about US exposure.
+        </p>
+      )}
+      <button
+        onClick={deploy}
+        disabled={busy || iss.enforcement === 'bearer'}
+        className="btn-primary mt-5 w-full disabled:opacity-60"
+      >
         {busy ? (
           <>
             <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
@@ -279,7 +299,14 @@ function AssetCard({ iss, watch }) {
         {[
           ['Issuer of record', `${iss.entityName || iss.name} LLC · Próspera`],
           ['Network', 'Sequentia (a Bitcoin sidechain)'],
-          ['Issuance layer', 'Policy server · transfer-restricted enclave'],
+          [
+            'Issuance layer',
+            iss.enforcement === 'bearer'
+              ? 'Freely tradable · court-order freezes only'
+              : iss.enforcement === 'network'
+                ? 'Network-enforced rules · verified holders'
+                : 'Policy server · transfer-restricted enclave',
+          ],
           ['Confidentiality', iss.confidential ? 'Confidential (opt-in)' : 'Transparent'],
           ['Asset id', <CopyId key="a" value={iss.assetId} kind="asset" label="asset id" />],
           ['Issuance txid', <CopyId key="t" value={iss.txid} kind="tx" label="issuance txid" />],
@@ -305,7 +332,7 @@ function AssetCard({ iss, watch }) {
       </dl>
       {live && iss.assetId && (
         <Link
-          to={`/verify?asset=${encodeURIComponent(iss.assetId)}`}
+          to={`/docs/verify?asset=${encodeURIComponent(iss.assetId)}`}
           className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-seq-600 hover:underline"
         >
           <Icon.shield width={15} height={15} /> Verify independently
@@ -416,6 +443,7 @@ export default function IssuanceDetail() {
   const sim = simFor(iss.id)
   const watch = watchFor(iss.id)
   const isRaise = iss.structureId !== 'depository-receipt'
+  const bearerAsset = iss.enforcement === 'bearer'
 
   const openJ = JURISDICTIONS.filter((j) => iss.policy?.[j.code] === 'standard')
   const restrictedJ = JURISDICTIONS.filter((j) => iss.policy?.[j.code] === 'restricted')
@@ -479,7 +507,14 @@ export default function IssuanceDetail() {
               <AmendmentChainCard iss={iss} />
               {!isRaise && <DRConsole iss={iss} />}
               <DistributionConsole iss={iss} />
-              <FreezeClawbackConsole iss={iss} />
+              {bearerAsset ? (
+                <>
+                  <SupervisionConsole iss={iss} />
+                  <CorporateActionsCard iss={iss} />
+                </>
+              ) : (
+                <FreezeClawbackConsole iss={iss} />
+              )}
               <NetworkFees iss={iss} />
               <TransparencyLog iss={iss} />
               <ServicingPanel iss={iss} />
@@ -493,6 +528,18 @@ export default function IssuanceDetail() {
                 </>
               )}
 
+              {bearerAsset ? (
+                <div className="card p-6">
+                  <h2 className="font-bold text-ink-900">Trading rules</h2>
+                  <p className="mt-2 text-sm leading-relaxed text-ink-700/80">
+                    None. This token is freely tradable: anyone in the world can hold and
+                    trade it, and who holds what is public. The one intervention is the
+                    court-ordered freeze above. Buyers in the initial sale were
+                    identity-checked, and holders verify their identity to collect
+                    dividends or vote.
+                  </p>
+                </div>
+              ) : (
               <div className="card overflow-hidden">
                 <div className="border-b border-ink-900/10 px-5 py-3.5">
                   <h2 className="font-bold text-ink-900">Compliance policy</h2>
@@ -538,6 +585,7 @@ export default function IssuanceDetail() {
                   </DemoNote>
                 </div>
               </div>
+              )}
             </>
           )}
         </div>

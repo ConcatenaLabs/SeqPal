@@ -40,8 +40,8 @@ const SECTIONS = [
       {
         q: 'What does issuing on the Sequentia network actually give me?',
         a: [
-          'A real secondary market with access to Bitcoin liquidity, native BTC settlement on the parent chain rather than a wrapped token, Bitcoin-anchored finality, fees payable in any accepted asset, an open and auditable register, and restrictions that persist for the life of the asset because every transfer needs a policy co-signature.',
-          'The restricted asset is one row among equals next to BTC and every other asset on the network. It is permissioned, not privileged: it can only move between eligible, registered holders, and a policy co-signature checks each transfer.',
+          'A real secondary market with access to Bitcoin liquidity, native BTC settlement on the parent chain rather than a wrapped token, Bitcoin-anchored finality, fees payable in any accepted asset, an open and auditable register, and restrictions that persist for the life of the asset because every transfer is checked against your rules.',
+          'A restricted asset is one row among equals next to BTC and every other asset on the network. It is permissioned, not privileged: it can only move between eligible, registered holders, and each transfer is checked against the issuer’s rules. Issuers who want the opposite can choose the freely-tradable option instead: anyone in the world can hold and trade that token, buyers in the initial sale are still identity-checked, and specific balances can be frozen only on a court or regulator order.',
         ],
       },
       {
@@ -74,7 +74,7 @@ const SECTIONS = [
         a: [
           'No. SeqPal’s Próspera licensing is necessary but not sufficient. Every token sold to an investor is also subject to that investor’s home securities law, and that law binds you, the issuer, as the offering party.',
           'Concretely: a public web page can be a financial promotion in many places; US persons are admitted only through Rule 506(c) verified accreditation, with Reg S offshore as the default, and their tokens are restricted securities whose resale is limited; EU access relies on the Prospectus Regulation qualified-investor exemptions and, for some structures, engages AIFMD; the UK requires statutory investor statements. A country you do not admit is excluded by default, and that default protects you.',
-          'This is why the platform compiles your jurisdiction matrix into policy-server rules: the restrictions you configure are enforced by the network on every transfer. SeqPal supplies a suggested minimum; the final policy is yours, and you can make it stricter, or with documented authority broader, everywhere except the sanctions floor.',
+          'This is why the platform compiles your jurisdiction matrix into enforceable rules: the restrictions you configure are checked on every transfer for the life of the asset. SeqPal supplies a suggested minimum; the final policy is yours, and you can make it stricter, or with documented authority broader, everywhere except the sanctions floor.',
         ],
       },
     ],
@@ -92,13 +92,14 @@ const SECTIONS = [
       {
         q: 'What is an eligibility category, and why can it expire?',
         a: [
-          'A category is a compound token such as j:DE:ret or j:US:acc that records your jurisdiction and eligibility tier. Only the platform can stamp one, and those categories are what gate every transfer. A category carries a validity window, so it can expire, for example when an accreditation verification goes stale, and a real refusal follows until it is renewed.',
+          'A category is a compound token such as j:DE:ret or j:US:acc that records your jurisdiction and eligibility tier. Only the platform can stamp one, and those categories are what gate every transfer of a restricted asset. A category carries a validity window, so it can expire, for example when an accreditation verification goes stale, and a real refusal follows until it is renewed.',
+          'One kind of asset opts out of all of this: a freely-tradable token has no eligibility gate on trading at all, so anyone can hold and trade it. Identity still matters at the edges there: buyers in the issuer’s initial sale are identity-checked, and holders verify their identity to collect dividends or vote.',
         ],
       },
       {
         q: 'What can the platform see and do about my holdings?',
         a: [
-          'SeqPal keeps the register and co-signs every transfer with its policy key to enforce the issuer’s rules, so it sees your holdings and can refuse a transfer that breaks a rule. It cannot move your position on its own: the key that can claw back is the issuing entity’s own, held in the issuer’s browser, so a seizure needs the issuer’s signature. An opt-in confidential asset still exposes holdings to the issuer and the policy server, because they enforce eligibility.',
+          'For a standard restricted asset, SeqPal keeps the register and its transfer service checks every transfer against the issuer’s rules, so it sees your holdings and can refuse a transfer that breaks a rule. It cannot move your position on its own: the key that can reclaim tokens is the issuing entity’s own, held in the issuer’s browser, so a seizure needs the issuer’s signature. An opt-in confidential asset still exposes holdings to the issuer and to SeqPal’s transfer service, because they enforce eligibility. A freely-tradable asset is different: who holds what is public, and nobody screens its trades.',
         ],
       },
     ],
@@ -109,7 +110,7 @@ const SECTIONS = [
       {
         q: 'What key do I hold, and what does it control?',
         a: [
-          'You hold one half of a 2-of-2 enclave key, generated in your browser and stored only as an encrypted backup under your passphrase. Your half is negative control: it lets you refuse a transfer, and it does not, on its own, move a clawback-enabled asset. The key that can claw back is the issuing entity’s own, held in the issuer’s browser, so the issuer directs a seizure and the registrar co-signs. The platform holds no key that can move your position.',
+          'You hold your own key, generated in your browser and stored only as an encrypted backup under your passphrase. For a restricted asset it is one half of a shared 2-of-2 address, which makes it negative control: it lets you refuse a transfer, and it does not, on its own, move an asset whose issuer kept the recovery power. The key that can reclaim tokens is the issuing entity’s own, held in the issuer’s browser, so the issuer directs a seizure and SeqPal adds the second signature. The platform holds no key that can move your position.',
         ],
       },
       {
@@ -149,7 +150,7 @@ const SECTIONS = [
       {
         q: 'Is my holding private?',
         a: [
-          'Sequentia is transparent by default, and confidentiality is opt-in per asset. An opt-in confidential asset blinds amounts and the asset tag on chain, but the issuer and the policy server still see holdings, because they enforce eligibility. It is not privacy from your registrar.',
+          'Sequentia is transparent by default, and confidentiality is opt-in per asset. An opt-in confidential asset blinds amounts and the asset tag on chain, but the issuer and SeqPal’s transfer service still see holdings, because they enforce eligibility. It is not privacy from your registrar.',
           'The public transparency log records policy decisions as pseudonymous AIDs and hashes, and your AID’s category tokens and frozen status are publicly readable. The Privacy page details exactly what is exposed.',
         ],
       },
@@ -236,13 +237,16 @@ export default function Faq() {
           <Icon.shield width={16} height={16} /> Verify it yourself
         </div>
         <p className="mt-1.5 text-sm leading-relaxed text-ink-700/80">
-          You do not have to trust any of this. The Verify page walks you from an offering’s terms
-          document to its on-chain commitment to the key that co-signs every transfer, all recomputed
-          in your own browser.
+          You do not have to trust any of this. The verification explainer on the Documentation
+          pages walks you from an offering’s terms document to its on-chain commitments, all
+          recomputed in your own browser.
         </p>
         <div className="mt-3 flex flex-wrap gap-4 text-sm">
-          <Link to="/verify" className="font-medium text-seq-600 hover:underline">
+          <Link to="/docs/verify" className="font-medium text-seq-600 hover:underline">
             Verify independently
+          </Link>
+          <Link to="/docs" className="font-medium text-seq-600 hover:underline">
+            Documentation
           </Link>
           <Link to="/legal" className="font-medium text-seq-600 hover:underline">
             Legal and Licensing

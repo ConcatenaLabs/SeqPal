@@ -664,6 +664,141 @@ ALTER TABLE issuances ADD COLUMN issuer_pubkey TEXT NOT NULL DEFAULT '';
 ALTER TABLE clawbacks ADD COLUMN oa_id TEXT NOT NULL DEFAULT '';
 ALTER TABLE clawbacks ADD COLUMN to_sign TEXT NOT NULL DEFAULT '';
 `,
+	// M10: enforcement elections + bearer (supervised) issuance + corporate
+	// actions + deposit-time escrow-fee accrual. All additive; an M9 database
+	// migrates forward in place.
+	//
+	// issuances.enforcement records the issuer's election: 'serviced' (the
+	// existing co-signed OpenAMP path), 'network' (OpenDAMP; refused 501 until
+	// SEQPALD_DAMP is enabled, the election is still recorded), or 'bearer'
+	// (a consensus-supervised asset issued through the node's raw path, no
+	// openampd involvement). recovery_pubkey + supervision_pause are the bearer
+	// asset's supervision descriptor halves beside the operational key (which is
+	// the issuer's own session key, stored in issuer_pubkey).
+	//
+	// bearer_attestations: the annually-refreshable no-US-nexus / risk
+	// attestation a bearer deploy requires, BIP340-signed by the session key
+	// under tag "seqpal-bearer-attestation-v1".
+	//
+	// supervision_ops: pending freeze/unfreeze operations. The row is the
+	// idempotency anchor: it records the locked funding prevout at build and the
+	// assembled raw tx + txid BEFORE broadcast, so an ambiguous submit is
+	// resumed, never re-built (a rebuilt record would need a fresh issuer
+	// signature and could double-spend the funding input).
+	//
+	// corporate_actions + action_snapshots + action_claims +
+	// action_claim_outpoints: the W-3 corporate-action engine. The snapshot is
+	// the chain UTXO set carrying the asset at the first watcher pass at or
+	// after the record height; a claim proves key control over snapshot
+	// outpoints (tag "seqpal-holding-proof-v1"); action_claim_outpoints'
+	// primary key IS the one-claim-per-(action, outpoint) rule.
+	//
+	// escrow_ledger needs no new column for W-6 fee accrual: the accrual is an
+	// ordinary kind='escrow_fee' row written at deposit confirmation instead of
+	// at release, and its presence is what closing/refund consume.
+	`
+ALTER TABLE issuances ADD COLUMN enforcement TEXT NOT NULL DEFAULT 'serviced';
+ALTER TABLE issuances ADD COLUMN recovery_pubkey TEXT NOT NULL DEFAULT '';
+ALTER TABLE issuances ADD COLUMN supervision_pause INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE bearer_attestations (
+    issuance_id TEXT PRIMARY KEY REFERENCES issuances(id),
+    aid          TEXT    NOT NULL,
+    no_us_nexus  INTEGER NOT NULL DEFAULT 0,
+    risk_accepted INTEGER NOT NULL DEFAULT 0,
+    statement    TEXT    NOT NULL DEFAULT '',
+    sig          TEXT    NOT NULL DEFAULT '',
+    created_at   INTEGER NOT NULL,
+    valid_until  INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE supervision_ops (
+    id            TEXT PRIMARY KEY,
+    issuance_id   TEXT    NOT NULL,
+    asset_id      TEXT    NOT NULL DEFAULT '',
+    kind          TEXT    NOT NULL,
+    target        TEXT    NOT NULL DEFAULT '',
+    target_hash   TEXT    NOT NULL DEFAULT '',
+    reason        TEXT    NOT NULL DEFAULT '',
+    order_hash    TEXT    NOT NULL DEFAULT '',
+    ref_id        TEXT    NOT NULL DEFAULT '',
+    fund_txid     TEXT    NOT NULL DEFAULT '',
+    fund_vout     INTEGER NOT NULL DEFAULT 0,
+    fund_atoms    INTEGER NOT NULL DEFAULT 0,
+    sighash       TEXT    NOT NULL DEFAULT '',
+    record_script TEXT    NOT NULL DEFAULT '',
+    record_vout   INTEGER NOT NULL DEFAULT -1,
+    rawtx         TEXT    NOT NULL DEFAULT '',
+    txid          TEXT    NOT NULL DEFAULT '',
+    state         TEXT    NOT NULL DEFAULT 'pending',
+    channel       TEXT    NOT NULL DEFAULT '',
+    error         TEXT    NOT NULL DEFAULT '',
+    created_at    INTEGER NOT NULL,
+    updated_at    INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX idx_supervision_ops_issuance ON supervision_ops(issuance_id);
+CREATE TABLE corporate_actions (
+    id              TEXT PRIMARY KEY,
+    issuance_id     TEXT    NOT NULL,
+    asset_id        TEXT    NOT NULL DEFAULT '',
+    kind            TEXT    NOT NULL,
+    state           TEXT    NOT NULL DEFAULT 'awaiting_snapshot',
+    record_height   INTEGER NOT NULL DEFAULT 0,
+    div_asset       TEXT    NOT NULL DEFAULT '',
+    div_total_atoms INTEGER NOT NULL DEFAULT 0,
+    deposit_address TEXT    NOT NULL DEFAULT '',
+    funded          INTEGER NOT NULL DEFAULT 0,
+    funded_atoms    INTEGER NOT NULL DEFAULT 0,
+    funded_txid     TEXT    NOT NULL DEFAULT '',
+    question        TEXT    NOT NULL DEFAULT '',
+    choices         TEXT    NOT NULL DEFAULT '[]',
+    closes_height   INTEGER NOT NULL DEFAULT 0,
+    snapshot_height INTEGER NOT NULL DEFAULT 0,
+    snapshot_total  INTEGER NOT NULL DEFAULT 0,
+    snapshot_count  INTEGER NOT NULL DEFAULT 0,
+    snapshot_hash   TEXT    NOT NULL DEFAULT '',
+    snapshot_note   TEXT    NOT NULL DEFAULT '',
+    anchor_txid     TEXT    NOT NULL DEFAULT '',
+    created_at      INTEGER NOT NULL,
+    updated_at      INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX idx_actions_issuance ON corporate_actions(issuance_id);
+CREATE INDEX idx_actions_state ON corporate_actions(state);
+CREATE TABLE action_snapshots (
+    action_id TEXT    NOT NULL,
+    outpoint  TEXT    NOT NULL,
+    script    TEXT    NOT NULL DEFAULT '',
+    atoms     INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (action_id, outpoint)
+);
+CREATE TABLE action_claims (
+    id             TEXT PRIMARY KEY,
+    action_id      TEXT    NOT NULL,
+    aid            TEXT    NOT NULL DEFAULT '',
+    pubkey         TEXT    NOT NULL DEFAULT '',
+    outpoints      TEXT    NOT NULL DEFAULT '[]',
+    atoms          INTEGER NOT NULL DEFAULT 0,
+    payout_address TEXT    NOT NULL DEFAULT '',
+    choice         TEXT    NOT NULL DEFAULT '',
+    gross_atoms    INTEGER NOT NULL DEFAULT 0,
+    withheld_atoms INTEGER NOT NULL DEFAULT 0,
+    net_atoms      INTEGER NOT NULL DEFAULT 0,
+    treaty_bps     INTEGER NOT NULL DEFAULT 0,
+    tax_status     TEXT    NOT NULL DEFAULT '',
+    sig            TEXT    NOT NULL DEFAULT '',
+    state          TEXT    NOT NULL DEFAULT 'registered',
+    txid           TEXT    NOT NULL DEFAULT '',
+    reason         TEXT    NOT NULL DEFAULT '',
+    created_at     INTEGER NOT NULL,
+    updated_at     INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX idx_action_claims_action ON action_claims(action_id);
+CREATE TABLE action_claim_outpoints (
+    action_id TEXT    NOT NULL,
+    outpoint  TEXT    NOT NULL,
+    claim_id  TEXT    NOT NULL,
+    atoms     INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (action_id, outpoint)
+);
+`,
 }
 
 // Store is seqpald's persistent state. Every financial fact the UI shows is
@@ -775,8 +910,16 @@ type Issuance struct {
 	// legacy server-held issuer key and the single-call clawback.
 	IssuerExternal bool   `json:"issuer_external,omitempty"`
 	IssuerPubkey   string `json:"issuer_pubkey,omitempty"`
-	CreatedAt      int64  `json:"created_at"`
-	UpdatedAt      int64  `json:"updated_at"`
+	// Enforcement (M10) is the issuer's election: "serviced" (the co-signed
+	// OpenAMP path, the default), "network" (OpenDAMP, not yet available), or
+	// "bearer" (a consensus-supervised asset issued through the node's raw
+	// path). For a bearer asset the supervision descriptor is (operational key =
+	// IssuerPubkey, RecoveryPubkey, SupervisionPause), committed in the asset id.
+	Enforcement      string `json:"enforcement,omitempty"`
+	RecoveryPubkey   string `json:"recovery_pubkey,omitempty"`
+	SupervisionPause bool   `json:"supervision_pause,omitempty"`
+	CreatedAt        int64  `json:"created_at"`
+	UpdatedAt        int64  `json:"updated_at"`
 }
 
 type DeployRecord struct {
@@ -876,7 +1019,7 @@ func (s *Store) EntityByID(id string) (*Entity, error) {
 
 const issuanceCols = `id, owner_aid, COALESCE(entity_id,''), name, ticker, structure_id, status, terms,
     supply, precision, confidential, clawback, asset_id, txid, contract_hash, holder_aid, enclave_address,
-    issuer_external, issuer_pubkey, created_at, updated_at`
+    issuer_external, issuer_pubkey, enforcement, recovery_pubkey, supervision_pause, created_at, updated_at`
 
 func (s *Store) CreateIssuance(i *Issuance) error {
 	var entity any
@@ -940,10 +1083,11 @@ type scanner interface {
 func scanIssuanceInto(sc scanner) (*Issuance, error) {
 	var i Issuance
 	var terms string
-	var confidential, clawback, issuerExternal int
+	var confidential, clawback, issuerExternal, supervisionPause int
 	err := sc.Scan(&i.ID, &i.OwnerAID, &i.EntityID, &i.Name, &i.Ticker, &i.StructureID, &i.Status, &terms,
 		&i.Supply, &i.Precision, &confidential, &clawback, &i.AssetID, &i.Txid, &i.ContractHash,
-		&i.HolderAID, &i.EnclaveAddress, &issuerExternal, &i.IssuerPubkey, &i.CreatedAt, &i.UpdatedAt)
+		&i.HolderAID, &i.EnclaveAddress, &issuerExternal, &i.IssuerPubkey, &i.Enforcement,
+		&i.RecoveryPubkey, &supervisionPause, &i.CreatedAt, &i.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -951,6 +1095,7 @@ func scanIssuanceInto(sc scanner) (*Issuance, error) {
 	i.Confidential = confidential != 0
 	i.Clawback = clawback != 0
 	i.IssuerExternal = issuerExternal != 0
+	i.SupervisionPause = supervisionPause != 0
 	return &i, nil
 }
 

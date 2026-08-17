@@ -88,8 +88,8 @@ func prune(ts []time.Time, cutoff time.Time) []time.Time {
 // deployReq is what the SPA sends. The issuance's owner, ticker, and name come
 // from the stored record, never from this body: only the mint parameters do.
 type deployReq struct {
-	IssuanceID     string          `json:"issuance_id"`
-	Supply         uint64          `json:"supply"`
+	IssuanceID string `json:"issuance_id"`
+	Supply     uint64 `json:"supply"`
 	// Pointer so an OMITTED precision (nil) is distinct from an explicit 0. Precision 0
 	// is a valid integer-only asset; a plain int would let an omitted field masquerade
 	// as 0 (or, as before, forced 1..8 to reject 0 entirely and make 0dp assets unissuable).
@@ -106,6 +106,20 @@ type deployReq struct {
 	// record the browser signs clawbacks with); a mismatch is refused. When absent
 	// the deploy is byte-identical to pre-M9 (server-generated key, legacy clawback).
 	IssuerPubkey string `json:"issuer_pubkey"`
+
+	// Enforcement (M10) is the issuer's election: "serviced" (the co-signed
+	// OpenAMP path; the default, also selected by an empty string), "network"
+	// (OpenDAMP; refused 501 unless SEQPALD_DAMP is enabled, the election is
+	// still recorded), or "bearer" (a consensus-supervised asset issued through
+	// the node's raw path, no openampd involvement).
+	Enforcement string `json:"enforcement"`
+	// RecoveryPubkey (bearer only) is the supervision recovery key: a 64-hex
+	// x-only key DISTINCT from the session key, whose only power is rotating the
+	// supervision keys. Required for enforcement=bearer.
+	RecoveryPubkey string `json:"recovery_pubkey"`
+	// Pause (bearer only) elects the asset-wide pause capability. Permanent
+	// either way: it is committed in the asset id.
+	Pause bool `json:"pause"`
 }
 
 func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
@@ -150,6 +164,52 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		refuse(400, "supply is too large for the chosen precision")
 		return
 	}
+	// M10 enforcement election. The election is persisted on the (draft)
+	// issuance row even when the deploy is then refused, so the record shows
+	// what the issuer chose.
+	enforcement := strings.ToLower(strings.TrimSpace(req.Enforcement))
+	if enforcement == "" {
+		enforcement = "serviced"
+	}
+	switch enforcement {
+	case "serviced", "network", "bearer":
+	default:
+		refuse(400, `enforcement must be "serviced", "network", or "bearer"`)
+		return
+	}
+	if iss.Status != "live" {
+		_ = s.st.UpdateIssuanceFields(iss.ID, map[string]any{"enforcement": enforcement})
+	}
+	if enforcement == "network" {
+		if !s.cfg.damp {
+			refuse(501, "network enforcement is not available on this deployment")
+		} else {
+			// The capability flag is on but the OpenDAMP deploy path is not built
+			// yet; fail closed rather than silently falling back to serviced.
+			refuse(501, "network enforcement is enabled (SEQPALD_DAMP) but not yet implemented on this deployment")
+		}
+		return
+	}
+	var recoveryKey string
+	if enforcement == "bearer" {
+		if req.Confidential {
+			refuse(400, "a bearer (supervised) asset cannot be confidential: consensus must be able to read its outputs to freeze them")
+			return
+		}
+		recoveryKey = strings.ToLower(strings.TrimSpace(req.RecoveryPubkey))
+		if !validXOnly(recoveryKey) {
+			refuse(400, "bearer enforcement requires recovery_pubkey: a valid 32-byte x-only public key in hex")
+			return
+		}
+		if strings.EqualFold(recoveryKey, acct.XOnly) {
+			refuse(400, "recovery_pubkey must be distinct from the session key: the recovery key is the cold key that survives an operational-key compromise")
+			return
+		}
+		if s.cfg.nodeURL == "" {
+			refuse(503, "bearer issuance requires a Sequentia node RPC (SEQPALD_NODE_URL)")
+			return
+		}
+	}
 	if req.Confidential && !s.cfg.confidential {
 		refuse(501, "confidential issuance is not available on this deployment; the node is not confidentiality-enabled")
 		return
@@ -179,6 +239,13 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.Unmarshal(rawOrEmpty(terms), new(any)); err != nil {
 		refuse(400, "terms must be a JSON object")
+		return
+	}
+	// Fail closed on the structure (W-7): an unrecognized name refuses here
+	// instead of silently characterizing as equity. An EMPTY structure remains
+	// the documented equity default.
+	if _, cerr := characterize(structureName(iss, rawOrEmpty(terms))); cerr != nil {
+		refuse(400, "unrecognized structure: "+cerr.Error())
 		return
 	}
 	// M4: bind the generated document set into terms so terms_hash (and thus the
@@ -233,6 +300,28 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	// Bearer gate: a stored, unexpired bearer attestation by this account must
+	// exist BEFORE the deploy (POST /api/issuances/{id}/bearer-attestation).
+	if enforcement == "bearer" {
+		att, aerr := s.st.BearerAttestation(iss.ID)
+		if aerr != nil {
+			writeErr(w, 500, "store error")
+			return
+		}
+		if att == nil {
+			refuse(403, "bearer enforcement requires a stored bearer attestation; sign one at POST /api/issuances/"+iss.ID+"/bearer-attestation first")
+			return
+		}
+		if att.AID != acct.AID {
+			refuse(403, "the stored bearer attestation was signed by a different account")
+			return
+		}
+		if att.ValidUntil <= time.Now().Unix() {
+			refuse(403, "the bearer attestation has expired (it is valid for one year); refresh it at POST /api/issuances/"+iss.ID+"/bearer-attestation")
+			return
+		}
+	}
+
 	// Idempotency: a given issuance minted under a given key and terms mints exactly
 	// once, whatever the network did to the first response. The issuance id MUST be in
 	// the key: without it, two distinct drafts by one account with equal terms (the
@@ -260,8 +349,9 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// The token check precedes the rate limit so a platform misconfiguration does
-	// not silently spend the caller's deploy budget.
-	if s.cfg.issuerToken == "" {
+	// not silently spend the caller's deploy budget. A bearer deploy never talks
+	// to the openampd issuer endpoint, so it needs no token.
+	if enforcement != "bearer" && s.cfg.issuerToken == "" {
 		refuse(503, "the deployment backend is not configured with an issuer token")
 		return
 	}
@@ -278,7 +368,7 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		"issuance_id": iss.ID, "ticker": iss.Ticker, "supply": req.Supply,
 		"precision": precision, "confidential": req.Confidential,
 		"clawback": clawback, "terms_hash": termsHash, "idem_key": idem,
-		"issuer_external": issuerExternal,
+		"issuer_external": issuerExternal, "enforcement": enforcement,
 	})
 
 	// Ticker collision against the live assets. The residual race inside openampd
@@ -288,6 +378,18 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		return
 	} else if taken {
 		refuse(409, "ticker "+iss.Ticker+" is already used by a live asset")
+		return
+	}
+
+	// Bearer path: a consensus-supervised asset minted through the node's raw
+	// issuance flow. No openampd involvement, no rules compilation, no escrow
+	// enclave: the mint lands in the seqpal-escrow node wallet for primary sales.
+	if enforcement == "bearer" {
+		s.deployBearer(w, acct, iss, bearerDeployParams{
+			precision: precision, atoms: atoms, supply: req.Supply,
+			termsHash: termsHash, canonicalTerms: canonical,
+			recoveryKey: recoveryKey, pause: req.Pause, idem: idem,
+		})
 		return
 	}
 

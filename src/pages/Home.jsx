@@ -8,7 +8,7 @@ const pillars = [
   {
     icon: Icon.shield,
     title: 'Compliance built into the asset',
-    body: 'Investor eligibility is enforced by the policy server on every transfer: jurisdiction, accreditation, and sanctions screening travel with the asset. Verify once with SeqPal ID, hold every asset you qualify for.',
+    body: 'Investor eligibility is checked on every transfer: jurisdiction, accreditation, and sanctions screening travel with the asset. Verify once with SeqPal ID, hold every asset you qualify for. Issuers choose who enforces the rules, and can even issue a freely-tradable token.',
   },
   {
     icon: Icon.users,
@@ -26,7 +26,7 @@ const products = [
   {
     icon: Icon.layers,
     name: 'Issuer Dashboard',
-    body: 'A six-step, self-service flow: entity formation, structure choice, automated document drafting, transfer-restriction configuration, and on-chain deployment.',
+    body: 'A seven-step, self-service flow: entity formation, structure choice, the enforcement election, automated document drafting, transfer-restriction configuration, and on-chain deployment.',
   },
   {
     icon: Icon.id,
@@ -48,6 +48,7 @@ const products = [
 const steps = [
   ['Identity & principal', 'Sign in with your SeqPal ID and choose who is issuing.'],
   ['Choose a structure', 'Pick one of four issuance structures.'],
+  ['Holders & enforcement', 'Decide who can hold your token and who enforces the rules.'],
   ['Data room', 'Enter your deal terms in dynamic forms.'],
   ['Document automation', 'Templated paperwork generated for review & e-signature.'],
   ['Tokenomics & compliance', 'Bake jurisdiction and accreditation rules into the token.'],
@@ -116,7 +117,7 @@ export default function Home() {
                     New issuance
                   </div>
                   <Badge color="emerald">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Step 4 of 6
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Step 5 of 7
                   </Badge>
                 </div>
                 <div className="mt-4 space-y-3">
@@ -263,7 +264,7 @@ export default function Home() {
           <SectionHeading
             className="[&_h2]:text-white [&_p]:text-white/70"
             eyebrow="The flow"
-            title="From KYB to live deployment in six steps"
+            title="From KYB to live deployment in seven steps"
             sub="The Issuer Dashboard walks you through the entire issuance, no spreadsheets, no bespoke negotiation."
           />
           <ol className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -296,12 +297,12 @@ export default function Home() {
             <SectionHeading
               eyebrow="Secondary market"
               title="Permissioned transferability, enforced on every transfer"
-              sub="SeqPal builds investor eligibility into each asset. A policy co-signature checks every transfer, so the asset stays openly transferable among eligible, registered holders and can be listed on any vetted venue rather than confined to a proprietary trading system."
+              sub="SeqPal builds investor eligibility into each asset. Every transfer is checked against the issuer's rules, so the asset stays openly transferable among eligible, registered holders and can be listed on any vetted venue rather than confined to a proprietary trading system."
             />
             <ul className="mt-8 space-y-4">
               {[
                 'Transfer-restricted assets issued on Sequentia',
-                'Eligibility enforced by the policy server on every transfer',
+                'Eligibility checked on every transfer, by SeqPal or by the network itself',
                 'Listable on any vetted venue, such as SeqDEX, with eligibility checked at the asset',
                 'Distributions paid pro-rata in BTC or stablecoins',
               ].map((t) => (
