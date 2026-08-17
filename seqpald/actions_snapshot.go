@@ -133,21 +133,46 @@ func (s *server) snapshotAction(a *CorporateAction, tip int64) error {
 
 // --- electrs walkers ---------------------------------------------------------
 
-// assetUTXOs enumerates every unspent output carrying the asset: the electrs
-// asset index first, the issuance-forward walk as the fallback.
+// assetUTXOs enumerates every unspent output carrying the asset.
+//
+// The electrs asset index is authoritative for ISSUANCES ONLY: it records the
+// issuance (and reissuance) transactions under the asset but does not index
+// later transfers of it. Verified live on the box: an asset whose units had
+// already moved twice still listed exactly one transaction. So the index alone
+// can never see a holder who received units in an ordinary transfer, and the
+// forward graph walk from the issuance is not a fallback for a broken index,
+// it is the mechanism that finds holders at all. Both run, and their results
+// are unioned by outpoint: the index contributes reissuances the walk cannot
+// reach, the walk contributes every transfer.
 func (s *server) assetUTXOs(asset, issuanceTxid string) ([]snapUTXO, error) {
-	utxos, err := s.assetUTXOsViaIndex(asset)
-	if err == nil {
-		return utxos, nil
+	byOutpoint := map[string]snapUTXO{}
+	idxUTXOs, idxErr := s.assetUTXOsViaIndex(asset)
+	for _, u := range idxUTXOs {
+		byOutpoint[u.Outpoint] = u
 	}
-	if issuanceTxid == "" {
-		return nil, err
+	var walkErr error
+	if issuanceTxid != "" {
+		walkUTXOs, werr := s.assetUTXOsViaWalk(asset, issuanceTxid)
+		walkErr = werr
+		for _, u := range walkUTXOs {
+			byOutpoint[u.Outpoint] = u
+		}
 	}
-	fb, ferr := s.assetUTXOsViaWalk(asset, issuanceTxid)
-	if ferr != nil {
-		return nil, fmt.Errorf("asset index: %v; issuance walk: %v", err, ferr)
+	// Refuse only when NEITHER source could speak. A snapshot that silently
+	// omitted a holder would misallocate a distribution, so a hard error beats
+	// a partial answer here.
+	if idxErr != nil && (issuanceTxid == "" || walkErr != nil) {
+		if issuanceTxid == "" {
+			return nil, idxErr
+		}
+		return nil, fmt.Errorf("asset index: %v; issuance walk: %v", idxErr, walkErr)
 	}
-	return fb, nil
+	out := make([]snapUTXO, 0, len(byOutpoint))
+	for _, u := range byOutpoint {
+		out = append(out, u)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Outpoint < out[j].Outpoint })
+	return out, nil
 }
 
 // electrsTx is the subset of an esplora tx the walkers read.
