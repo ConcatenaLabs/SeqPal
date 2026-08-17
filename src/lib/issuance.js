@@ -112,6 +112,12 @@ export function view(iss) {
     contractHash: iss.contract_hash || '',
     holderAid: iss.holder_aid || '',
     enclaveAddress: iss.enclave_address || '',
+    // Network-enforced issuances only. Empty for every other election, so the
+    // screens that render them can simply test for a value.
+    holderAddress: iss.holder_covenant_address || '',
+    rulesAddress: iss.verifier_covenant_address || '',
+    policyCommitment: iss.policy_commitment || '',
+    holderListRoot: iss.whitelist_root || '',
     live: iss.status === 'live',
   }
 }

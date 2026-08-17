@@ -114,6 +114,17 @@ type m5Stub struct {
 	assetIssuerPub map[string]string
 	pendingClaw    map[string]*m5pendingClaw
 	clawDone       map[string]string
+
+	// M12 instrumentation (additive; inert by default). The two-phase
+	// network-enforced issuance: dampPrepareBodies and dampCompleteBodies are the
+	// raw forwarded bodies so a test can assert exactly what seqpald sent, and
+	// dampPrepared is the live prepare keyed by prepare_id so /complete can only
+	// finish a preparation that happened. dampCompleteErr makes /complete answer
+	// with a policy-server refusal instead.
+	dampPrepareBodies  []map[string]any
+	dampCompleteBodies []map[string]any
+	dampPrepared       map[string]map[string]any
+	dampCompleteErr    string
 }
 
 // m5pendingClaw is a two-phase clawback build the stub returned but has not yet
@@ -139,6 +150,7 @@ func newM5Stub(t *testing.T) *m5Stub {
 		assetIssuerPub: map[string]string{},
 		pendingClaw:    map[string]*m5pendingClaw{},
 		clawDone:       map[string]string{},
+		dampPrepared:   map[string]map[string]any{},
 	}
 	mux := http.NewServeMux()
 
@@ -242,6 +254,96 @@ func newM5Stub(t *testing.T) *m5Stub {
 		f.mu.Unlock()
 		writeJSON(w, 200, map[string]any{
 			"asset": id, "txid": pad64(byte('b'), f.nAsset), "contract_hash": pad64(byte('c'), f.nAsset),
+		})
+	})
+
+	// M12: the two-phase network-enforced issuance. Phase 1 mints the verifier
+	// asset and FIXES the asset id and the policy commitment; phase 2 takes the
+	// compiled-program identities and mints. The stub derives a commitment from
+	// the whitelist it was given, so a test can prove seqpald forwards the right
+	// holder list and refuses a mismatched commitment.
+	mux.HandleFunc("POST /v1/issuer/damp-assets", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-issuer-token" {
+			writeJSON(w, 401, map[string]any{"error": "bad token"})
+			return
+		}
+		var body map[string]any
+		raw, _ := readAllLimited(r.Body, 1<<20)
+		json.Unmarshal(raw, &body)
+		f.mu.Lock()
+		f.dampPrepareBodies = append(f.dampPrepareBodies, body)
+		f.nAsset++
+		n := f.nAsset
+		id := pad64(byte('a'), n)
+		vid := pad64(byte('v'), n)
+		wl, _ := body["whitelist"].([]any)
+		root := sha256Hex([]byte(fmt.Sprint(wl)))
+		pi := sha256Hex([]byte(id + root))
+		prepareID := pad64(byte('p'), n)
+		f.dampPrepared[prepareID] = map[string]any{
+			"asset": id, "verifier_asset": vid, "pi": pi, "whitelist_root": root,
+		}
+		f.mu.Unlock()
+		writeJSON(w, 200, map[string]any{
+			"prepare_id": prepareID, "asset": id, "contract_hash": pad64(byte('c'), n),
+			"contract":            json.RawMessage(`{"openamp":{"enforcement":"damp"}}`),
+			"verifier_asset":      vid,
+			"verifier_amount":     body["verifier_amount"],
+			"verifier_issue_txid": pad64(byte('7'), n),
+			"pi":                  pi, "whitelist_root": root, "tree": "dmt-v1",
+			"snapshot":             json.RawMessage(`{"v":1}`),
+			"snapshot_hash":        pad64(byte('8'), n),
+			"snapshot_sig_message": pad64(byte('9'), n),
+			"derive_snapshot": map[string]any{
+				"v": 1, "asset": id, "verifier_asset": vid, "tree": "dmt-v1",
+				"issuer_update_key": body["issuer_update_key"], "network": body["network"],
+			},
+		})
+	})
+
+	mux.HandleFunc("POST /v1/issuer/damp-assets/{id}/complete", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-issuer-token" {
+			writeJSON(w, 401, map[string]any{"error": "bad token"})
+			return
+		}
+		var body map[string]any
+		raw, _ := readAllLimited(r.Body, 1<<20)
+		json.Unmarshal(raw, &body)
+		f.mu.Lock()
+		f.dampCompleteBodies = append(f.dampCompleteBodies, body)
+		prep, ok := f.dampPrepared[r.PathValue("id")]
+		failWith := f.dampCompleteErr
+		f.mu.Unlock()
+		if !ok {
+			writeJSON(w, 404, map[string]any{"error": "unknown or expired prepared issuance"})
+			return
+		}
+		if failWith != "" {
+			writeJSON(w, 409, map[string]any{"error": failWith})
+			return
+		}
+		if body["pi"] != prep["pi"] {
+			writeJSON(w, 409, map[string]any{"error": "pi mismatch"})
+			return
+		}
+		id, _ := prep["asset"].(string)
+		f.mu.Lock()
+		f.assets[id] = map[string]any{"id": id, "ticker": "X", "name": "X", "enforcement": "damp"}
+		f.mu.Unlock()
+		writeJSON(w, 200, map[string]any{
+			"asset": id, "verifier_asset": prep["verifier_asset"],
+			"txids": map[string]string{
+				"verifier_issue": pad64(byte('7'), 1), "asset_issue": pad64(byte('b'), 1),
+				"verifier_lock": pad64(byte('b'), 1),
+			},
+			"pi": prep["pi"], "whitelist_root": prep["whitelist_root"],
+			"user_covenant_address":     "sq1holder-" + id[:8],
+			"user_covenant_spk":         "5120" + id,
+			"verifier_covenant_address": "sq1rules-" + id[:8],
+			"verifier_covenant_spk":     "5120" + id,
+			"contract":                  json.RawMessage(`{"openamp":{"enforcement":"damp"}}`),
+			"contract_hash":             pad64(byte('c'), 1),
+			"snapshot_seq":              0, "snapshot_signed": false,
 		})
 	})
 

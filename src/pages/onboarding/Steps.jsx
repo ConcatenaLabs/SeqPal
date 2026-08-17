@@ -1982,6 +1982,15 @@ export function Step7Checkout({ data, update, onDeployed }) {
   // today.
   const mintTarget = 'issuer treasury'
   const bearer = data.enforcement === 'bearer'
+  const network = data.enforcement === 'network'
+  // A network-enforced deploy is prepared first and minted second: the values in
+  // `params` come from the issuer's registrar and cannot be produced here or by
+  // SeqPal, and `prepared` is what the server hands back to run the registrar
+  // against. Both live in this step because they are deployment mechanics, not
+  // properties of the offering.
+  const [params, setParams] = useState({ user_cmr: '', verifier_cmr: '', pi: '' })
+  const [prepared, setPrepared] = useState(null)
+  const [paramsOpen, setParamsOpen] = useState(false)
   // A freely-tradable deploy needs two extra things before the button enables:
   // the exported recovery key and both attestation checkboxes.
   const bearerReady = !bearer || (!!data.recovery?.exported && !!data.bearerNoUs && !!data.bearerRisk)
@@ -2058,12 +2067,33 @@ export function Step7Checkout({ data, update, onDeployed }) {
         // 0 = let the server derive the network fee conversion from the
         // offering price (a nonzero value would be an explicit issuer override).
         fee_convert_atoms: 0,
+        // Network-enforced only: the values the issuer's registrar produced for
+        // this policy. Sent only when supplied; without them the server prepares
+        // the deployment and hands back what to run, which is the flow below.
+        ...(network && params.pi
+          ? {
+              user_cmr: params.user_cmr.trim().toLowerCase(),
+              verifier_cmr: params.verifier_cmr.trim().toLowerCase(),
+              pi: params.pi.trim().toLowerCase(),
+            }
+          : {}),
         terms,
         terms_hash: await termsHash(terms),
       })
       setResult({ issuanceId, deploy: dep })
       setPhase('live')
     } catch (e) {
+      // A prepared-but-unminted deployment is not a failure: the server has
+      // fixed the asset and is waiting for the registrar's values. Keep what it
+      // returned, open the parameter panel, and let the issuer paste them in.
+      if (e.status === 409 && e.data?.stage === 'prepared') {
+        setPrepared(e.data)
+        setParamsOpen(true)
+        setParams((p) => ({ ...p, pi: e.data.policy_commitment || '' }))
+        // Carry the draft id forward so the retry resumes the same preparation
+        // instead of creating a second issuance.
+        if (e.data.issuance_id && !data.issuanceId) update({ issuanceId: e.data.issuance_id })
+      }
       setErr({ message: e.message, status: e.status })
       setPhase('summary')
     }
@@ -2152,6 +2182,15 @@ export function Step7Checkout({ data, update, onDeployed }) {
       />
 
       {bearer && <BearerRequirements data={data} update={update} hasKey={hasKey} />}
+      {network && (
+        <NetworkRuleParameters
+          params={params}
+          setParams={setParams}
+          prepared={prepared}
+          open={paramsOpen}
+          setOpen={setParamsOpen}
+        />
+      )}
 
       <div className="grid gap-5 lg:grid-cols-5">
         <div className="card p-6 lg:col-span-3">
@@ -2276,6 +2315,113 @@ export function Step7Checkout({ data, update, onDeployed }) {
           </Link>
         </div>
       </div>
+    </div>
+  )
+}
+
+/* Network-enforced deploys need three values an ordinary issuer cannot compute
+   and SeqPal cannot compute either: they come from the issuer's registrar, and
+   they can only be produced once the deployment is prepared (the values depend
+   on the token's own identifier, which is fixed at preparation). So this panel
+   is deliberately two-stage: deploy once to prepare, run what the server hands
+   back, paste the results, deploy again. Nothing is minted until the second
+   deploy succeeds.
+
+   Everything the registrar has to run is rendered from the server's response
+   rather than written here, so this screen never has to name a tool. */
+function NetworkRuleParameters({ params, setParams, prepared, open, setOpen }) {
+  const [copied, setCopied] = useState('')
+  const doc = prepared?.registrar_document
+    ? JSON.stringify(prepared.registrar_document, null, 2)
+    : ''
+  const copy = async (what, text) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(what)
+      setTimeout(() => setCopied(''), 1500)
+    } catch {
+      setCopied('')
+    }
+  }
+  const field = (key, label) => (
+    <label key={key} className="block">
+      <span className="text-xs font-medium text-ink-700/80">{label}</span>
+      <input
+        value={params[key]}
+        onChange={(e) => setParams({ ...params, [key]: e.target.value })}
+        spellCheck={false}
+        placeholder="64 characters"
+        className="mt-1 w-full rounded-lg border border-ink-900/15 px-3 py-2 font-mono text-xs text-ink-900"
+      />
+    </label>
+  )
+  return (
+    <div className="card mb-5 p-6">
+      {prepared && (
+        <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <p className="font-semibold">Your deployment is prepared. Nothing has been minted.</p>
+          <p className="mt-1 text-xs leading-relaxed">
+            Send the document below to your registrar, run the command it gives you, and paste
+            the three values it prints into the fields below. Then deploy again: the token
+            identifier is already fixed, so the second deploy mints exactly what was prepared.
+          </p>
+          <dl className="mt-3 space-y-1 text-xs">
+            <div className="flex justify-between gap-3">
+              <dt className="shrink-0 text-amber-900/70">Token identifier</dt>
+              <dd className="break-all font-mono">{prepared.asset}</dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="shrink-0 text-amber-900/70">Policy commitment</dt>
+              <dd className="break-all font-mono">{prepared.policy_commitment}</dd>
+            </div>
+          </dl>
+          {prepared.registrar_command && (
+            <div className="mt-3">
+              <p className="text-xs font-medium">Command your registrar runs</p>
+              <pre className="mt-1 overflow-x-auto rounded-lg bg-amber-100/70 px-3 py-2 font-mono text-[11px] text-amber-900">
+                {prepared.registrar_command}
+              </pre>
+            </div>
+          )}
+          {doc && (
+            <div className="mt-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium">Document to run it against</p>
+                <button
+                  type="button"
+                  onClick={() => copy('doc', doc)}
+                  className="text-xs font-semibold text-amber-900 underline"
+                >
+                  {copied === 'doc' ? 'Copied' : 'Copy'}
+                </button>
+              </div>
+              <pre className="mt-1 max-h-48 overflow-auto rounded-lg bg-amber-100/70 px-3 py-2 font-mono text-[11px] text-amber-900">
+                {doc}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center justify-between text-left"
+      >
+        <span className="font-bold text-ink-900">Advanced: on-chain rule parameters</span>
+        <span className="text-xs font-semibold text-btc-600">{open ? 'Hide' : 'Show'}</span>
+      </button>
+      {open && (
+        <div className="mt-4 space-y-3">
+          <p className="text-xs leading-relaxed text-ink-700/80">
+            Your registrar produces these values for your policy. Paste them here. You do not
+            need them for the first deploy: deploy once, and SeqPal will tell you exactly what to
+            send your registrar.
+          </p>
+          {field('user_cmr', 'Holder program identity')}
+          {field('verifier_cmr', 'Rules program identity')}
+          {field('pi', 'Policy commitment')}
+        </div>
+      )}
     </div>
   )
 }

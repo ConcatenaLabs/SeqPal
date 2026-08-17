@@ -15,7 +15,7 @@ import {
   signChallenge,
 } from '../src/lib/keys.js'
 import { canonicalJSON } from '../src/lib/openamp.js'
-import { toTerms } from '../src/lib/issuance.js'
+import { toTerms, view } from '../src/lib/issuance.js'
 import { schnorr } from '@noble/curves/secp256k1'
 import { sha256 } from '@noble/hashes/sha256'
 import { hexToBytes } from '@noble/curves/abstract/utils'
@@ -281,4 +281,47 @@ test('terms: the enforcement election is committed, and bearer terms carry no tr
   assert.equal(bearer.eu_caps, undefined, 'a bearer asset has no per-country caps')
   assert.deepEqual(bearer.jurisdictions, {}, 'a bearer asset admits everyone')
   assert.deepEqual(bearer.policy, {}, 'a bearer asset commits no category matrix')
+})
+
+test('terms: a network election is committed and keeps the full rule matrix', () => {
+  // A network-enforced offering still commits the same compliance terms a
+  // serviced one does. What changes is WHO enforces them, not what they are, so
+  // dropping the matrix here would silently weaken the committed offering.
+  const network = toTerms({
+    structureId: 'native-equity',
+    isPublic: false,
+    enforcement: 'network',
+    policy: { DE: 'standard' },
+    lockup: { mode: 'days', days: '30' },
+    holderCap: '100',
+  })
+  assert.equal(network.enforcement, 'network')
+  assert.equal(network.lockup_days, 30)
+  assert.equal(network.holder_cap, 100)
+  assert.ok(network.jurisdictions.DE)
+})
+
+test('view: a network-enforced issuance surfaces its on-chain addresses, others surface none', () => {
+  const net = view({
+    status: 'live',
+    enforcement: 'network',
+    terms: { enforcement: 'network' },
+    asset_id: 'a'.repeat(64),
+    holder_covenant_address: 'tb1pholder',
+    verifier_covenant_address: 'tb1prules',
+    policy_commitment: 'b'.repeat(64),
+    whitelist_root: 'c'.repeat(64),
+  })
+  assert.equal(net.enforcement, 'network')
+  assert.equal(net.holderAddress, 'tb1pholder')
+  assert.equal(net.rulesAddress, 'tb1prules')
+  assert.equal(net.policyCommitment, 'b'.repeat(64))
+  assert.equal(net.holderListRoot, 'c'.repeat(64))
+
+  const serviced = view({ status: 'live', terms: {}, enclave_address: 'tb1penclave' })
+  assert.equal(serviced.enforcement, 'serviced')
+  assert.equal(serviced.holderAddress, '', 'a serviced issuance has no on-chain rules address')
+  assert.equal(serviced.rulesAddress, '')
+  assert.equal(serviced.policyCommitment, '')
+  assert.equal(serviced.enclaveAddress, 'tb1penclave')
 })

@@ -43,10 +43,19 @@ SEQPALD_DB=/var/lib/seqpald/seqpald.db
 # Set to 1 only on a confidentiality-enabled node. Sequentia is transparent by
 # default and the public testnet node runs transparent, so leave this unset.
 SEQPALD_CONFIDENTIAL=
-# OpenDAMP capability flag (M10). Leave unset: a deploy electing
-# enforcement=network is refused 501 (the election is still recorded) until an
-# OpenDAMP deployment exists and this is set to 1. /api/health reports it as
-# "damp".
+# OpenDAMP capability flag (M10/M12). Unset, a deploy electing
+# enforcement=network is refused 501 and the election is still recorded.
+# /api/health reports it as "damp". Set it to 1 ONLY when the policy server is
+# itself started with -dampregistry <cmr pinning file>; without that, every
+# network deploy fails at the policy server instead, one round trip later.
+#
+# A network deploy is two-phase by nature and cannot be made one-phase: the
+# on-chain programs are compiled by the issuer's registrar with `opendamp
+# derive`, against values that only exist once the policy server has prepared
+# the issuance. The first POST /api/deploy prepares and answers 409 with the
+# document to run; the second carries the registrar's three values back and
+# mints. Preparation mints a small internal verifier asset on the issuer's
+# behalf; an abandoned preparation leaves that asset unused, which is harmless.
 SEQPALD_DAMP=
 ```
 

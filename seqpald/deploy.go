@@ -124,6 +124,25 @@ type deployReq struct {
 	// Pause (bearer only) elects the asset-wide pause capability. Permanent
 	// either way: it is committed in the asset id.
 	Pause bool `json:"pause"`
+
+	// --- network enforcement only (M12) ---
+	//
+	// Whitelist is the set of x-only holder keys permitted to RECEIVE the asset
+	// under the genesis policy. It must contain this account's own key, which is
+	// the initial holder; omitted, it defaults to exactly that one key.
+	Whitelist []string `json:"whitelist"`
+	// VerifierAmount is the fixed amount of the verifier asset a valid rules
+	// output carries. Defaults to 1.
+	VerifierAmount uint64 `json:"verifier_amount"`
+	// The two values the issuer's registrar produces for this policy, and which
+	// nothing in this platform can compute: the compiled program identities and
+	// the policy commitment they were compiled against. Absent on the first
+	// attempt (which prepares and refuses with the document to run); required on
+	// the second (which completes the deploy).
+	UserCMR     string `json:"user_cmr"`
+	VerifierCMR string `json:"verifier_cmr"`
+	IssuerCMR   string `json:"issuer_cmr"`
+	Pi          string `json:"pi"`
 }
 
 func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
@@ -188,14 +207,8 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	// generation below selects the bearer charter set even when the supplied
 	// terms object does not name the election itself.
 	iss.Enforcement = enforcement
-	if enforcement == "network" {
-		if !s.cfg.damp {
-			refuse(501, "network enforcement is not available on this deployment")
-		} else {
-			// The capability flag is on but the OpenDAMP deploy path is not built
-			// yet; fail closed rather than silently falling back to serviced.
-			refuse(501, "network enforcement is enabled (SEQPALD_DAMP) but not yet implemented on this deployment")
-		}
+	if enforcement == "network" && !s.cfg.damp {
+		refuse(501, "network enforcement is not available on this deployment")
 		return
 	}
 	var recoveryKey string
@@ -406,6 +419,21 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 			precision: precision, atoms: atoms, supply: req.Supply,
 			termsHash: termsHash, canonicalTerms: canonical,
 			recoveryKey: recoveryKey, pause: req.Pause, idem: idem,
+		})
+		return
+	}
+
+	// Network path: the rules are compiled into on-chain programs and enforced by
+	// the network, so there is no escrow enclave to provision (there is no
+	// enclave) and no rule set to compile for the policy server (the programs are
+	// the rules). The mint lands directly in the issuer's own holding address.
+	if enforcement == "network" {
+		s.deployNetwork(w, acct, iss, dampDeployParams{
+			precision: precision, atoms: atoms, supply: req.Supply,
+			termsHash: termsHash, canonicalTerms: canonical, idem: idem,
+			whitelist: req.Whitelist, verifierAmount: req.VerifierAmount,
+			userCMR: req.UserCMR, verifierCMR: req.VerifierCMR, issuerCMR: req.IssuerCMR,
+			pi: req.Pi,
 		})
 		return
 	}
