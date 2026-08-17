@@ -70,7 +70,7 @@ export function buildPortalHtml(iss, cfg) {
   const teaser = [
     ['Issuer', m.operator],
     ['Structure', m.structureName],
-    ['Ticker', m.ticker || '—'],
+    ['Ticker', m.ticker || 'to be announced'],
     ['Available in', 'By verified jurisdiction'],
   ]
   const config = {
@@ -107,7 +107,7 @@ export function buildPortalHtml(iss, cfg) {
     deployNote +
     '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n' +
     '<meta name="viewport" content="width=device-width, initial-scale=1">\n' +
-    `<title>${esc(m.brandName)} — invest in ${esc(iss.name)}</title>\n` +
+    `<title>${esc(m.brandName)}: invest in ${esc(iss.name)}</title>\n` +
     `<script id="seqpal-config" type="application/json">${JSON.stringify(config)}</script>\n` +
     '<style>\n' +
     `:root{--accent:${m.accentHex};}\n` +

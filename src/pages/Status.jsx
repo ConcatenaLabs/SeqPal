@@ -75,14 +75,14 @@ export default function Status() {
         )}
         <div className="mt-2 divide-y divide-ink-900/10">
           <HealthRow
-            label="seqpald and the policy server"
+            label="The platform backend"
             ok={h ? !!h.ok : null}
             detail="An authenticated upstream probe. When this is unavailable, a deploy would fail, and the platform says so before checkout."
           />
           <HealthRow
-            label="Policy co-signer reachable"
+            label="Transfer service reachable"
             ok={h ? !!h.openamp_ok : null}
-            detail="The policy server that co-signs every restricted transfer."
+            detail="The service that checks and approves every restricted transfer against the issuer's rules."
           />
           <HealthRow
             label="Issuer token configured"
@@ -90,9 +90,14 @@ export default function Status() {
             detail="Required to mint a restricted asset from the platform."
           />
           <HealthRow
-            label="Confidentiality-enabled node"
+            label="Confidential issuance"
             ok={h ? !!h.confidential : null}
-            detail="Sequentia is transparent by default; a confidential (opt-in) asset needs a confidentiality-enabled node, or the deploy is refused rather than silently downgraded."
+            detail="A per-deployment capability. Sequentia is transparent by default; when this deployment has confidentiality enabled, issuers can opt in per asset, and when it does not, a confidential deploy is refused rather than silently downgraded."
+          />
+          <HealthRow
+            label="Network-enforced rules"
+            ok={h ? !!h.damp : null}
+            detail="A per-deployment capability: whether an issuer here can choose the model where the network itself enforces the transfer rules. When this deployment does not have it, that choice cannot be selected and a deploy asking for it is refused."
           />
         </div>
         {h?.network && (
@@ -107,17 +112,45 @@ export default function Status() {
           <h2 className="font-bold text-ink-900">Key custody</h2>
         </div>
         <p className="mt-2 text-sm leading-relaxed text-ink-700/80">
-          Every asset uses the issuer’s own key. The enclave issuer half is the issuing entity’s own
-          SeqPal ID key, held in its browser, so deploying an asset, authorising a close, and
-          exercising a clawback each need the issuer’s signature, taken deliberately in the browser.
-          The issuer runs no server.
+          Every asset uses the issuer’s own key: the issuing entity’s own SeqPal ID key, held in its
+          browser, so deploying an asset, authorising a close, and reclaiming tokens each need the
+          issuer’s signature, taken deliberately in the browser. The issuer runs no server.
         </p>
         <p className="mt-2 text-sm leading-relaxed text-ink-700/80">
-          SeqPal holds only the policy key. It co-signs every transfer to enforce the issuer’s
-          eligibility rules, and it is negative control: it can refuse a transfer, never originate one
-          or move a holder’s position. The full account is on the{' '}
+          SeqPal holds only its approval key. It checks every restricted transfer to enforce the
+          issuer’s eligibility rules, and it is negative control: it can refuse a transfer, never
+          originate one or move a holder’s position. The full account is on the{' '}
           <Link to="/legal" className="font-medium text-seq-600 hover:underline">
             Legal and Licensing
+          </Link>{' '}
+          page, and the machinery is named on the{' '}
+          <Link to="/docs" className="font-medium text-seq-600 hover:underline">
+            Documentation
+          </Link>{' '}
+          page.
+        </p>
+      </div>
+
+      {/* Business continuity, honestly disclosed */}
+      <div className="card mt-6 p-6">
+        <div className="flex items-center gap-2">
+          <Icon.building width={18} height={18} className="text-seq-600" />
+          <h2 className="font-bold text-ink-900">Business continuity</h2>
+        </div>
+        <p className="mt-2 text-sm leading-relaxed text-ink-700/80">
+          SeqPal’s transfer service, its books and records, and the credential that lets the
+          platform mint all run on one server, with backups and a restore runbook. When that server
+          is down, the rows above go red and transfers of standard restricted assets pause until it
+          is restored; tokens whose rules the network enforces, and freely-tradable tokens, keep
+          trading regardless. Nothing on chain is lost in a server loss: assets, balances, and the
+          register live on the Sequentia network, and the platform’s records restore from backup.
+        </p>
+        <p className="mt-2 text-sm leading-relaxed text-ink-700/80">
+          The approval key sits behind a clean seam in the software: replacing the single signer
+          with a group of signers that approve jointly changes no address and no asset id, so a
+          stronger signing setup never strands an issued asset. The technical detail is on the{' '}
+          <Link to="/docs" className="font-medium text-seq-600 hover:underline">
+            Documentation
           </Link>{' '}
           page.
         </p>
@@ -169,7 +202,10 @@ export default function Status() {
         <Link to="/privacy" className="font-medium text-seq-600 hover:underline">
           Privacy
         </Link>
-        <Link to="/verify" className="font-medium text-seq-600 hover:underline">
+        <Link to="/docs" className="font-medium text-seq-600 hover:underline">
+          Documentation
+        </Link>
+        <Link to="/docs/verify" className="font-medium text-seq-600 hover:underline">
           Verify independently
         </Link>
       </div>

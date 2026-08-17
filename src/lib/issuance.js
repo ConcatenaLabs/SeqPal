@@ -32,7 +32,12 @@ function buildJurisdictions(policy, eligCategories) {
 }
 
 export function toTerms(d) {
+  // The enforcement election (serviced | network | bearer): who can hold the
+  // token and who enforces the rules, chosen early in the wizard and committed
+  // in the terms like every other deal term.
+  const enforcement = d.enforcement || 'serviced'
   const terms = {
+    enforcement,
     structure_id: d.structureId || '',
     is_public: !!d.isPublic,
     unit: d.unit || 'USD',
@@ -47,6 +52,15 @@ export function toTerms(d) {
     mint_target: d.mintTarget || '',
     // structure name drives the compiler's velocity defaults (e.g. debt-yield).
     structure: d.structureId || '',
+  }
+
+  // A freely-tradable (bearer) issuance carries no transfer restrictions at
+  // all: no lockup, no holding-period window, no per-country caps, no category
+  // matrix. Emitting none keeps the committed terms honest about that.
+  if (enforcement === 'bearer') {
+    terms.policy = {}
+    terms.jurisdictions = {}
+    return terms
   }
 
   // Lockup: an absolute Sequentia block height, or a number of days converted
@@ -83,6 +97,7 @@ export function view(iss) {
   const t = iss.terms && typeof iss.terms === 'object' ? iss.terms : {}
   return {
     ...iss,
+    enforcement: t.enforcement || iss.enforcement || 'serviced',
     structureId: iss.structure_id || t.structure_id || '',
     isPublic: !!t.is_public,
     unit: t.unit || 'USD',

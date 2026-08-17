@@ -352,7 +352,7 @@ export default function DataRoom({ iss }) {
             {terms?.access?.model}{' '}
             {iss.assetId && (
               <Link
-                to={`/verify?asset=${encodeURIComponent(iss.assetId)}`}
+                to={`/docs/verify?asset=${encodeURIComponent(iss.assetId)}`}
                 className="font-medium text-seq-600 hover:underline"
               >
                 Verify the terms-to-chain binding independently.

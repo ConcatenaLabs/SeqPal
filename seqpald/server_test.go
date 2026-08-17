@@ -440,7 +440,7 @@ func TestDeployValidationMatrix(t *testing.T) {
 		want int
 	}{
 		{"supply 0", map[string]any{"issuance_id": id, "supply": 0, "precision": 2}, 400},
-		{"precision 0", map[string]any{"issuance_id": id, "supply": 1000, "precision": 0}, 400},
+		{"precision omitted", map[string]any{"issuance_id": id, "supply": 1000}, 400},
 		{"precision 9", map[string]any{"issuance_id": id, "supply": 1000, "precision": 9}, 400},
 		{"precision negative", map[string]any{"issuance_id": id, "supply": 1000, "precision": -1}, 400},
 		{"supply overflows atoms", map[string]any{"issuance_id": id, "supply": uint64(1) << 62, "precision": 8}, 400},
@@ -496,6 +496,14 @@ func TestDeployValidationMatrix(t *testing.T) {
 	}
 	if h.oa.issues.Load() != 0 {
 		t.Fatalf("a refused deploy still minted (%d issue calls)", h.oa.issues.Load())
+	}
+
+	// Precision 0 is a REAL value (an integer-only asset), not "unset": it must
+	// deploy, never be refused (the repo's documented trap). Only an OMITTED
+	// precision is refused, which the matrix above already proves.
+	zid := h.draftIssuance(ida, "Integer Fund", "INTF", map[string]any{"structure": "native-equity"})
+	if r := h.do("POST", "/api/deploy", ida, map[string]any{"issuance_id": zid, "supply": 1000, "precision": 0}); r.code != 200 {
+		t.Fatalf("precision-0 deploy = %d, want 200 (%s)", r.code, r.errMsg())
 	}
 }
 

@@ -1,6 +1,9 @@
 package main
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // Instrument characterization is the legal predicate the rest of the M4 pipeline
 // depends on: before a jurisdiction matrix can be compiled or an offering
@@ -46,21 +49,25 @@ type Characterization struct {
 
 // canonicalStructure maps the free-form structure name an issuer picked (the
 // issuance StructureID or terms.structure) onto one of the four canonical
-// structures the pipeline reasons about. An unrecognized name is treated as a
-// plain equity security, the least restrictive and most common case, but the
-// memo still names it so the classification is never silently guessed away.
-func canonicalStructure(name string) string {
+// structure ids the pipeline reasons about. The canonical id is
+// "depository-receipt" (the spelling the SPA uses); "depositary-receipt" stays
+// accepted as an alias. An EMPTY name is the documented default and maps to
+// plain equity; an unrecognized non-empty name returns ok=false so the caller
+// FAILS CLOSED (W-7): a structure the pipeline cannot classify must refuse
+// rather than silently characterize as equity, because the classification
+// changes the marketing regime, the PRIIPs position, and the compiled rules.
+func canonicalStructure(name string) (string, bool) {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "equity-spv", "spv", "equity_spv", "holdco", "holding":
-		return "equity-spv"
+		return "equity-spv", true
 	case "debt-yield", "debt", "yield", "note", "bond":
-		return "debt-yield"
-	case "depositary-receipt", "dr", "receipt", "depository-receipt":
-		return "depositary-receipt"
+		return "debt-yield", true
+	case "depository-receipt", "dr", "receipt", "depositary-receipt":
+		return "depository-receipt", true
 	case "equity", "native-equity", "equity-direct", "share", "shares", "":
-		return "equity"
+		return "equity", true
 	default:
-		return "equity"
+		return "", false
 	}
 }
 
@@ -78,12 +85,18 @@ func canonicalStructure(name string) string {
 //     and a PRIIPs KID is required before any EU retail admission.
 //   - debt-yield: a pooled yield instrument, classified as an AIF/CIS on the
 //     same basis as the SPV.
-//   - depositary-receipt: a receipt mirroring an underlying listed security. It
+//   - depository-receipt: a receipt mirroring an underlying listed security. It
 //     is itself a transferable security rather than a fund, but it is a packaged
 //     retail product, so a PRIIPs KID is required for EU retail and a
 //     dividend-equivalent withholding and US-person analysis attaches.
-func characterize(name string) Characterization {
-	s := canonicalStructure(name)
+//
+// An unrecognized non-empty structure name is an error (fail closed, W-7); an
+// empty name characterizes as plain equity, the documented default.
+func characterize(name string) (Characterization, error) {
+	s, ok := canonicalStructure(name)
+	if !ok {
+		return Characterization{}, fmt.Errorf("unrecognized structure %q", strings.TrimSpace(name))
+	}
 	switch s {
 	case "equity-spv":
 		return Characterization{
@@ -107,7 +120,7 @@ func characterize(name string) Characterization {
 				"uk": "FSMA section 238 with the CIS-promotion exemptions; a self-certified sophisticated or high-net-worth statement is recorded before the offering renders.",
 				"us": "Regulation S offshore or Rule 506(c) verified accreditation; 506(c) purchasers hold Rule 144 restricted securities.",
 			},
-		}
+		}, nil
 	case "debt-yield":
 		return Characterization{
 			Structure:    s,
@@ -128,17 +141,17 @@ func characterize(name string) Characterization {
 				"uk": "FSMA section 238 with the CIS-promotion exemptions.",
 				"us": "Regulation S offshore or Rule 506(c) verified accreditation; 506(c) purchasers hold Rule 144 restricted securities.",
 			},
-		}
-	case "depositary-receipt":
+		}, nil
+	case "depository-receipt":
 		return Characterization{
 			Structure:    s,
-			Instrument:   "a depositary receipt over an underlying security",
+			Instrument:   "a depository receipt over an underlying security",
 			IsAIF:        false,
 			IsCIS:        false,
 			PRIIPs:       true,
 			EURetailLift: true,
 			UKGate:       "fpo-statement",
-			Analysis: "A depositary receipt is a transferable security in its own right rather than a fund, so the " +
+			Analysis: "A depository receipt is a transferable security in its own right rather than a fund, so the " +
 				"prospectus-exemption and Financial Promotion Order frameworks apply. It is nevertheless a packaged " +
 				"retail product, so a PRIIPs-compliant key information document is required before any offer to EU retail, " +
 				"and a receipt mirroring a US-listed security carries a dividend-equivalent withholding position under " +
@@ -149,7 +162,7 @@ func characterize(name string) Characterization {
 				"uk": "FPO Articles 48 and 50A investor statements (SI 2024/301 wording and thresholds).",
 				"us": "US-person excluded; Regulation S offshore distribution compliance under 17 CFR 230.903.",
 			},
-		}
+		}, nil
 	default: // equity
 		return Characterization{
 			Structure:    "equity",
@@ -169,7 +182,7 @@ func characterize(name string) Characterization {
 				"uk": "FPO Articles 48 and 50A investor statements (SI 2024/301 wording and thresholds).",
 				"us": "Regulation S offshore or Rule 506(c) verified accreditation; 506(c) purchasers hold Rule 144 restricted securities.",
 			},
-		}
+		}, nil
 	}
 }
 

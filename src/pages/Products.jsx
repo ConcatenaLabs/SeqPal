@@ -9,7 +9,7 @@ const products = [
     tagline: 'Self-service issuance, end to end.',
     body: 'A web application that walks an issuer through entity formation in Próspera, choice of issuance structure, automated drafting of formation and offering documents, configuration of jurisdictional and accreditation transfer restrictions, and on-chain deployment.',
     points: [
-      'Six-step onboarding flow',
+      'Seven-step onboarding flow, including the choice of who enforces your rules',
       'Automated document drafting from your inputs',
       'Fixed, published pricing, pay and deploy',
       'Manage live issuances post-deployment',
@@ -20,7 +20,7 @@ const products = [
     icon: Icon.id,
     name: 'SeqPal ID',
     tagline: 'One compliance passport for everyone.',
-    body: 'The identity and compliance passport for everyone on Sequentia who holds or issues a SeqPal asset. One role-neutral registration flow: it never asks whether you intend to issue or invest. Once verified, it carries the eligibility categories the policy server enforces on every transfer, so the holder is whitelisted for every SeqPal-managed asset their profile is eligible to hold. A SeqPal ID is required to hold or trade these assets anywhere on Sequentia.',
+    body: 'The identity and compliance passport for everyone on Sequentia who holds or issues a SeqPal asset. One role-neutral registration flow: it never asks whether you intend to issue or invest. Once verified, it carries the eligibility categories that are checked on every transfer, so the holder is whitelisted for every SeqPal-managed asset their profile is eligible to hold. A SeqPal ID is required to hold or trade these restricted assets anywhere on Sequentia.',
     points: [
       'One flow for everyone, no user-type question',
       'KYC / KYB and accreditation in one profile',
@@ -63,7 +63,7 @@ function Architecture() {
       icon: Icon.layers,
       n: '1',
       name: 'Issuer Dashboard',
-      body: 'Structure, draft, configure, and deploy in six steps.',
+      body: 'Structure, draft, configure, and deploy in seven steps.',
     },
     {
       icon: Icon.exchange,

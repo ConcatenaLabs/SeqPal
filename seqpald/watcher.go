@@ -41,11 +41,15 @@ const (
 func (s *server) runWatcher(interval time.Duration) {
 	s.reconcileWatches()
 	s.watchTickAll()
+	s.actionSnapshotTick()
 	t := time.NewTicker(interval)
 	defer t.Stop()
 	for range t.C {
 		s.reconcileWatches()
 		s.watchTickAll()
+		// W-3: record-date snapshots are taken at the first watcher pass at or
+		// after each action's record height (disclosed on the action).
+		s.actionSnapshotTick()
 	}
 }
 

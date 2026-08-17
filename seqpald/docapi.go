@@ -270,7 +270,9 @@ func (s *server) handleGenerateDocuments(w http.ResponseWriter, r *http.Request)
 	if iss.Status != "live" {
 		_ = s.st.UpdateIssuanceFields(iss.ID, map[string]any{"terms": string(canonical)})
 	}
-	ch := characterize(structureName(iss, iss.Terms))
+	// ensureDocuments already refused an unrecognized structure, so the error is
+	// impossible here; the zero value is a safe render fallback regardless.
+	ch, _ := characterize(structureName(iss, iss.Terms))
 	s.st.Audit(acct.AID, "documents.generate", map[string]any{
 		"issuance_id": iss.ID, "terms_hash": termsHash, "manifest_hash": man.ManifestHash, "docs": len(man.Set),
 	})
@@ -313,13 +315,20 @@ func (s *server) handleCharacterization(w http.ResponseWriter, r *http.Request) 
 	if structure == "" {
 		// Enumerate the four canonical structures.
 		out := []Characterization{}
-		for _, s := range []string{"equity", "equity-spv", "debt-yield", "depositary-receipt"} {
-			out = append(out, characterize(s))
+		for _, s := range []string{"equity", "equity-spv", "debt-yield", "depository-receipt"} {
+			ch, _ := characterize(s)
+			out = append(out, ch)
 		}
 		writeJSON(w, 200, map[string]any{"structures": out})
 		return
 	}
-	writeJSON(w, 200, map[string]any{"characterization": characterize(structure)})
+	ch, err := characterize(structure)
+	if err != nil {
+		// Fail closed (W-7): never silently classify an unknown name as equity.
+		writeErr(w, 400, "unrecognized structure %q", structure)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"characterization": ch})
 }
 
 // --- POST /api/documents/{hash}/sign (session) ------------------------------

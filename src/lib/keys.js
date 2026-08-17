@@ -12,6 +12,7 @@
 import { schnorr } from '@noble/curves/secp256k1'
 import { bytesToHex, hexToBytes } from '@noble/curves/abstract/utils'
 import { sha256 } from '@noble/hashes/sha256'
+import { canonicalJSON } from './openamp.js'
 
 const enc = new TextEncoder()
 
@@ -36,6 +37,17 @@ export function generateEnclaveKey() {
 // x-only public key (hex) for a stored private key.
 export function xonlyOf(privHex) {
   return bytesToHex(schnorr.getPublicKey(hexToBytes(privHex)))
+}
+
+// Generate the RECOVERY key for a freely-tradable (bearer) issuance: a second,
+// independent browser keypair, generated exactly like the main SeqPal ID key.
+// Its x-only public key is registered at deploy as recovery_pubkey; if the
+// everyday issuer key is ever stolen, this key replaces it. It is persisted
+// nowhere except the passphrase-encrypted envelope the issuer exports (the same
+// AES-GCM envelope as the main key, see encryptKey), which is why the export
+// step before deploy is mandatory.
+export function generateRecoveryKey() {
+  return generateEnclaveKey()
 }
 
 // BIP340's tagged hash: sha256(sha256(tag) || sha256(tag) || msg).
@@ -138,6 +150,81 @@ export function signSighash(privHex, sighashHex) {
 export function signClawbackSighash(privHex, sighashHex) {
   const digest = hexToBytes(sighashHex)
   if (digest.length !== 32) throw new Error('A clawback sighash must be a 32-byte digest.')
+  return bytesToHex(schnorr.sign(digest, hexToBytes(privHex), NO_AUX))
+}
+
+// Sign a canonical-JSON object statement under a domain-separation tag: the
+// message is sha256(canonicalJSON(obj)) and the key signs the TAGGED hash of
+// that digest (never the raw digest itself, the same signing-oracle guard as
+// signChallenge/signStatement). Canonical JSON (sorted keys, no whitespace)
+// makes the signed bytes reproducible server-side from the same fields.
+function signCanonicalObject(privHex, tag, obj) {
+  const digest = sha256(enc.encode(canonicalJSON(obj)))
+  const msg = taggedHash(tag, digest)
+  return bytesToHex(schnorr.sign(msg, hexToBytes(privHex), NO_AUX))
+}
+
+// The bearer attestation an issuer signs before a freely-tradable deploy: a
+// tagged signature over sha256 of the canonical JSON of
+// { issuance_id, no_us_nexus, risk_accepted, aid }, verified by seqpald against
+// the session key and recorded with the issuance. NEVER a raw digest signer.
+export const BEARER_ATTESTATION_TAG = 'seqpal-bearer-attestation-v1'
+export function signBearerAttestation(privHex, { issuance_id, no_us_nexus, risk_accepted, aid }) {
+  return signCanonicalObject(privHex, BEARER_ATTESTATION_TAG, {
+    issuance_id,
+    no_us_nexus: !!no_us_nexus,
+    risk_accepted: !!risk_accepted,
+    aid,
+  })
+}
+
+// The holding proof an investor signs to claim a corporate action (dividend
+// payout or vote): a tagged signature over sha256 of the canonical JSON of the
+// claim statement, mirroring seqpald's holdingProofStatement exactly: v, the
+// action and its asset, the record height, the SORTED outpoints, the purpose,
+// and the presenting session's aid. The purpose and payout/choice fields bind
+// the proof to exactly this use and the aid to this session, so a dividend
+// proof can never be replayed as a ballot or by another account. The claimant
+// key itself is bound by script derivation (the snapshot outputs must pay a
+// script derived from it), not by the message. NEVER a raw digest signer.
+export const HOLDING_PROOF_TAG = 'seqpal-holding-proof-v1'
+export function signHoldingProof(
+  privHex,
+  { action_id, asset, record_height, outpoints, purpose, payout_address, choice, aid },
+) {
+  const obj = {
+    v: 1,
+    action_id,
+    asset,
+    record_height: Number(record_height),
+    outpoints: [...outpoints].sort(),
+    purpose,
+    aid,
+  }
+  if (purpose === 'dividend') obj.payout_address = payout_address
+  else obj.choice = choice
+  return signCanonicalObject(privHex, HOLDING_PROOF_TAG, obj)
+}
+
+// Sign one supervision (court-ordered freeze / unfreeze) message for a
+// freely-tradable bearer asset, with the ISSUER key. This is one of the FEW
+// legitimate raw signers, deliberately separate from the tagged
+// signChallenge/signStatement/signDocument signers: a consensus-enforced freeze
+// can only be authorized by signing the actual 32-byte message the node
+// computed over the freeze operation, which is what the chain verifies. Those
+// application signers stay tagged so no party can turn the login/document flow
+// into a signing oracle over a spendable digest. The oracle guard still holds
+// around this call: the caller MUST confirm the to_sign entry's pubkey is this
+// issuer key's own x-only before signing (see store.signSupervision), and the
+// message comes from a freeze or unfreeze the issuer themselves initiated
+// (their chosen address, their court-order fingerprint, their reason, already
+// bound for the public record). It is a distinct function from signSighash and
+// signClawbackSighash so the intent reads clearly at the call site: this
+// authorizes a court-ordered freeze the issuer directs and the network
+// enforces. messageHex is the 64-hex digest.
+export function signSupervisionMessage(privHex, messageHex) {
+  const digest = hexToBytes(messageHex)
+  if (digest.length !== 32) throw new Error('A supervision message must be a 32-byte digest.')
   return bytesToHex(schnorr.sign(digest, hexToBytes(privHex), NO_AUX))
 }
 
