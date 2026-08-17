@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 )
@@ -231,8 +232,19 @@ func (s *server) releaseAsset(address string, atoms uint64, comment, asset strin
 	if err := s.ensureSeqEscrowWallet(); err != nil {
 		return "", err
 	}
+	// The open fee market has no default fee asset, so a send whose outputs are
+	// all in some other asset determines nothing and the node refuses it until
+	// fee_asset_label is named. Positional order, from sendtoaddress in
+	// src/wallet/rpc/spend.cpp: address, amount, comment, comment_to,
+	// subtractfeefromamount, replaceable, conf_target, estimate_mode,
+	// avoid_reuse, assetlabel, ignoreblindfail, fee_rate, fee_asset_label.
+	feeAsset, ferr := s.escrowFeeAsset()
+	if ferr != nil {
+		return "", ferr
+	}
 	res, err := s.walletRPC(seqEscrowWallet, "sendtoaddress",
-		address, amount8(atoms), comment, "", false, false, 1, "UNSET", false, asset)
+		address, amount8(atoms), comment, "", false, false, 1, "UNSET", false, asset,
+		false, nil, feeAsset)
 	if err != nil {
 		return "", err
 	}
@@ -338,4 +350,25 @@ func atomsFromNumber(n json.Number) uint64 {
 		return 0
 	}
 	return total
+}
+
+// escrowFeeAsset names the asset escrow sends pay their network fee in.
+// SEQPALD_FEE_ASSET overrides; the fallback is the node's "bitcoin" label
+// (tSEQ on the testnet), which the escrow wallet is kept funded in.
+func (s *server) escrowFeeAsset() (string, error) {
+	if v := os.Getenv("SEQPALD_FEE_ASSET"); v != "" {
+		return v, nil
+	}
+	res, err := s.nodeRPC("dumpassetlabels")
+	if err != nil {
+		return "", fmt.Errorf("dumpassetlabels: %w", err)
+	}
+	var labels map[string]string
+	if err := json.Unmarshal(res, &labels); err != nil {
+		return "", fmt.Errorf("dumpassetlabels: %w", err)
+	}
+	if a := labels["bitcoin"]; a != "" {
+		return a, nil
+	}
+	return "", fmt.Errorf("no fee asset: set SEQPALD_FEE_ASSET")
 }
