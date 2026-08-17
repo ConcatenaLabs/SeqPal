@@ -233,7 +233,15 @@ func (s *server) deployBearer(w http.ResponseWriter, acct *Account, iss *Issuanc
 		refuse(502, "fee asset: "+err.Error())
 		return
 	}
-	fundRes, err := s.walletRPC(seqEscrowWallet, "fundrawtransaction", rawHex, map[string]any{"lockUnspents": true, "fee_asset": feeAsset})
+	fundRes, err := s.walletRPC(seqEscrowWallet, "fundrawtransaction", rawHex, map[string]any{
+		"lockUnspents": true, "fee_asset": feeAsset,
+		// The placeholder tx funded here roughly triples in size once
+		// rawissueasset adds the mint, token, and declaration outputs, and the
+		// fee is fixed at funding time. Fund at a generous rate so the final
+		// transaction still clears the relay floor; on this chain fees are
+		// cheap and the preflight gate refuses anything underfunded.
+		"fee_rate": 10,
+	})
 	if err != nil {
 		refuse(502, "fundrawtransaction: "+err.Error())
 		return
