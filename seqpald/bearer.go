@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -227,7 +228,12 @@ func (s *server) deployBearer(w http.ResponseWriter, acct *Account, iss *Issuanc
 		refuse(502, "createrawtransaction returned no transaction")
 		return
 	}
-	fundRes, err := s.walletRPC(seqEscrowWallet, "fundrawtransaction", rawHex, map[string]any{"lockUnspents": true})
+	feeAsset, err := s.bearerFeeAsset()
+	if err != nil {
+		refuse(502, "fee asset: "+err.Error())
+		return
+	}
+	fundRes, err := s.walletRPC(seqEscrowWallet, "fundrawtransaction", rawHex, map[string]any{"lockUnspents": true, "fee_asset": feeAsset})
 	if err != nil {
 		refuse(502, "fundrawtransaction: "+err.Error())
 		return
@@ -486,4 +492,27 @@ func (s *server) decodeRawTransaction(txHex string) (*decodedTx, error) {
 		return nil, err
 	}
 	return &d, nil
+}
+
+// bearerFeeAsset names the asset the bearer mint's funding pays its network
+// fee in. This chain has an open fee market with no default fee asset, so
+// fundrawtransaction must be told one. SEQPALD_FEE_ASSET overrides; the
+// fallback is the node's "bitcoin" label (tSEQ on the testnet), which the
+// escrow wallet is kept funded in for exactly these fees.
+func (s *server) bearerFeeAsset() (string, error) {
+	if v := os.Getenv("SEQPALD_FEE_ASSET"); v != "" {
+		return v, nil
+	}
+	res, err := s.nodeRPC("dumpassetlabels")
+	if err != nil {
+		return "", fmt.Errorf("dumpassetlabels: %w", err)
+	}
+	var labels map[string]string
+	if err := json.Unmarshal(res, &labels); err != nil {
+		return "", fmt.Errorf("dumpassetlabels: %w", err)
+	}
+	if a := labels["bitcoin"]; a != "" {
+		return a, nil
+	}
+	return "", fmt.Errorf("no fee asset: set SEQPALD_FEE_ASSET")
 }
