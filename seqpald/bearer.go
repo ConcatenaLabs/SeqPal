@@ -217,7 +217,7 @@ func (s *server) deployBearer(w http.ResponseWriter, acct *Account, iss *Issuanc
 	// Empty tx (a data placeholder satisfies fundrawtransaction's one-output
 	// minimum), then funding: the wallet picks and LOCKS the inputs, adds change
 	// and the fee output (which rawissueasset requires to be last).
-	rawRes, err := s.walletRPC(seqEscrowWallet, "createrawtransaction", []any{}, map[string]any{"data": "00"})
+	rawRes, err := s.walletRPC(seqEscrowWallet, "createrawtransaction", []any{}, []map[string]any{{"data": "00"}})
 	if err != nil {
 		refuse(502, "createrawtransaction: "+err.Error())
 		return
