@@ -644,7 +644,14 @@ func (s *server) lockSupervisionFunding() (*fundingUTXO, error) {
 	if err := s.ensureSeqEscrowWallet(); err != nil {
 		return nil, err
 	}
-	res, err := s.walletRPC(seqEscrowWallet, "listunspent", 1, 9999999)
+	// Only coins of the FEE asset can fund a supervision transaction: the
+	// outputs pay change and fee in it, so a coin of any other asset (the
+	// minted shares live in this same wallet) can never balance.
+	feeAsset, err := s.bearerFeeAsset()
+	if err != nil {
+		return nil, err
+	}
+	res, err := s.walletRPC(seqEscrowWallet, "listunspent", 1, 9999999, []string{}, true, map[string]any{"asset": feeAsset})
 	if err != nil {
 		return nil, err
 	}
