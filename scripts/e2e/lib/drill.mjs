@@ -217,7 +217,16 @@ export function amount8(atoms) {
 // The asset rides in position 9 (assetlabel); positions 6 and 7 are passed as
 // null to take the wallet defaults, and 8 (avoid_reuse) as false.
 export function sendCommand(address, atoms, asset) {
-  return `sequentia-cli -rpcwallet=seqpal-escrow sendtoaddress ${address} ${amount8(atoms)} "" "" false false null null false ${asset}`
+  // The box's non-interactive PATH does not carry sequentia-cli, so name it by
+  // path (SEQPAL_DRILL_CLI overrides) and pass the chain explicitly.
+  const cli = process.env.SEQPAL_DRILL_CLI || '/root/SequentiaByClaude/src/sequentia-cli -chain=test -rpcport=18200 -rpcuser=seq -rpcpassword=seq'
+  // Verified positional order from src/wallet/rpc/spend.cpp sendtoaddress:
+  // address, amount, comment, comment_to, subtractfeefromamount, replaceable,
+  // conf_target, estimate_mode (a STRING, "unset", never null), avoid_reuse,
+  // assetlabel, ignoreblindfail, fee_rate, fee_asset_label. The open fee market
+  // has no default fee asset, so fee_asset_label is mandatory here.
+  const feeAsset = process.env.SEQPAL_DRILL_FEE_ASSET || 'bitcoin'
+  return `${cli} -rpcwallet=seqpal-escrow sendtoaddress ${address} ${amount8(atoms)} "" "" false false null unset false ${asset} false null ${feeAsset}`
 }
 
 // Run the operator send over ssh when SEQPAL_DRILL_SSH names the box's ssh
