@@ -117,12 +117,15 @@ export default function Privacy() {
 
       {/* Confidentiality reminder */}
       <div className="card mt-6 p-6">
-        <h2 className="font-bold text-ink-900">Confidentiality is opt-in, and not privacy from your registrar</h2>
+        <h2 className="font-bold text-ink-900">Confidentiality is per transfer, and not privacy from your registrar</h2>
         <p className="mt-2 text-sm leading-relaxed text-ink-700/80">
-          Sequentia is transparent by default. Confidentiality is opt-in per asset. An opt-in
-          confidential asset blinds amounts and the asset tag on chain, but the issuer and the policy
-          server still see holdings, because they have to enforce eligibility. It is not privacy from
-          your registrar.
+          Sequentia is transparent by default. Confidentiality is a choice made per transfer, not a
+          property of a token: when the deployment supports it, any transfer of any restricted token
+          can be made confidential, which blinds that transfer&rsquo;s amount and asset tag on chain
+          from outside observers. The issuer and the policy server still see every holding and every
+          transfer, because they have to enforce eligibility. It is not privacy from your registrar.
+          Freely-tradable tokens are always public by design, because the network&rsquo;s consensus
+          rules must be able to read their outputs.
         </p>
       </div>
 

@@ -763,6 +763,19 @@ func (f *m5Stub) transferBuildCount() int {
 	return len(f.transferBodies)
 }
 
+// lastTransferBuildBody returns the raw body of the most recent POST
+// /v1/transfers build, or nil if none was requested. The per-transfer
+// confidentiality tests use it to assert the confidential flag reached the
+// policy server verbatim.
+func (f *m5Stub) lastTransferBuildBody() map[string]any {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.transferBodies) == 0 {
+		return nil
+	}
+	return f.transferBodies[len(f.transferBodies)-1]
+}
+
 // lastPaymentLeg returns the "payment" object from the most recent transfer build
 // that carried one (the OA-4 atomic leg: asset, atoms, from_address, to_address),
 // or nil if no build carried a payment leg.

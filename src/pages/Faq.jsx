@@ -99,7 +99,7 @@ const SECTIONS = [
       {
         q: 'What can the platform see and do about my holdings?',
         a: [
-          'For a standard restricted asset, SeqPal keeps the register and its transfer service checks every transfer against the issuer’s rules, so it sees your holdings and can refuse a transfer that breaks a rule. It cannot move your position on its own: the key that can reclaim tokens is the issuing entity’s own, held in the issuer’s browser, so a seizure needs the issuer’s signature. An opt-in confidential asset still exposes holdings to the issuer and to SeqPal’s transfer service, because they enforce eligibility. A freely-tradable asset is different: who holds what is public, and nobody screens its trades.',
+          'For a standard restricted asset, SeqPal keeps the register and its transfer service checks every transfer against the issuer’s rules, so it sees your holdings and can refuse a transfer that breaks a rule. It cannot move your position on its own: the key that can reclaim tokens is the issuing entity’s own, held in the issuer’s browser, so a seizure needs the issuer’s signature. Making a transfer confidential changes none of this: it hides that transfer from outside observers only, while the issuer and SeqPal’s transfer service still see everything, because they enforce eligibility. A freely-tradable asset is different: who holds what is public, and nobody screens its trades.',
         ],
       },
     ],
@@ -150,7 +150,7 @@ const SECTIONS = [
       {
         q: 'Is my holding private?',
         a: [
-          'Sequentia is transparent by default, and confidentiality is opt-in per asset. An opt-in confidential asset blinds amounts and the asset tag on chain, but the issuer and SeqPal’s transfer service still see holdings, because they enforce eligibility. It is not privacy from your registrar.',
+          'Sequentia is transparent by default, and confidentiality is a choice you make per transfer, not a property of a token. When the deployment supports it, any transfer of any restricted token can be made confidential, which hides that transfer’s amount and asset from outside observers. The issuer and SeqPal’s transfer service still see every holding and every transfer, because they enforce eligibility, so it is not privacy from your registrar. Freely-tradable tokens are the exception: their transfers are always public by design, because the network itself must be able to read them.',
           'The public transparency log records policy decisions as pseudonymous AIDs and hashes, and your AID’s category tokens and frozen status are publicly readable. The Privacy page details exactly what is exposed.',
         ],
       },

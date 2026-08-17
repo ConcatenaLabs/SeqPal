@@ -114,6 +114,12 @@ type p2pInitiateReq struct {
 	ToAID      string `json:"to_aid"`
 	Atoms      uint64 `json:"atoms"`
 	IssuanceID string `json:"issuance_id"` // optional; asset is authoritative
+	// Confidential is the per-transfer choice: blind this transfer's amount and
+	// asset from outside observers. It is not an asset property; any holder may
+	// elect it on any transfer when the deployment supports it (the
+	// SEQPALD_CONFIDENTIAL gate). The registrar sees everything either way,
+	// through the policy server's blinding keys.
+	Confidential bool `json:"confidential"`
 }
 
 // handleP2PInitiate is POST /api/transfers (session): build a policy-co-signed
@@ -137,6 +143,13 @@ func (s *server) handleP2PInitiate(w http.ResponseWriter, r *http.Request) {
 	}
 	if toAID == acct.AID {
 		writeErr(w, 400, "the beneficiary must be a different identity")
+		return
+	}
+	// Per-transfer confidentiality is a deployment capability (the same env gate
+	// that used to gate confidential deploys). Refuse honestly rather than
+	// silently downgrading to a transparent transfer.
+	if req.Confidential && !s.cfg.confidential {
+		writeErr(w, 501, "confidential transfers are not available on this deployment; send it transparently, the Sequentia default")
 		return
 	}
 
@@ -191,6 +204,9 @@ func (s *server) handleP2PInitiate(w http.ResponseWriter, r *http.Request) {
 	body := map[string]any{
 		"asset": asset, "sender_aid": acct.AID, "recipient_aid": toAID,
 		"atoms": req.Atoms, "fee_mode": "sponsor",
+		// Pass-through: openampd blinds the transfer when true (the recipient leg
+		// uses a blinded address it derives for the beneficiary's enclave).
+		"confidential": req.Confidential,
 	}
 	if code, err := s.callOpenAMPStatus("POST", "/v1/transfers", "", body, &built); err != nil {
 		writeErr(w, statusForOpenAMP(code), "could not build the transfer: %v", err)
@@ -216,7 +232,7 @@ func (s *server) handleP2PInitiate(w http.ResponseWriter, r *http.Request) {
 	t := &P2PTransfer{
 		ID: mustID(), OaID: built.ID, IssuanceID: iss.ID, AssetID: asset,
 		OriginatorAID: acct.AID, BeneficiaryAID: toAID, Atoms: req.Atoms,
-		State: "awaiting_signature", Source: "browser",
+		State: "awaiting_signature", Source: "browser", Confidential: req.Confidential,
 		OrigName: acct.DisplayName, OrigResidence: claimsResidence(origClaims),
 		BenefName: benef.DisplayName, BenefResidence: claimsResidence(benefClaims), BenefRegistered: true,
 	}
@@ -226,6 +242,7 @@ func (s *server) handleP2PInitiate(w http.ResponseWriter, r *http.Request) {
 	}
 	s.st.Audit(acct.AID, "p2p.initiate", map[string]any{
 		"transfer": t.ID, "asset": asset, "beneficiary": toAID, "atoms": req.Atoms,
+		"confidential": req.Confidential,
 	})
 	writeJSON(w, 200, map[string]any{
 		"transfer_id": t.ID, "oa_id": built.ID, "tx": built.Tx, "to_sign": toSign,

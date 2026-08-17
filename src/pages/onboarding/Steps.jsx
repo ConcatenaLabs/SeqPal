@@ -346,19 +346,19 @@ export function Step2Structure({ data, update }) {
 // Who can hold the token, and who enforces the rules. Three models, chosen
 // before the deal terms because the choice shapes which rules exist at all.
 // The "network" model is a per-deployment capability probed live from
-// GET /api/health (field `damp`), the same pattern the confidential toggle
-// uses: when the deployment cannot run it, the card says so and cannot be
-// selected, so the deploy never discovers a refusal at checkout.
+// GET /api/health (field `damp`): when the deployment cannot run it, the card
+// says so and cannot be selected, so the deploy never discovers a refusal at
+// checkout.
 const ENFORCEMENT_MODELS = [
   {
     id: 'serviced',
     badge: 'Standard',
     title: 'SeqPal enforces your rules',
     body: 'Only investors you approve can hold this token. SeqPal’s service checks every transfer against your rules.',
-    goodFor: 'Private placements, offerings into regulated countries, tokens whose holdings should stay private.',
+    goodFor: 'Private placements, offerings into regulated countries, tokens whose transfers may need discretion.',
     tradeoffs: [
       'The richest rule set: lockups, investor limits, country rules.',
-      'Holdings can be hidden from the public while you still see everything.',
+      'Holders can make any transfer confidential, hiding it from the public while you still see everything.',
       'Transfers pause if SeqPal’s service is down.',
     ],
     regulatory: 'The strongest compliance story for offers that reach US, EU, or UK investors.',
@@ -1049,22 +1049,6 @@ export function Step6Compliance({ data, update }) {
   // configuration below is hidden for it; the offering visibility choice stays
   // in the data-room step either way.
   const bearer = data.enforcement === 'bearer'
-  // Whether this deployment can mint confidentially: a per-deployment
-  // capability probed live from /api/health, mirroring the deploy card.
-  const [confAvailable, setConfAvailable] = useState(null)
-  useEffect(() => {
-    let cancelled = false
-    health()
-      .then((h) => {
-        if (!cancelled) setConfAvailable(!!h.confidential)
-      })
-      .catch(() => {
-        if (!cancelled) setConfAvailable(null)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   // (Re)build the default policy whenever the offering type changes so the
   // public-offering overlay is reflected correctly.
@@ -1219,40 +1203,6 @@ export function Step6Compliance({ data, update }) {
             />
           </div>
         </div>
-
-        {data.enforcement === 'serviced' && (
-          <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-xl border border-ink-900/10 bg-ink-900/[0.02] px-4 py-3">
-            <input
-              type="checkbox"
-              className="mt-1 h-4 w-4 accent-seq-600"
-              checked={!!data.confidential}
-              onChange={(e) => update({ confidential: e.target.checked })}
-            />
-            <span className="text-sm">
-              <span className="font-semibold text-ink-900">Confidential holdings (opt-in)</span>
-              <span className="block text-ink-700/70">
-                Blind amounts and the asset tag on chain. Sequentia is transparent by
-                default, so this is opt-in per asset: it is requested per call with a
-                blinded address, and works without changing the shared node&rsquo;s
-                default. Holdings stay visible to you and to SeqPal&rsquo;s transfer
-                service, which enforce eligibility. Whether this deployment supports a
-                confidential mint is checked live below, before you deploy.
-              </span>
-              {confAvailable === true && data.confidential && (
-                <span className="mt-1 block text-xs font-medium text-emerald-700">
-                  This deployment is confidentiality-enabled.
-                </span>
-              )}
-              {confAvailable === false && data.confidential && (
-                <span className="mt-1 block text-xs font-medium text-amber-700">
-                  This deployment is not confidentiality-enabled, so a confidential mint
-                  would be refused rather than silently downgraded. Deploy transparently,
-                  the Sequentia default, or use a confidentiality-enabled deployment.
-                </span>
-              )}
-            </span>
-          </label>
-        )}
 
         {!bearer && (
           <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-xl border border-ink-900/10 bg-ink-900/[0.02] px-4 py-3">
@@ -2094,7 +2044,6 @@ export function Step7Checkout({ data, update, onDeployed }) {
         // tokenomics step decides.
         enforcement: data.enforcement || 'serviced',
         clawback: bearer ? false : data.clawback !== false,
-        confidential: data.enforcement === 'serviced' && !!data.confidential,
         // M9: external issuer key. The entity's own SeqPal ID key becomes the
         // issuer half, so reclaiming tokens needs the issuer's browser
         // signature (two signatures in total) and the platform never holds an
@@ -2234,12 +2183,6 @@ export function Step7Checkout({ data, update, onDeployed }) {
               ['Target raise', data.raise || 'not set'],
               ['Initial mint to', mintTarget],
               ['Initial supply', supply.toLocaleString() + ' ' + (data.ticker || 'tokens')],
-              [
-                'Confidentiality',
-                data.enforcement === 'serviced' && data.confidential
-                  ? 'Confidential (opt-in)'
-                  : 'Transparent',
-              ],
               ...(bearer
                 ? []
                 : [
@@ -2345,7 +2288,7 @@ const DEPLOY_HINT = {
   404: 'The issuance record could not be found on the server.',
   409: 'Choose a different ticker. Tickers are checked against the assets already live on the platform.',
   429: 'The deploy rate limit is per account and per platform over a rolling hour. Wait and try again.',
-  501: 'This deployment cannot run what the deploy asked for: either confidential holdings on a deployment without confidentiality, or network-enforced rules on a deployment without them. Pick a supported option and deploy again; nothing was minted.',
+  501: 'This deployment cannot run network-enforced rules. Pick a supported enforcement model and deploy again; nothing was minted.',
   502: 'SeqPal’s transfer service refused or could not be reached. Nothing was minted.',
   503: 'The platform has no issuer token configured, so no deployment can be made from here right now.',
 }

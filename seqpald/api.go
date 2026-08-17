@@ -153,15 +153,16 @@ func (s *server) handleCreateIssuance(w http.ResponseWriter, r *http.Request) {
 // only fields a user may set (asset_id, txid, status and the rest of the
 // deployment record are written by the deploy path alone).
 type patchIssuanceReq struct {
-	Name         *string          `json:"name"`
-	Ticker       *string          `json:"ticker"`
-	StructureID  *string          `json:"structure_id"`
-	EntityID     *string          `json:"entity_id"`
-	Terms        *json.RawMessage `json:"terms"`
-	Supply       *uint64          `json:"supply"`
-	Precision    *int             `json:"precision"`
-	Confidential *bool            `json:"confidential"`
-	Clawback     *bool            `json:"clawback"`
+	Name        *string          `json:"name"`
+	Ticker      *string          `json:"ticker"`
+	StructureID *string          `json:"structure_id"`
+	EntityID    *string          `json:"entity_id"`
+	Terms       *json.RawMessage `json:"terms"`
+	Supply      *uint64          `json:"supply"`
+	Precision   *int             `json:"precision"`
+	Clawback    *bool            `json:"clawback"`
+	// No confidential field: confidentiality is a per-transfer choice, not an
+	// issuance property. A legacy body carrying it is ignored, not refused.
 }
 
 func (s *server) handlePatchIssuance(w http.ResponseWriter, r *http.Request) {
@@ -238,9 +239,6 @@ func (s *server) handlePatchIssuance(w http.ResponseWriter, r *http.Request) {
 		}
 		fields["precision"] = *req.Precision
 	}
-	if req.Confidential != nil {
-		fields["confidential"] = boolInt(*req.Confidential)
-	}
 	if req.Clawback != nil {
 		fields["clawback"] = boolInt(*req.Clawback)
 	}
@@ -308,8 +306,11 @@ func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, 200, map[string]any{
-		"ok":              openampOK && issuerOK,
-		"network":         s.cfg.network,
+		"ok":      openampOK && issuerOK,
+		"network": s.cfg.network,
+		// The per-transfer confidentiality capability of THIS deployment: whether
+		// a transfer with confidential:true would be accepted here rather than
+		// refused with a 501. Deploys are always transparent mints.
 		"confidential":    s.cfg.confidential,
 		"damp":            s.cfg.damp,
 		"openamp_ok":      openampOK,

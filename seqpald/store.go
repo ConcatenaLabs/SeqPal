@@ -799,6 +799,18 @@ CREATE TABLE action_claim_outpoints (
     PRIMARY KEY (action_id, outpoint)
 );
 `,
+	// M11: per-transfer confidentiality. Confidentiality stopped being an asset
+	// property elected at issuance and became a per-transfer choice: any holder
+	// may move (or receive) any restricted asset confidentially in a given
+	// transfer, transparent by default, with the registrar keeping full sight
+	// through the policy server's blinding keys. p2p_transfers.confidential notes
+	// the election on the travel-rule record. issuances.confidential stays in the
+	// schema (additive, never destructive) but is no longer written or read for
+	// behavior; every deploy is a transparent mint. All additive; an M10 database
+	// migrates forward in place.
+	`
+ALTER TABLE p2p_transfers ADD COLUMN confidential INTEGER NOT NULL DEFAULT 0;
+`,
 }
 
 // Store is seqpald's persistent state. Every financial fact the UI shows is
@@ -897,7 +909,6 @@ type Issuance struct {
 	Terms          json.RawMessage `json:"terms"`
 	Supply         uint64          `json:"supply"`
 	Precision      int             `json:"precision"`
-	Confidential   bool            `json:"confidential"`
 	Clawback       bool            `json:"clawback"`
 	AssetID        string          `json:"asset_id,omitempty"`
 	Txid           string          `json:"txid,omitempty"`
@@ -1017,8 +1028,11 @@ func (s *Store) EntityByID(id string) (*Entity, error) {
 
 // --- issuances ---
 
+// issuanceCols deliberately omits the issuances.confidential column: it survives
+// in the schema (additive migrations only) but confidentiality is a per-transfer
+// choice now, so the issuance record neither writes nor reads it.
 const issuanceCols = `id, owner_aid, COALESCE(entity_id,''), name, ticker, structure_id, status, terms,
-    supply, precision, confidential, clawback, asset_id, txid, contract_hash, holder_aid, enclave_address,
+    supply, precision, clawback, asset_id, txid, contract_hash, holder_aid, enclave_address,
     issuer_external, issuer_pubkey, enforcement, recovery_pubkey, supervision_pause, created_at, updated_at`
 
 func (s *Store) CreateIssuance(i *Issuance) error {
@@ -1028,10 +1042,10 @@ func (s *Store) CreateIssuance(i *Issuance) error {
 	}
 	_, err := s.db.Exec(
 		`INSERT INTO issuances (id, owner_aid, entity_id, name, ticker, structure_id, status, terms,
-            supply, precision, confidential, clawback, created_at, updated_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            supply, precision, clawback, created_at, updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		i.ID, i.OwnerAID, entity, i.Name, i.Ticker, i.StructureID, i.Status, string(rawOrEmpty(i.Terms)),
-		i.Supply, i.Precision, boolInt(i.Confidential), boolInt(i.Clawback), i.CreatedAt, i.UpdatedAt)
+		i.Supply, i.Precision, boolInt(i.Clawback), i.CreatedAt, i.UpdatedAt)
 	return err
 }
 
@@ -1083,16 +1097,15 @@ type scanner interface {
 func scanIssuanceInto(sc scanner) (*Issuance, error) {
 	var i Issuance
 	var terms string
-	var confidential, clawback, issuerExternal, supervisionPause int
+	var clawback, issuerExternal, supervisionPause int
 	err := sc.Scan(&i.ID, &i.OwnerAID, &i.EntityID, &i.Name, &i.Ticker, &i.StructureID, &i.Status, &terms,
-		&i.Supply, &i.Precision, &confidential, &clawback, &i.AssetID, &i.Txid, &i.ContractHash,
+		&i.Supply, &i.Precision, &clawback, &i.AssetID, &i.Txid, &i.ContractHash,
 		&i.HolderAID, &i.EnclaveAddress, &issuerExternal, &i.IssuerPubkey, &i.Enforcement,
 		&i.RecoveryPubkey, &supervisionPause, &i.CreatedAt, &i.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
 	i.Terms = json.RawMessage(terms)
-	i.Confidential = confidential != 0
 	i.Clawback = clawback != 0
 	i.IssuerExternal = issuerExternal != 0
 	i.SupervisionPause = supervisionPause != 0

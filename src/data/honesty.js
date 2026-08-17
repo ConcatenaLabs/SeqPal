@@ -27,7 +27,7 @@ export const REAL = [
   'The Depository-Receipt programme: mint is a real reissuance and redeem a real burn, with circulating supply chain-derived, never a stored counter',
   'The Depository-Receipt US-person exclusion, enforced as a real policy-server j:US category deny applied through the amendment chain, not a display string',
   'Transparency-log minimization: a category event logs the hash of the category set, which recomputes from the known set, instead of the raw list',
-  'Opt-in confidential issuance requested per call with a blinded address, so it works without changing the shared node default',
+  'Per-transfer confidential transfers: any holder can move any restricted token confidentially in a given transfer, blinding its amount and asset from outside observers while the issuer and registrar keep full sight',
   'Issuer venue-listing authorization, readable at the public listings endpoint, which a venue reads to list an asset but can never use to grant eligibility',
   'The issuer key: on every asset the enclave issuer half is the issuing entity’s own browser key, so a clawback is two-phase and cannot be broadcast without the issuer’s signature, which the platform does not hold',
   'The enforcement election: who can hold the token and who enforces the rules is chosen at issuance, committed in the terms, and each model is enforced for real',
