@@ -25,3 +25,6 @@ seqpald/sanctions-cache/
 
 # vendored deps (139MB modernc.org/sqlite); box builds from the module cache
 seqpald/vendor/
+
+# live-drill state (holds generated PRIVATE KEYS; testnet-only, still never in git)
+scripts/e2e/.drill-state.json

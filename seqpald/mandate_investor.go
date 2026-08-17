@@ -148,6 +148,13 @@ func (s *server) isInvestorEnclaveAddress(investorAID, addr string) (bool, error
 		if iss.AssetID == "" {
 			continue
 		}
+		// A bearer (supervised) asset has no enclave: it is minted through the
+		// node's raw path and the policy server never learns it, so there is no
+		// enclave address to resolve for it and a probe would fail closed for no
+		// reason, refusing every payout address while any bearer asset is live.
+		if iss.Enforcement == "bearer" {
+			continue
+		}
 		var out struct {
 			Address string `json:"address"`
 		}
