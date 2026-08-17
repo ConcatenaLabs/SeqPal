@@ -1,7 +1,7 @@
 // The shape seqpald stores, and the shape the UI reads.
 //
 // seqpald owns the issuance record: id, owner_aid, name, ticker, structure_id,
-// status, supply, precision, confidential, clawback, and the chain fields
+// status, supply, precision, clawback, and the chain fields
 // (asset_id, txid, contract_hash, holder_aid, enclave_address) that only the
 // deploy path may write. Everything else about the deal (offering type, unit of
 // account, entity name, data-room fields, jurisdiction policy) lives in the

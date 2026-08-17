@@ -299,12 +299,13 @@ func (s *server) escrowFeeFor(sub *Subscription) (fee, net uint64, accrued bool)
 
 // atomicEligible reports whether a subscription can settle as one atomic DvP tx:
 // the USDX rail (a Sequentia payment asset that can share a tx with the restricted
-// delivery), a TRANSPARENT restricted asset (the whole tx must stay transparent,
-// so a confidential asset cannot carry an explicit foreign payment output), atomic
-// close enabled, and a funded escrow deposit at a known from_address. BTC keeps
-// the registrar close; fiat keeps the SIMULATED release.
+// delivery), atomic close enabled, and a funded escrow deposit at a known
+// from_address. The atomic path builds a fully explicit transaction, which is
+// always true for a closing: confidentiality is a per-transfer choice, and a
+// primary delivery is a transparent transfer. BTC keeps the registrar close; fiat
+// keeps the SIMULATED release.
 func (s *server) atomicEligible(iss *Issuance, sub *Subscription) bool {
-	return s.cfg.atomicClose && sub.Rail == "usdx" && !iss.Confidential &&
+	return s.cfg.atomicClose && sub.Rail == "usdx" &&
 		s.cfg.usdxAsset != "" && sub.DepositAddress != "" && sub.DepositedAtoms > 0
 }
 

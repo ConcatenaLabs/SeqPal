@@ -87,6 +87,11 @@ func prune(ts []time.Time, cutoff time.Time) []time.Time {
 
 // deployReq is what the SPA sends. The issuance's owner, ticker, and name come
 // from the stored record, never from this body: only the mint parameters do.
+//
+// Confidentiality is not an asset property: every deploy is a transparent mint,
+// and any holder may later move the asset confidentially per transfer (see
+// handleP2PInitiate). An incoming legacy "confidential" field is ignored for
+// backward compatibility rather than refused; readJSON drops unknown fields.
 type deployReq struct {
 	IssuanceID string `json:"issuance_id"`
 	Supply     uint64 `json:"supply"`
@@ -95,7 +100,6 @@ type deployReq struct {
 	// as 0 (or, as before, forced 1..8 to reject 0 entirely and make 0dp assets unissuable).
 	Precision      *int            `json:"precision"`
 	Clawback       *bool           `json:"clawback"`
-	Confidential   bool            `json:"confidential"`
 	FeeConvertAtom uint64          `json:"fee_convert_atoms"`
 	Terms          json.RawMessage `json:"terms"`
 	TermsHash      string          `json:"terms_hash"` // cross-check only; the server computes its own
@@ -192,10 +196,6 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	}
 	var recoveryKey string
 	if enforcement == "bearer" {
-		if req.Confidential {
-			refuse(400, "a bearer (supervised) asset cannot be confidential: consensus must be able to read its outputs to freeze them")
-			return
-		}
 		recoveryKey = strings.ToLower(strings.TrimSpace(req.RecoveryPubkey))
 		if !validXOnly(recoveryKey) {
 			refuse(400, "bearer enforcement requires recovery_pubkey: a valid 32-byte x-only public key in hex")
@@ -209,10 +209,6 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 			refuse(503, "bearer issuance requires a Sequentia node RPC (SEQPALD_NODE_URL)")
 			return
 		}
-	}
-	if req.Confidential && !s.cfg.confidential {
-		refuse(501, "confidential issuance is not available on this deployment; the node is not confidentiality-enabled")
-		return
 	}
 
 	// The enclave issuer half is ALWAYS the issuing entity's own key: this account's
@@ -366,7 +362,7 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	}
 	s.st.Audit(acct.AID, "deploy.attempt", map[string]any{
 		"issuance_id": iss.ID, "ticker": iss.Ticker, "supply": req.Supply,
-		"precision": precision, "confidential": req.Confidential,
+		"precision": precision,
 		"clawback": clawback, "terms_hash": termsHash, "idem_key": idem,
 		"issuer_external": issuerExternal, "enforcement": enforcement,
 	})
@@ -462,7 +458,6 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		"issuer_aid":   aid,
 		"clawback":     clawback,
 		"burn_allowed": false,
-		"confidential": req.Confidential,
 		"terms_hash":   termsHash,
 		"rules":        compiled,
 	}
@@ -532,7 +527,6 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		"terms":           string(canonical),
 		"supply":          req.Supply,
 		"precision":       precision,
-		"confidential":    boolInt(req.Confidential),
 		"clawback":        boolInt(clawback),
 		"asset_id":        issued.Asset,
 		"txid":            issued.Txid,

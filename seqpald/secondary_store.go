@@ -68,22 +68,27 @@ type P2PTransfer struct {
 	BenefName       string `json:"beneficiary_name,omitempty"`
 	BenefResidence  string `json:"beneficiary_residence,omitempty"`
 	BenefRegistered bool   `json:"beneficiary_registered"`
-	CreatedAt       int64  `json:"created_at"`
-	UpdatedAt       int64  `json:"updated_at"`
+	// Confidential notes the per-transfer confidentiality election on the
+	// travel-rule record: the transfer's amount and asset are blinded from
+	// outside observers, while the registrar keeps full sight through the policy
+	// server's blinding keys.
+	Confidential bool  `json:"confidential"`
+	CreatedAt    int64 `json:"created_at"`
+	UpdatedAt    int64 `json:"updated_at"`
 }
 
 const p2pCols = `id, oa_id, issuance_id, asset_id, originator_aid, beneficiary_aid, atoms, state,
     source, txid, reason, orig_name, orig_residence, benef_name, benef_residence, benef_registered,
-    created_at, updated_at`
+    confidential, created_at, updated_at`
 
 func (s *Store) InsertP2PTransfer(t *P2PTransfer) error {
 	now := time.Now().Unix()
 	t.CreatedAt, t.UpdatedAt = now, now
 	_, err := s.db.Exec(
-		`INSERT INTO p2p_transfers (`+p2pCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		`INSERT INTO p2p_transfers (`+p2pCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		t.ID, t.OaID, t.IssuanceID, t.AssetID, t.OriginatorAID, t.BeneficiaryAID, t.Atoms, t.State,
 		t.Source, t.Txid, t.Reason, t.OrigName, t.OrigResidence, t.BenefName, t.BenefResidence,
-		boolInt(t.BenefRegistered), t.CreatedAt, t.UpdatedAt)
+		boolInt(t.BenefRegistered), boolInt(t.Confidential), t.CreatedAt, t.UpdatedAt)
 	return err
 }
 
@@ -154,14 +159,15 @@ func scanP2P(row *sql.Row) (*P2PTransfer, error) {
 
 func scanP2PInto(sc scanner) (*P2PTransfer, error) {
 	var t P2PTransfer
-	var reg int
+	var reg, conf int
 	err := sc.Scan(&t.ID, &t.OaID, &t.IssuanceID, &t.AssetID, &t.OriginatorAID, &t.BeneficiaryAID,
 		&t.Atoms, &t.State, &t.Source, &t.Txid, &t.Reason, &t.OrigName, &t.OrigResidence,
-		&t.BenefName, &t.BenefResidence, &reg, &t.CreatedAt, &t.UpdatedAt)
+		&t.BenefName, &t.BenefResidence, &reg, &conf, &t.CreatedAt, &t.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
 	t.BenefRegistered = reg != 0
+	t.Confidential = conf != 0
 	return &t, nil
 }
 

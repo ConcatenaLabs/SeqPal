@@ -90,9 +90,9 @@ export default function Status() {
             detail="Required to mint a restricted asset from the platform."
           />
           <HealthRow
-            label="Confidential issuance"
+            label="Confidential transfers"
             ok={h ? !!h.confidential : null}
-            detail="A per-deployment capability. Sequentia is transparent by default; when this deployment has confidentiality enabled, issuers can opt in per asset, and when it does not, a confidential deploy is refused rather than silently downgraded."
+            detail="A per-deployment capability. Sequentia is transparent by default; when this deployment has confidentiality enabled, any holder can make any individual transfer confidential, hiding its amount and asset from outside observers while the registrar still sees everything. When it does not, a confidential transfer is refused rather than silently downgraded."
           />
           <HealthRow
             label="Network-enforced rules"

@@ -27,11 +27,14 @@ flow can be walked end to end, but the token deployment itself is real.
 - Clawback is on by default, and the on-chain contract commits to a `terms_hash`
   binding SeqPal's compliance configuration (structure, jurisdiction matrix, deal
   terms) to the asset.
-- Confidentiality is offered as an opt-in per-asset toggle. Sequentia is
-  transparent by default, so a confidential asset blinds amounts and the asset
-  tag on-chain while the issuer still sees every holding through the policy
-  server. It requires a confidentiality-enabled node; on the public testnet
-  issuances stay transparent, and this is enabled on mainnet.
+- Confidentiality is a per-transfer choice, not an asset property. Every deploy
+  is a transparent mint (Sequentia is transparent by default), and any holder may
+  move any restricted asset confidentially in a given transfer, blinding that
+  transfer's amount and asset tag on-chain while the issuer and registrar still
+  see everything through the policy server's blinding keys. The capability is
+  gated per deployment (`SEQPALD_CONFIDENTIAL`); without it a confidential
+  transfer is refused with a 501, never silently downgraded. Supervised
+  (freely-tradable) assets are always transparent, by consensus.
 
 **Simulated (kept faithful to the intended product):**
 
@@ -64,9 +67,9 @@ not undo an already-minted on-chain asset.
      for individual applicants).
   3. Data room — dynamic deal-term inputs per structure; private vs public offering.
   4. Document automation suite — generate and e-sign the document package.
-  5. Tokenomics & compliance — name the asset, choose transparent or confidential,
-     and configure the jurisdiction/accreditation policy (Appendix C matrix,
-     per-issuance caps, and the public-offering overlay) baked into the token.
+  5. Tokenomics & compliance — name the asset and configure the
+     jurisdiction/accreditation policy (Appendix C matrix, per-issuance caps, and
+     the public-offering overlay) baked into the token.
   6. Checkout — fixed-fee checkout; the LLC is submitted for incorporation.
 - **Issuance lifecycle** — checkout is not instant-live: payment → Próspera
   incorporation → RFSA filing → OpenAMP deployment → live, shown as a timeline.

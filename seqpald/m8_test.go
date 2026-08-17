@@ -553,3 +553,83 @@ func TestM8_ListingsGrantRevokeAndPublicRead(t *testing.T) {
 		t.Fatalf("revoked listing still in the public list: %d", len(arr2))
 	}
 }
+
+// ===========================================================================
+// Per-transfer confidentiality: the flag passes through to the policy server,
+// the travel-rule row records it, and a deployment without the capability
+// refuses with a 501. Confidentiality is not an asset property: the SAME
+// (transparently minted) asset moves confidentially or transparently per
+// transfer, at the holder's choice.
+// ===========================================================================
+
+func TestP2PConfidentialTransferIsPerTransfer(t *testing.T) {
+	h := newM7Harness(t, m5opts{})
+	issuerSession, _, _ := h.register(genPriv(t), "Issuer", "HN")
+	_, assetID, _ := h.deployLivePrivate(issuerSession, "SEC", "HN", 1.0)
+
+	aSession, _, _ := h.verifiedInvestor(genPriv(t), "Alice", "HN", "ret")
+	_, bAID, _ := h.verifiedInvestor(genPriv(t), "Bob", "GB", "ret")
+	h.ackMarketAbuse(aSession)
+	before := h.oa.transferBuildCount()
+
+	// 1. The deployment gate is off (the default): confidential:true is refused
+	// honestly with a 501, never silently downgraded to a transparent transfer.
+	r := h.do("POST", "/api/transfers", aSession, map[string]any{
+		"asset": assetID, "to_aid": bAID, "atoms": 40, "confidential": true,
+	})
+	if r.code != 501 {
+		t.Fatalf("confidential transfer with the gate off = %d, want 501 (%s)", r.code, r.errMsg())
+	}
+	if h.oa.transferBuildCount() != before {
+		t.Fatal("a refused confidential transfer still reached the policy server")
+	}
+
+	// 2. Gate on: the flag passes through to the policy server's build verbatim.
+	h.s.cfg.confidential = true
+	ini := h.do("POST", "/api/transfers", aSession, map[string]any{
+		"asset": assetID, "to_aid": bAID, "atoms": 40, "confidential": true,
+	})
+	if ini.code != 200 {
+		t.Fatalf("confidential initiate: %d %s", ini.code, ini.errMsg())
+	}
+	body := h.oa.lastTransferBuildBody()
+	if body == nil {
+		t.Fatal("no transfer build reached the policy server")
+	}
+	if c, _ := body["confidential"].(bool); !c {
+		t.Fatalf("the build body did not carry confidential:true: %v", body)
+	}
+
+	// 3. The travel-rule row records the election, and it survives settlement.
+	transferID, _ := ini.body["transfer_id"].(string)
+	comp := h.do("POST", "/api/transfers/"+transferID+"/complete", aSession, map[string]any{
+		"sigs": map[string]string{"0": strings.Repeat("ab", 64)},
+	})
+	if comp.code != 200 {
+		t.Fatalf("complete: %d %s", comp.code, comp.errMsg())
+	}
+	row, err := h.s.st.P2PTransferByID(transferID)
+	if err != nil || row == nil {
+		t.Fatalf("travel-rule row missing: %v", err)
+	}
+	if !row.Confidential || row.State != "settled" {
+		t.Fatalf("travel-rule row confidential=%v state=%q, want true/settled", row.Confidential, row.State)
+	}
+
+	// 4. Transparent stays the default: a transfer that omits the field passes
+	// confidential:false through and records false on its travel-rule row.
+	ini2 := h.do("POST", "/api/transfers", aSession, map[string]any{
+		"asset": assetID, "to_aid": bAID, "atoms": 10,
+	})
+	if ini2.code != 200 {
+		t.Fatalf("transparent initiate: %d %s", ini2.code, ini2.errMsg())
+	}
+	if c, _ := h.oa.lastTransferBuildBody()["confidential"].(bool); c {
+		t.Fatal("a transparent transfer's build carried confidential:true")
+	}
+	id2, _ := ini2.body["transfer_id"].(string)
+	row2, _ := h.s.st.P2PTransferByID(id2)
+	if row2 == nil || row2.Confidential {
+		t.Fatalf("transparent travel-rule row wrong: %#v", row2)
+	}
+}

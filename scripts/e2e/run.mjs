@@ -300,14 +300,14 @@ async function proofM8(cfg, http, issuer, investor) {
     assert(true, 'chain-derived supply fell after the redeem burn')
   }
 
-  step('Confidential issuance to a blech32 (blinded) enclave address, opt-in per call')
-  info('transparent-by-default: confidentiality is opt-in per call, no node000 -blindedaddresses flag flipped')
+  step('Confidential P2P transfer, elected per transfer (no confidential assets)')
+  info('transparent-by-default: confidentiality is a per-transfer choice, no node000 -blindedaddresses flag flipped')
   if (cfg.dryRun || !iid) {
-    shaped('POST /seqpal/api/deploy (confidential:true)', { issuance_id: '<new-issuance>', confidential: true })
-    info('proof: GET /openamp/v1/assets/{id} shows a blech32 enclave address (HRP tsqb) and blinded outputs')
-    skip('dry-run: confidential deploy needs the full onboarding + setup fee funded')
+    shaped('POST /seqpal/api/transfers (confidential:true)', { asset: '<asset-id>', to_aid: '<beneficiary-aid>', atoms: 1, confidential: true })
+    info('proof: the settled tx carries blinded outputs to a blech32 (HRP tsqb) address; GET /seqpal/api/transfers shows confidential:true on the travel-rule record')
+    skip('dry-run: a confidential transfer needs SEQPALD_CONFIDENTIAL=1 and a delivered holding to move')
   } else {
-    skip('confidential issuance is proven by a dedicated confidential deploy; drive it via the M9-style flow with confidential:true')
+    skip('a confidential transfer is proven by a dedicated per-transfer run: build with confidential:true, sign, complete, and read the blinded tx')
   }
 
   step('Category event logs a set-HASH, not the raw category list (OA-LM)')
