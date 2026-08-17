@@ -187,7 +187,7 @@ export default function InvestorPortal() {
                       ))}
                     </dl>
                     <Link
-                      to={`/verify?asset=${encodeURIComponent(offering.asset_id)}`}
+                      to={`/docs/verify?asset=${encodeURIComponent(offering.asset_id)}`}
                       className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-seq-600 hover:underline"
                     >
                       <Icon.shield width={15} height={15} /> Verify independently

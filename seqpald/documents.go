@@ -114,7 +114,10 @@ func (s *server) ensureDocuments(iss *Issuance, termsRaw json.RawMessage) (json.
 	}
 	delete(m, "documents") // regenerate deterministically; never trust a client binding
 
-	ctx := s.docContextFor(iss, m)
+	ctx, err := s.docContextFor(iss, m)
+	if err != nil {
+		return nil, docManifest{}, err
+	}
 	docs := buildDocumentSet(ctx)
 
 	now := time.Now().Unix()
@@ -149,13 +152,18 @@ func (s *server) ensureDocuments(iss *Issuance, termsRaw json.RawMessage) (json.
 // docContextFor resolves the deterministic document inputs from clean terms. It
 // reuses the compiler's matrixTerms parser so the documents describe exactly the
 // same matrix the policy compiler enforces.
-func (s *server) docContextFor(iss *Issuance, cleanTerms map[string]any) docContext {
+func (s *server) docContextFor(iss *Issuance, cleanTerms map[string]any) (docContext, error) {
 	raw, _ := json.Marshal(cleanTerms)
 	var mt matrixTerms
 	_ = json.Unmarshal(raw, &mt)
 
-	structure := canonicalStructure(structureName(iss, raw))
-	ch := characterize(structure)
+	// Fail closed (W-7): documents must not be generated for a structure the
+	// characterization cannot classify.
+	ch, err := characterize(structureName(iss, raw))
+	if err != nil {
+		return docContext{}, err
+	}
+	structure := ch.Structure
 
 	issuerName := iss.Name
 	if iss.EntityID != "" {
@@ -199,7 +207,7 @@ func (s *server) docContextFor(iss *Issuance, cleanTerms map[string]any) docCont
 		RegS:           regSStatement(mt),
 		Price:          price,
 		IssuerExternal: iss.IssuerExternal,
-	}
+	}, nil
 }
 
 func lockupStatement(mt matrixTerms) string {
@@ -340,9 +348,9 @@ func structureRiskFactors(ctx docContext) []string {
 			"AIF characterization: "+ctx.Char.Analysis,
 			"Credit and default: yield is not guaranteed, and the credit and default risk of the underlying pool is borne by the holder.",
 		)
-	case "depositary-receipt":
+	case "depository-receipt":
 		base = append(base,
-			"Depositary receipt: "+ctx.Char.Analysis,
+			"Depository receipt: "+ctx.Char.Analysis,
 			"Withholding: a receipt mirroring a US-listed security carries dividend-equivalent withholding under chapter 3 and section 871(m), and a US-person exclusion.",
 		)
 	default:
@@ -429,6 +437,8 @@ func docEscrowTerms(ctx docContext) (string, string) {
 	b.WriteString(para("Subscriptions settle through a per-offering segregated escrow enclave that receives the mint, so primary distribution flows from a scoped escrow rather than the issuer's personal account."))
 	b.WriteString(heading("Non-custodial USDX commitment model"))
 	b.WriteString(para("The production design for the USDX rail is non-custodial: the investor funds a pay-to-taproot address only they control, and funds are never in the operator's custody before settlement. This replaces any custodial-escrow superiority claim for the USDX rail."))
+	b.WriteString(heading("Fee accrual"))
+	b.WriteString(para("The platform escrow fee accrues at the moment a deposit confirms into escrow, computed on the deposited amount, and is due regardless of the offering's outcome: on release it is deducted from the amount paid to the issuer, and on a refund it is withheld from the amount returned to the investor."))
 	b.WriteString(heading("Release and refund"))
 	b.WriteString(para("Escrow releases only to registered ordinary payout addresses on the correct network, and refunds run through an explicit refund and expiry state machine. Fiat rails and some escrow mechanics are simulated in this proof of concept and are labeled on every money surface."))
 	return title, docPage("escrow-terms", title, b.String())

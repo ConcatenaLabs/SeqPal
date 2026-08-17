@@ -7,19 +7,21 @@ import { useStore } from '../../lib/store'
 import {
   Step1Identity,
   Step2Structure,
-  Step3DataRoom,
-  Step4Documents,
-  Step5Compliance,
-  Step6Checkout,
+  Step3Enforcement,
+  Step4DataRoom,
+  Step5Documents,
+  Step6Compliance,
+  Step7Checkout,
 } from './Steps'
 
 const STEPS = [
   { n: 1, title: 'Identity & principal', sub: 'Who is issuing' },
   { n: 2, title: 'Structure', sub: 'Choose an issuance type' },
-  { n: 3, title: 'Data room', sub: 'Enter your deal terms' },
-  { n: 4, title: 'Documents', sub: 'Generate & e-sign' },
-  { n: 5, title: 'Tokenomics & compliance', sub: 'Bake in the rules' },
-  { n: 6, title: 'Checkout & deploy', sub: 'Pay and go live' },
+  { n: 3, title: 'Holders & enforcement', sub: 'Who holds, who enforces' },
+  { n: 4, title: 'Data room', sub: 'Enter your deal terms' },
+  { n: 5, title: 'Documents', sub: 'Generate & e-sign' },
+  { n: 6, title: 'Tokenomics & compliance', sub: 'Bake in the rules' },
+  { n: 7, title: 'Checkout & deploy', sub: 'Pay and go live' },
 ]
 
 export default function NewIssuance() {
@@ -29,6 +31,8 @@ export default function NewIssuance() {
   const [data, setData] = useState({
     principal: null, // { kind:'individual'|'entity', name, entity_id }
     structureId: null,
+    // The enforcement election: 'serviced' (default) | 'network' | 'bearer'.
+    enforcement: 'serviced',
     isPublic: false,
     entityName: '', // the new Próspera LLC's name (set before formation docs)
     unit: 'USD', // elected unit of account (USD default; BTC available)
@@ -39,11 +43,15 @@ export default function NewIssuance() {
     ticker: '',
     policy: null,
     lifted: {},
+    clawback: true, // issuer recovery power, an explicit election (off for bearer)
+    recovery: null, // bearer only: { xonly, envelope, exported }
+    bearerNoUs: false, // bearer attestation checkboxes, signed at deploy
+    bearerRisk: false,
     docsSigned: false,
   })
 
   const update = (patch) => setData((d) => ({ ...d, ...patch }))
-  const next = () => setStep((s) => Math.min(6, s + 1))
+  const next = () => setStep((s) => Math.min(7, s + 1))
   const back = () => setStep((s) => Math.max(1, s - 1))
 
   // Per-step guard: can the user advance?
@@ -51,10 +59,12 @@ export default function NewIssuance() {
   const canAdvance = () => {
     if (step === 1) return !!data.principal
     if (step === 2) return !!data.structureId
-    if (step === 3)
+    if (step === 3) return !!data.enforcement
+    if (step === 4)
       return !REQUIRES_ATTESTATION.includes(data.structureId) || !!data.attested
-    if (step === 4) return data.docsSigned
-    if (step === 5) return !!data.name && !!data.ticker && !!data.policy
+    if (step === 5) return data.docsSigned
+    if (step === 6)
+      return !!data.name && !!data.ticker && (data.enforcement === 'bearer' || !!data.policy)
     return true
   }
 
@@ -96,7 +106,7 @@ export default function NewIssuance() {
             <Logo />
           </Link>
           <div className="hidden text-sm font-medium text-ink-700 sm:block">
-            New issuance · Step {step} of 6
+            New issuance · Step {step} of 7
           </div>
           <Link to="/dashboard" className="btn-ghost text-ink-700">
             <Icon.close width={16} height={16} />
@@ -107,7 +117,7 @@ export default function NewIssuance() {
         <div className="h-1 w-full bg-ink-900/10">
           <div
             className="h-full bg-btc transition-all duration-300"
-            style={{ width: `${(step / 6) * 100}%` }}
+            style={{ width: `${(step / 7) * 100}%` }}
           />
         </div>
       </header>
@@ -161,18 +171,19 @@ export default function NewIssuance() {
           <div className="mx-auto max-w-3xl">
             {step === 1 && <Step1Identity {...stepProps} />}
             {step === 2 && <Step2Structure {...stepProps} />}
-            {step === 3 && <Step3DataRoom {...stepProps} />}
-            {step === 4 && <Step4Documents {...stepProps} />}
-            {step === 5 && <Step5Compliance {...stepProps} />}
-            {step === 6 && (
-              <Step6Checkout
+            {step === 3 && <Step3Enforcement {...stepProps} />}
+            {step === 4 && <Step4DataRoom {...stepProps} />}
+            {step === 5 && <Step5Documents {...stepProps} />}
+            {step === 6 && <Step6Compliance {...stepProps} />}
+            {step === 7 && (
+              <Step7Checkout
                 {...stepProps}
                 onDeployed={(issuanceId) => navigate(`/issuance/${issuanceId}`)}
               />
             )}
 
-            {/* Nav buttons (step 6 has its own deploy CTA) */}
-            {step < 6 && (
+            {/* Nav buttons (step 7 has its own deploy CTA) */}
+            {step < 7 && (
               <div className="mt-8 flex items-center justify-between">
                 <button
                   onClick={back}

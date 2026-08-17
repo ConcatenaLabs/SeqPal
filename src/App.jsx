@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Routes, Route, useLocation } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Navbar from './components/Navbar'
 import Footer from './components/Footer'
 import IdNav from './components/IdNav'
@@ -9,6 +9,8 @@ import Products from './pages/Products'
 import Structures from './pages/Structures'
 import Pricing from './pages/Pricing'
 import Verify from './pages/Verify'
+import Docs from './pages/Docs'
+import ActionClaim from './pages/ActionClaim'
 import Faq from './pages/Faq'
 import Legal from './pages/Legal'
 import Privacy from './pages/Privacy'
@@ -31,7 +33,8 @@ const TITLES = {
   '/products': 'Products · SeqPal',
   '/structures': 'Issuance Structures · SeqPal',
   '/pricing': 'Pricing · SeqPal',
-  '/verify': 'Verify independently · SeqPal',
+  '/docs': 'Documentation · SeqPal',
+  '/docs/verify': 'Verify independently · SeqPal',
   '/faq': 'FAQ · SeqPal',
   '/legal': 'Legal & Licensing · SeqPal',
   '/privacy': 'Privacy · SeqPal',
@@ -46,6 +49,11 @@ const TITLES = {
   '/onboarding': 'New issuance · SeqPal',
 }
 
+function VerifyRedirect() {
+  const { search } = useLocation()
+  return <Navigate to={{ pathname: '/docs/verify', search }} replace />
+}
+
 function ScrollToTop() {
   const { pathname } = useLocation()
   useEffect(() => {
@@ -58,7 +66,9 @@ function ScrollToTop() {
           ? 'Placement portal setup · SeqPal'
           : pathname.startsWith('/issuance/')
             ? 'Issuance · SeqPal'
-            : 'SeqPal')
+            : pathname.startsWith('/actions/')
+              ? 'Shareholder action · SeqPal'
+              : 'SeqPal')
   }, [pathname])
   return null
 }
@@ -75,7 +85,11 @@ export default function App() {
     pathname.startsWith('/onboarding') ||
     pathname.startsWith('/portal/') ||
     /^\/issuance\/[^/]+\/portal$/.test(pathname)
-  const isIdSite = pathname === '/id' || pathname.startsWith('/id/') || pathname === '/holdings'
+  const isIdSite =
+    pathname === '/id' ||
+    pathname.startsWith('/id/') ||
+    pathname === '/holdings' ||
+    pathname.startsWith('/actions/')
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -87,7 +101,11 @@ export default function App() {
           <Route path="/products" element={<Products />} />
           <Route path="/structures" element={<Structures />} />
           <Route path="/pricing" element={<Pricing />} />
-          <Route path="/verify" element={<Verify />} />
+          <Route path="/docs" element={<Docs />} />
+          <Route path="/docs/verify" element={<Verify />} />
+          {/* The verification explainer moved under Documentation; the old
+              address keeps working, query string (?asset=…) included. */}
+          <Route path="/verify" element={<VerifyRedirect />} />
           <Route path="/faq" element={<Faq />} />
           <Route path="/legal" element={<Legal />} />
           <Route path="/privacy" element={<Privacy />} />
@@ -99,6 +117,7 @@ export default function App() {
           <Route path="/id/review" element={<IdReview />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/holdings" element={<Holdings />} />
+          <Route path="/actions/:id" element={<ActionClaim />} />
           <Route path="/issuance/:id" element={<IssuanceDetail />} />
           <Route path="/issuance/:id/portal" element={<PortalSetup />} />
           <Route path="/portal/:id" element={<InvestorPortal />} />

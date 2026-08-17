@@ -145,15 +145,22 @@ type deposit struct {
 // minimum confirmations across the crediting outputs (so "N confs" means every
 // part of the deposit has N). ok is false when nothing has arrived yet.
 func (s *server) usdxDeposit(address string) (deposit, bool, error) {
+	return s.assetDeposit(address, s.cfg.usdxAsset)
+}
+
+// assetDeposit is usdxDeposit generalized to any Sequentia asset (the W-3
+// corporate-action funding watcher pays dividends in the issuer's chosen
+// asset).
+func (s *server) assetDeposit(address, asset string) (deposit, bool, error) {
 	if err := s.ensureSeqEscrowWallet(); err != nil {
 		return deposit{}, false, err
 	}
 	res, err := s.walletRPC(seqEscrowWallet, "listunspent", 0, 9999999, []string{address}, true,
-		map[string]any{"asset": s.cfg.usdxAsset})
+		map[string]any{"asset": asset})
 	if err != nil {
 		return deposit{}, false, err
 	}
-	return sumDeposit(res, address, s.cfg.usdxAsset)
+	return sumDeposit(res, address, asset)
 }
 
 // btcDeposit reports the total native BTC credited to a testnet4 deposit address.
@@ -210,11 +217,17 @@ func sumDeposit(res json.RawMessage, address, wantAsset string) (deposit, bool, 
 // is a settlement-scoped marker so a lost-write re-close can reconcile the send
 // (escrowFindSend) instead of re-broadcasting from the commingled wallet.
 func (s *server) releaseUSDX(address string, atoms uint64, comment string) (string, error) {
+	return s.releaseAsset(address, atoms, comment, s.cfg.usdxAsset)
+}
+
+// releaseAsset is releaseUSDX generalized to any Sequentia asset (W-3 dividend
+// claims pay in the action's chosen asset). Same marker discipline.
+func (s *server) releaseAsset(address string, atoms uint64, comment, asset string) (string, error) {
 	if err := s.ensureSeqEscrowWallet(); err != nil {
 		return "", err
 	}
 	res, err := s.walletRPC(seqEscrowWallet, "sendtoaddress",
-		address, amount8(atoms), comment, "", false, false, 1, "UNSET", false, s.cfg.usdxAsset)
+		address, amount8(atoms), comment, "", false, false, 1, "UNSET", false, asset)
 	if err != nil {
 		return "", err
 	}

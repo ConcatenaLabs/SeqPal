@@ -6,7 +6,8 @@ import Modal from '../../components/Modal'
 import { useStore } from '../../lib/store'
 import { toTerms } from '../../lib/issuance'
 import { termsHash } from '../../lib/openamp'
-import { compileIssuance } from '../../lib/api'
+import { encryptKey, generateRecoveryKey, passphraseStrength } from '../../lib/keys'
+import { bearerAttestation, compileIssuance, health } from '../../lib/api'
 import { STRUCTURES, getStructure } from '../../data/structures'
 import {
   JURISDICTIONS,
@@ -22,7 +23,7 @@ function StepHeader({ n, title, sub }) {
   return (
     <div className="mb-7">
       <div className="text-xs font-semibold uppercase tracking-[0.18em] text-btc-600">
-        Step {n} of 6
+        Step {n} of 7
       </div>
       <h1 className="mt-2 text-2xl font-extrabold tracking-tight text-ink-900 sm:text-3xl">
         {title}
@@ -201,7 +202,7 @@ export function Step1Identity({ data, update }) {
             </div>
             <DemoNote className="mt-4">
               KYB verification is SIMULATED. The entity is recorded against your SeqPal ID on
-              the server. It carries no enclave key of its own, so this issuance uses your own
+              the server. It carries no signing key of its own, so this issuance uses your own
               SeqPal ID key and the asset is held by your personal account (AID).
             </DemoNote>
             {err && (
@@ -340,7 +341,189 @@ export function Step2Structure({ data, update }) {
   )
 }
 
-/* ───────────────────────── Step 3, Data Room ───────────────────────── */
+/* ──────────────── Step 3, Enforcement election ──────────────── */
+
+// Who can hold the token, and who enforces the rules. Three models, chosen
+// before the deal terms because the choice shapes which rules exist at all.
+// The "network" model is a per-deployment capability probed live from
+// GET /api/health (field `damp`), the same pattern the confidential toggle
+// uses: when the deployment cannot run it, the card says so and cannot be
+// selected, so the deploy never discovers a refusal at checkout.
+const ENFORCEMENT_MODELS = [
+  {
+    id: 'serviced',
+    badge: 'Standard',
+    title: 'SeqPal enforces your rules',
+    body: 'Only investors you approve can hold this token. SeqPal’s service checks every transfer against your rules.',
+    goodFor: 'Private placements, offerings into regulated countries, tokens whose holdings should stay private.',
+    tradeoffs: [
+      'The richest rule set: lockups, investor limits, country rules.',
+      'Holdings can be hidden from the public while you still see everything.',
+      'Transfers pause if SeqPal’s service is down.',
+    ],
+    regulatory: 'The strongest compliance story for offers that reach US, EU, or UK investors.',
+  },
+  {
+    id: 'network',
+    badge: null,
+    title: 'The network enforces your rules',
+    body: 'Investors verify with SeqPal ID exactly as in the standard option, and only verified investors can hold this token. The difference: the network itself enforces your rules, so trading between approved investors keeps working even when SeqPal’s service is offline.',
+    goodFor: 'Tokens that must keep trading no matter what, such as compliant stablecoins.',
+    tradeoffs: [
+      'Rules are simpler: approved lists, blocked lists, transfer limits.',
+      'Rule changes and newly verified investors take effect when the updated list is published, not instantly.',
+      'Who holds what is public.',
+    ],
+    regulatory:
+      'Investor vetting is identical to the standard option. SeqPal never touches a transfer: it verifies investors, publishes your rules, and services your register.',
+  },
+  {
+    id: 'bearer',
+    badge: null,
+    title: 'Freely tradable',
+    body: 'Anyone in the world can hold and trade this token. Under your company’s charter, the token is the share.',
+    goodFor: 'Próspera companies with no US ties that want globally liquid stock.',
+    tradeoffs: [
+      'No transfer restrictions at all, so you cannot limit who buys on the open market.',
+      'Who holds what is public.',
+      'You can freeze specific balances if a court orders it.',
+    ],
+    extra:
+      'Buyers in your initial sale are still identity-checked, and holders must verify their identity to collect dividends or vote.',
+    regulatory:
+      'Only for companies with no US operations, assets, or banking. You accept in writing that US regulators may object and that this is your risk.',
+  },
+]
+
+export function Step3Enforcement({ data, update }) {
+  // Whether this deployment can run network-enforced rules, probed live.
+  const [dampAvailable, setDampAvailable] = useState(null)
+  useEffect(() => {
+    let cancelled = false
+    health()
+      .then((h) => {
+        if (!cancelled) setDampAvailable(!!h.damp)
+      })
+      .catch(() => {
+        if (!cancelled) setDampAvailable(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const select = (id) => {
+    if (id === data.enforcement) return
+    // The election is part of the committed terms, so changing it voids any
+    // prior e-signature, and switching away from freely-tradable drops the
+    // bearer-only requirements (recovery key, attestation checkboxes).
+    update({
+      enforcement: id,
+      docsSigned: false,
+      ...(id !== 'bearer' ? { recovery: null, bearerNoUs: false, bearerRisk: false } : {}),
+    })
+  }
+
+  return (
+    <div>
+      <StepHeader
+        n={3}
+        title="Who can hold your token, and who enforces the rules?"
+        sub="Every model below is enforced for real on the Sequentia testnet. The choice is committed in your terms and shapes which rules you configure later in this flow."
+      />
+      <div className="space-y-4">
+        {ENFORCEMENT_MODELS.map((m) => {
+          const isNetwork = m.id === 'network'
+          const unavailable = isNetwork && dampAvailable === false
+          const selected = data.enforcement === m.id
+          return (
+            // A div rather than a button so the "How this works" link inside
+            // stays valid interactive content; key handling keeps it reachable.
+            <div
+              key={m.id}
+              role="button"
+              tabIndex={unavailable ? -1 : 0}
+              aria-disabled={unavailable}
+              aria-pressed={selected}
+              onClick={() => !unavailable && select(m.id)}
+              onKeyDown={(e) => {
+                if (!unavailable && (e.key === 'Enter' || e.key === ' ')) {
+                  e.preventDefault()
+                  select(m.id)
+                }
+              }}
+              className={`card relative w-full p-6 text-left transition-all ${
+                unavailable
+                  ? 'cursor-not-allowed opacity-60'
+                  : selected
+                    ? 'cursor-pointer ring-2 ring-btc shadow-glow'
+                    : 'cursor-pointer hover:-translate-y-0.5 hover:shadow-card'
+              }`}
+            >
+              {selected && (
+                <span className="absolute right-4 top-4 flex h-6 w-6 items-center justify-center rounded-full bg-btc text-white">
+                  <Icon.check width={14} height={14} />
+                </span>
+              )}
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-ink-900">{m.title}</h3>
+                {m.badge && <Badge color="btc">{m.badge}</Badge>}
+              </div>
+              <p className="mt-2 text-sm leading-relaxed text-ink-800">{m.body}</p>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-ink-700/55">
+                    Good for
+                  </div>
+                  <p className="mt-1 text-sm leading-relaxed text-ink-700/85">{m.goodFor}</p>
+                  <div className="mt-3 text-xs font-semibold uppercase tracking-wide text-ink-700/55">
+                    Regulatory
+                  </div>
+                  <p className="mt-1 text-sm leading-relaxed text-ink-700/85">{m.regulatory}</p>
+                </div>
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-ink-700/55">
+                    Trade-offs
+                  </div>
+                  <ul className="mt-1 space-y-1">
+                    {m.tradeoffs.map((t) => (
+                      <li key={t} className="flex items-start gap-2 text-sm leading-relaxed text-ink-700/85">
+                        <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-ink-700/50" />
+                        {t}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+              {m.extra && (
+                <p className="mt-3 rounded-lg bg-ink-900/[0.03] px-3 py-2 text-xs leading-relaxed text-ink-700/80">
+                  {m.extra}
+                </p>
+              )}
+              {unavailable && (
+                <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+                  Not available on this deployment.
+                </p>
+              )}
+              <span className="mt-4 inline-flex items-center gap-1.5 text-xs font-medium text-seq-600">
+                <Link
+                  to="/docs"
+                  onClick={(e) => e.stopPropagation()}
+                  className="inline-flex items-center gap-1.5 hover:underline"
+                >
+                  How this works, in detail
+                  <Icon.arrowRight width={12} height={12} />
+                </Link>
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+/* ───────────────────────── Step 4, Data Room ───────────────────────── */
 
 const FIELD_CONFIG = {
   'native-equity': [
@@ -439,7 +622,7 @@ function DynamicField({ cfg, value, onChange, symbol = '$' }) {
   )
 }
 
-export function Step3DataRoom({ data, update }) {
+export function Step4DataRoom({ data, update }) {
   const s = getStructure(data.structureId)
   const config = FIELD_CONFIG[data.structureId] || []
   const lockedPublic = data.structureId === 'depository-receipt'
@@ -469,7 +652,7 @@ export function Step3DataRoom({ data, update }) {
   return (
     <div>
       <StepHeader
-        n={3}
+        n={4}
         title="The data room"
         sub={`Enter the parameters for your ${s?.name} issuance. These feed directly into the templated paperwork generated in the next step.`}
       />
@@ -712,7 +895,7 @@ function DocPreview({ docName, data }) {
   )
 }
 
-export function Step4Documents({ data, update }) {
+export function Step5Documents({ data, update }) {
   const [phase, setPhase] = useState(data.docsSigned ? 'signed' : 'idle')
   const docs = DOC_PACKAGE(data.structureId, data.isPublic)
 
@@ -729,7 +912,7 @@ export function Step4Documents({ data, update }) {
   return (
     <div>
       <StepHeader
-        n={4}
+        n={5}
         title="Document automation suite"
         sub="SeqPal’s document engine maps your inputs to a standardized library of clause templates. The package is rendered for your review and e-signature, prefilled templates you’re free to accept, modify, or reject."
       />
@@ -851,7 +1034,7 @@ function defaultPolicy(isPublic) {
   return p
 }
 
-export function Step5Compliance({ data, update }) {
+export function Step6Compliance({ data, update }) {
   // The compiled-rules preview is computed server-side (seqpald is the only
   // place the authoritative rules are produced); a draft issuance is created
   // lazily the first time a preview is requested and reused at deploy.
@@ -862,10 +1045,31 @@ export function Step5Compliance({ data, update }) {
   const [advOpen, setAdvOpen] = useState(false)
   const [euPick, setEuPick] = useState({ code: 'DE', n: '' })
   const [jurQuery, setJurQuery] = useState('')
+  // A freely-tradable token carries no transfer restrictions, so the rule
+  // configuration below is hidden for it; the offering visibility choice stays
+  // in the data-room step either way.
+  const bearer = data.enforcement === 'bearer'
+  // Whether this deployment can mint confidentially: a per-deployment
+  // capability probed live from /api/health, mirroring the deploy card.
+  const [confAvailable, setConfAvailable] = useState(null)
+  useEffect(() => {
+    let cancelled = false
+    health()
+      .then((h) => {
+        if (!cancelled) setConfAvailable(!!h.confidential)
+      })
+      .catch(() => {
+        if (!cancelled) setConfAvailable(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // (Re)build the default policy whenever the offering type changes so the
   // public-offering overlay is reflected correctly.
   useEffect(() => {
+    if (bearer) return
     if (!data.policy || data.policyPublic !== data.isPublic) {
       // Reset lifted/confirmed flags too: they mean different things in public
       // (registration confirmed) vs private (retail authorization) mode.
@@ -979,9 +1183,13 @@ export function Step5Compliance({ data, update }) {
   return (
     <div>
       <StepHeader
-        n={5}
+        n={6}
         title="Tokenomics & compliance baking"
-        sub="Name your asset and configure the policy that gets baked into the token’s whitelist. SeqPal supplies a suggested-minimum restriction set, you can make any rule stricter, but mandatory floors cannot be loosened."
+        sub={
+          bearer
+            ? 'Name your asset. You chose the freely-tradable model, so there are no transfer restrictions to configure: anyone can hold and trade this token on the open market.'
+            : 'Name your asset and configure the policy that gets baked into the token’s whitelist. SeqPal supplies a suggested-minimum restriction set, you can make any rule stricter, but mandatory floors cannot be loosened.'
+        }
       />
 
       <div className="card mb-5 p-7">
@@ -1012,27 +1220,74 @@ export function Step5Compliance({ data, update }) {
           </div>
         </div>
 
-        <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-xl border border-ink-900/10 bg-ink-900/[0.02] px-4 py-3">
-          <input
-            type="checkbox"
-            className="mt-1 h-4 w-4 accent-seq-600"
-            checked={!!data.confidential}
-            onChange={(e) => update({ confidential: e.target.checked })}
-          />
-          <span className="text-sm">
-            <span className="font-semibold text-ink-900">Confidential holdings</span>
-            <span className="block text-ink-700/70">
-              Blind amounts and the asset tag on-chain. Your issuer still sees and
-              reports every holding through the policy server; outside observers see
-              nothing. Sequentia is transparent by default, so confidentiality is
-              opt-in per asset. It requires a confidentiality-enabled node: on this
-              public testnet issuances stay transparent, and confidentiality is
-              available on mainnet.
+        {data.enforcement === 'serviced' && (
+          <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-xl border border-ink-900/10 bg-ink-900/[0.02] px-4 py-3">
+            <input
+              type="checkbox"
+              className="mt-1 h-4 w-4 accent-seq-600"
+              checked={!!data.confidential}
+              onChange={(e) => update({ confidential: e.target.checked })}
+            />
+            <span className="text-sm">
+              <span className="font-semibold text-ink-900">Confidential holdings (opt-in)</span>
+              <span className="block text-ink-700/70">
+                Blind amounts and the asset tag on chain. Sequentia is transparent by
+                default, so this is opt-in per asset: it is requested per call with a
+                blinded address, and works without changing the shared node&rsquo;s
+                default. Holdings stay visible to you and to SeqPal&rsquo;s transfer
+                service, which enforce eligibility. Whether this deployment supports a
+                confidential mint is checked live below, before you deploy.
+              </span>
+              {confAvailable === true && data.confidential && (
+                <span className="mt-1 block text-xs font-medium text-emerald-700">
+                  This deployment is confidentiality-enabled.
+                </span>
+              )}
+              {confAvailable === false && data.confidential && (
+                <span className="mt-1 block text-xs font-medium text-amber-700">
+                  This deployment is not confidentiality-enabled, so a confidential mint
+                  would be refused rather than silently downgraded. Deploy transparently,
+                  the Sequentia default, or use a confidentiality-enabled deployment.
+                </span>
+              )}
             </span>
-          </span>
-        </label>
+          </label>
+        )}
+
+        {!bearer && (
+          <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-xl border border-ink-900/10 bg-ink-900/[0.02] px-4 py-3">
+            <input
+              type="checkbox"
+              className="mt-1 h-4 w-4 accent-btc"
+              checked={data.clawback !== false}
+              onChange={(e) => update({ clawback: e.target.checked })}
+            />
+            <span className="text-sm">
+              <span className="font-semibold text-ink-900">Issuer recovery power</span>
+              <span className="block text-ink-700/70">
+                You can reclaim tokens from a holder, two signatures needed, always
+                public: your own key authorizes it, SeqPal adds the second signature,
+                and the reason is recorded in the public log.
+              </span>
+            </span>
+          </label>
+        )}
+
+        {bearer && (
+          <div className="mt-5 rounded-xl border border-ink-900/10 bg-ink-900/[0.02] px-4 py-3 text-sm text-ink-700/80">
+            <span className="font-semibold text-ink-900">Freely tradable.</span> Anyone can
+            hold and trade this token, and who holds what is public. Buyers in your
+            initial sale are still identity-checked, and holders verify their identity to
+            collect dividends or vote. You can freeze specific balances if a court orders
+            it; the order document&rsquo;s fingerprint is recorded publicly beside the
+            freeze. Before you deploy, the checkout step asks for an emergency recovery
+            key and a signed attestation about US exposure.
+          </div>
+        )}
       </div>
 
+      {!bearer && (
+        <>
       {data.isPublic && (
         <div className="mb-5 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           <Icon.globe width={18} height={18} className="mt-0.5 shrink-0" />
@@ -1070,8 +1325,8 @@ export function Step5Compliance({ data, update }) {
           <p className="mt-1 text-xs text-ink-700/55">
             Every country is here, and the catch-all is{' '}
             <span className="font-semibold text-ink-700">excluded by default</span>: a country you set
-            to Excluded contributes no eligibility category, so a resident of it is refused by the
-            policy server.
+            to Excluded contributes no eligibility category, so a resident of it is refused when they
+            try to receive the token.
           </p>
           <input
             className="input mt-3 w-full"
@@ -1203,7 +1458,7 @@ export function Step5Compliance({ data, update }) {
       <div className="card mt-5 p-7">
         <h3 className="font-bold text-ink-900">Transfer restrictions</h3>
         <p className="mt-1 text-sm text-ink-700/70">
-          These compile into the on-chain rules the policy server enforces on every transfer.
+          These compile into the on-chain rules that are checked on every transfer.
         </p>
 
         {/* Lockup */}
@@ -1498,7 +1753,7 @@ export function Step5Compliance({ data, update }) {
           <div>
             <h3 className="font-bold text-ink-900">Compiled policy preview</h3>
             <p className="mt-1 text-sm text-ink-700/70">
-              seqpald compiles the matrix into the rules the policy server enforces. This is the
+              SeqPal compiles the matrix into the rules that check every transfer. This is the
               authoritative compile, computed on the server, not in your browser.
             </p>
           </div>
@@ -1520,6 +1775,8 @@ export function Step5Compliance({ data, update }) {
         )}
         {preview && <CompiledRulesView preview={preview} />}
       </div>
+        </>
+      )}
     </div>
   )
 }
@@ -1587,12 +1844,178 @@ function CompiledRulesView({ preview }) {
   )
 }
 
-/* ──────────────────── Step 6, Checkout & Deployment ──────────────────── */
+/* ──────── Freely-tradable prerequisites: recovery key + attestation ──────── */
 
-export function Step6Checkout({ data, onDeployed }) {
+// The two extra things a freely-tradable deploy requires: (a) a generated and
+// EXPORTED recovery key, a second real browser keypair whose public key is
+// registered at deploy; (b) the two attestation statements, signed with the
+// session key at deploy time. The private recovery key exists only in this
+// browser session and in the encrypted backup file the issuer downloads, which
+// is why the export is mandatory before the deploy button enables.
+function BearerRequirements({ data, update, hasKey }) {
+  const [pass, setPass] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+  const strength = passphraseStrength(pass)
+  const rec = data.recovery
+
+  const generate = async () => {
+    setErr(null)
+    if (strength.level === 'weak') {
+      setErr('Choose a stronger passphrase for the recovery key backup. It is the only thing protecting the file.')
+      return
+    }
+    setBusy(true)
+    try {
+      const key = generateRecoveryKey()
+      const envelope = await encryptKey(key.priv, pass)
+      envelope.xonly = key.xonly
+      envelope.kind = 'recovery'
+      update({ recovery: { xonly: key.xonly, envelope, exported: false } })
+      setPass('')
+    } catch (e) {
+      setErr(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const exportKey = () => {
+    const blob = new Blob([JSON.stringify(rec.envelope, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `seqpal-recovery-key-${rec.xonly.slice(0, 8)}.json`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+    update({ recovery: { ...rec, exported: true } })
+  }
+
+  return (
+    <div className="mb-5 space-y-5">
+      <div className="card p-6">
+        <div className="flex items-center gap-2">
+          <Icon.lock width={18} height={18} className="text-seq-600" />
+          <h3 className="font-bold text-ink-900">Emergency recovery key</h3>
+          {rec?.exported && (
+            <Badge color="emerald" className="ml-auto">
+              <Icon.check width={12} height={12} /> exported
+            </Badge>
+          )}
+        </div>
+        <p className="mt-1.5 text-sm leading-relaxed text-ink-700/80">
+          A separate emergency key. If your everyday key is ever stolen, this key replaces
+          it. Keep it offline. It is generated in this browser like your SeqPal ID key,
+          stored only as a backup file encrypted under the passphrase you choose here, and
+          only its public half is registered with your token.
+        </p>
+        {!rec ? (
+          <div className="mt-4 flex flex-wrap items-end gap-3">
+            <div className="min-w-[220px] flex-1">
+              <label className="label" htmlFor="rec-pass">
+                Backup passphrase
+              </label>
+              <input
+                id="rec-pass"
+                type="password"
+                className="input"
+                placeholder="A passphrase for the backup file"
+                value={pass}
+                onChange={(e) => setPass(e.target.value)}
+              />
+              {pass && <p className="mt-1 text-xs text-ink-700/60">{strength.label}</p>}
+            </div>
+            <button onClick={generate} disabled={busy || !pass} className="btn-primary disabled:opacity-50">
+              {busy ? 'Generating…' : 'Generate recovery key'}
+            </button>
+          </div>
+        ) : (
+          <div className="mt-4 space-y-3">
+            <div className="rounded-lg bg-ink-900/[0.03] px-3 py-2 font-mono text-xs text-ink-800">
+              recovery public key: {rec.xonly.slice(0, 16)}…{rec.xonly.slice(-8)}
+            </div>
+            {!rec.exported ? (
+              <button onClick={exportKey} className="btn-primary w-full">
+                <Icon.upload width={15} height={15} className="rotate-180" />
+                Download the recovery key backup (required)
+              </button>
+            ) : (
+              <p className="text-xs leading-relaxed text-emerald-700">
+                Backup downloaded. Store it offline, separately from your everyday SeqPal
+                ID backup. Without the file and its passphrase, the recovery key cannot be
+                used.
+              </p>
+            )}
+          </div>
+        )}
+        {err && <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{err}</p>}
+      </div>
+
+      <div className="card p-6">
+        <label className="flex cursor-pointer items-start gap-3">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4 accent-btc"
+            checked={data.bearerPause !== false}
+            onChange={(e) => update({ bearerPause: e.target.checked })}
+          />
+          <span className="text-sm leading-relaxed text-ink-700/85">
+            <span className="font-semibold text-ink-900">Emergency pause</span>
+            <br />
+            With a court or regulator order you can pause all trading of this token, not
+            just freeze single balances. This choice is made now and is permanent: it can
+            never be added to the token later, and it can never be removed. Pausing uses
+            the same signed, public, court-order-only process as a freeze, and lifting
+            the pause works the same way.
+          </span>
+        </label>
+      </div>
+
+      <div className="card border-amber-200 bg-amber-50/60 p-6">
+        <div className="flex items-center gap-2 text-sm font-semibold text-amber-800">
+          <Icon.shield width={16} height={16} /> Required attestation, signed with your key
+        </div>
+        <label className="mt-3 flex cursor-pointer items-start gap-3">
+          <input
+            type="checkbox"
+            checked={!!data.bearerNoUs}
+            onChange={(e) => update({ bearerNoUs: e.target.checked })}
+            className="mt-0.5 h-4 w-4 accent-btc"
+          />
+          <span className="text-sm leading-relaxed text-ink-800">
+            My company has no United States operations, assets, or banking.
+          </span>
+        </label>
+        <label className="mt-2 flex cursor-pointer items-start gap-3">
+          <input
+            type="checkbox"
+            checked={!!data.bearerRisk}
+            onChange={(e) => update({ bearerRisk: e.target.checked })}
+            className="mt-0.5 h-4 w-4 accent-btc"
+          />
+          <span className="text-sm leading-relaxed text-ink-800">
+            I accept in writing that United States regulators may object, and that this is
+            my company&rsquo;s risk.
+          </span>
+        </label>
+        <p className="mt-3 text-xs leading-relaxed text-amber-800/80">
+          When you deploy, these statements are signed with your SeqPal ID key and recorded
+          with the issuance. {!hasKey && 'Your SeqPal ID is locked: unlock it before deploying so the signature can be made.'}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+/* ──────────────────── Step 7, Checkout & Deployment ──────────────────── */
+
+export function Step7Checkout({ data, update, onDeployed }) {
   // Both create and deploy go through the store so its issuance list refreshes
   // before we navigate to the new issuance page.
-  const { createIssuance, patchIssuance, deployIssuance, xonly } = useStore()
+  const { createIssuance, patchIssuance, deployIssuance, xonly, account, hasKey, signBearerStmt } =
+    useStore()
   const s = getStructure(data.structureId)
   const cost = computeSetupCost(data.structureId, data.isPublic, {
     raise: data.raise,
@@ -1603,10 +2026,15 @@ export function Step6Checkout({ data, onDeployed }) {
   const [result, setResult] = useState(null) // { issuance, deploy }
   const [err, setErr] = useState(null)
 
-  // The initial supply mints to the issuer's own enclave (the issuer-of-record
-  // treasury). Distribution to investors is a later OpenAMP transfer, so any
-  // "mints to a placement-portal escrow address" claim would be false today.
-  const mintTarget = 'issuer enclave'
+  // The initial supply mints to the issuer's own secure account (the
+  // issuer-of-record treasury). Distribution to investors is a later transfer,
+  // so any "mints to a placement-portal escrow address" claim would be false
+  // today.
+  const mintTarget = 'issuer treasury'
+  const bearer = data.enforcement === 'bearer'
+  // A freely-tradable deploy needs two extra things before the button enables:
+  // the exported recovery key and both attestation checkboxes.
+  const bearerReady = !bearer || (!!data.recovery?.exported && !!data.bearerNoUs && !!data.bearerRisk)
   // One whole token per unit of the target raise, defaulting to 1,000,000 for
   // structures without a raise.
   const supply = Math.max(1, Math.round(parseMoney(data.raise) || 1_000_000))
@@ -1642,18 +2070,45 @@ export function Step6Checkout({ data, onDeployed }) {
         })
         issuanceId = issuance.id
       }
+      // Freely-tradable issuance: the signed attestation must be on record
+      // before the deploy. Signed with the session key, tagged, over sha256 of
+      // the canonical attestation JSON; the server verifies it against this
+      // account's key and refuses the deploy without it.
+      if (bearer) {
+        const fields = {
+          issuance_id: issuanceId,
+          no_us_nexus: !!data.bearerNoUs,
+          risk_accepted: !!data.bearerRisk,
+          aid: account?.aid,
+        }
+        const sig = signBearerStmt(fields)
+        if (!sig) throw new Error('Unlock your SeqPal ID to sign the attestation before deploying.')
+        await bearerAttestation(issuanceId, { ...fields, pubkey: xonly, sig })
+      }
       const dep = await deployIssuance({
         issuance_id: issuanceId,
         supply,
         precision,
-        clawback: true,
-        confidential: !!data.confidential,
+        // The enforcement election travels with the deploy. A freely-tradable
+        // asset has no issuer recovery power; otherwise the toggle from the
+        // tokenomics step decides.
+        enforcement: data.enforcement || 'serviced',
+        clawback: bearer ? false : data.clawback !== false,
+        confidential: data.enforcement === 'serviced' && !!data.confidential,
         // M9: external issuer key. The entity's own SeqPal ID key becomes the
-        // enclave issuer half, so a clawback needs the issuer's browser signature
-        // (two-phase) and the platform never holds an issuer key for this asset.
-        // seqpald cross-checks it against the deploying account.
+        // issuer half, so reclaiming tokens needs the issuer's browser
+        // signature (two signatures in total) and the platform never holds an
+        // issuer key for this asset. seqpald cross-checks it against the
+        // deploying account.
         ...(xonly ? { issuer_pubkey: xonly } : {}),
-        fee_convert_atoms: 100,
+        // The emergency key for a freely-tradable asset, generated and exported
+        // in this browser; only its public key is sent. The pause election is
+        // permanent and committed into the token, so it travels with the deploy.
+        ...(bearer && data.recovery?.xonly ? { recovery_pubkey: data.recovery.xonly } : {}),
+        ...(bearer ? { pause: data.bearerPause !== false } : {}),
+        // 0 = let the server derive the network fee conversion from the
+        // offering price (a nonzero value would be an explicit issuer override).
+        fee_convert_atoms: 0,
         terms,
         terms_hash: await termsHash(terms),
       })
@@ -1668,13 +2123,12 @@ export function Step6Checkout({ data, onDeployed }) {
   if (phase === 'working') {
     return (
       <div>
-        <StepHeader n={6} title="Deploying on Sequentia" />
+        <StepHeader n={7} title="Deploying on Sequentia" />
         <div className="card p-10 text-center">
           <span className="mx-auto block h-10 w-10 animate-spin rounded-full border-4 border-btc/20 border-t-btc" />
           <p className="mt-5 font-medium text-ink-900">Minting on Sequentia…</p>
           <p className="mt-1 text-sm text-ink-700/70">
-            Registering the enclave key and issuing the restricted asset through the policy
-            server.
+            Registering your key and issuing the asset under the rules you configured.
           </p>
         </div>
       </div>
@@ -1685,7 +2139,7 @@ export function Step6Checkout({ data, onDeployed }) {
     const d = result.deploy
     return (
       <div>
-        <StepHeader n={6} title="Deployed on Sequentia" />
+        <StepHeader n={7} title="Deployed on Sequentia" />
         <div className="card p-8">
           <div className="flex items-center gap-4">
             <span className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500 text-white">
@@ -1694,8 +2148,8 @@ export function Step6Checkout({ data, onDeployed }) {
             <div>
               <h3 className="font-bold text-ink-900">Asset minted</h3>
               <p className="text-sm text-ink-700/80">
-                {data.name} ({data.ticker}) is a real restricted asset on the
-                Sequentia testnet.
+                {data.name} ({data.ticker}) is a real {bearer ? 'freely-tradable' : 'transfer-restricted'}{' '}
+                asset on the Sequentia testnet.
               </p>
             </div>
           </div>
@@ -1706,7 +2160,15 @@ export function Step6Checkout({ data, onDeployed }) {
               ['Issuance txid', d.txid],
               ['Contract hash', d.contract_hash],
               ['Holder account (AID)', d.aid],
-              ['Enclave address', d.address],
+              ['Secure address', d.address],
+              ...(d.fee_convert_atoms
+                ? [
+                    [
+                      'Network fee conversion',
+                      `${Number(d.fee_convert_atoms).toLocaleString()} atoms, derived from your offering price`,
+                    ],
+                  ]
+                : []),
             ].map(([k, v]) => (
               <div key={k} className="flex items-center justify-between gap-4 py-2.5">
                 <dt className="shrink-0 text-ink-700/70">{k}</dt>
@@ -1735,10 +2197,12 @@ export function Step6Checkout({ data, onDeployed }) {
   return (
     <div>
       <StepHeader
-        n={6}
+        n={7}
         title="Checkout and deployment"
-        sub="Review the summary and deploy. The setup fee is simulated in this build; the deploy is real and mints the restricted asset on Sequentia."
+        sub="Review the summary and deploy. The setup fee is simulated in this build; the deploy is real and mints the asset on Sequentia."
       />
+
+      {bearer && <BearerRequirements data={data} update={update} hasKey={hasKey} />}
 
       <div className="grid gap-5 lg:grid-cols-5">
         <div className="card p-6 lg:col-span-3">
@@ -1758,11 +2222,33 @@ export function Step6Checkout({ data, onDeployed }) {
               ['Asset name', data.name || 'not set'],
               ['Ticker', data.ticker || 'not set'],
               ['Offering type', data.isPublic ? 'Public offering' : 'Private placement'],
+              [
+                'Who enforces the rules',
+                bearer
+                  ? 'Nobody restricts transfers: freely tradable, court-order freezes only'
+                  : data.enforcement === 'network'
+                    ? 'The network, from your published rules'
+                    : 'SeqPal checks every transfer against your rules',
+              ],
               ['Unit of account', data.unit === 'BTC' ? 'BTC (₿)' : 'USD ($)'],
               ['Target raise', data.raise || 'not set'],
               ['Initial mint to', mintTarget],
               ['Initial supply', supply.toLocaleString() + ' ' + (data.ticker || 'tokens')],
-              ['Confidentiality', data.confidential ? 'Confidential (opt-in)' : 'Transparent'],
+              [
+                'Confidentiality',
+                data.enforcement === 'serviced' && data.confidential
+                  ? 'Confidential (opt-in)'
+                  : 'Transparent',
+              ],
+              ...(bearer
+                ? []
+                : [
+                    [
+                      'Issuer recovery power',
+                      data.clawback !== false ? 'On: two signatures, always public' : 'Off',
+                    ],
+                  ]),
+              ['Network fee conversion', 'Derived from your offering price'],
               ['Network', 'Sequentia'],
             ].map(([k, v]) => (
               <div key={k} className="flex items-center justify-between py-2.5">
@@ -1825,10 +2311,20 @@ export function Step6Checkout({ data, onDeployed }) {
               )}
             </div>
           )}
-          <button onClick={deploy} className="btn-primary mt-5 w-full">
+          <button
+            onClick={deploy}
+            disabled={!bearerReady}
+            className="btn-primary mt-5 w-full disabled:opacity-50"
+          >
             <Icon.bolt width={16} height={16} />
             Deploy on Sequentia
           </button>
+          {!bearerReady && (
+            <p className="mt-2 text-center text-xs leading-relaxed text-amber-700">
+              A freely-tradable deploy needs the exported recovery key and both signed
+              statements above first.
+            </p>
+          )}
           <Link
             to="/pricing"
             className="mt-3 block text-center text-xs font-medium text-ink-700/70 hover:text-ink-900"
@@ -1847,9 +2343,9 @@ const DEPLOY_HINT = {
   400: 'The mint parameters were refused. Fix the issuance and try again: nothing was minted.',
   403: 'This issuance belongs to another SeqPal ID.',
   404: 'The issuance record could not be found on the server.',
-  409: 'Choose a different ticker. Tickers are checked against the assets already live on the policy server.',
+  409: 'Choose a different ticker. Tickers are checked against the assets already live on the platform.',
   429: 'The deploy rate limit is per account and per platform over a rolling hour. Wait and try again.',
-  501: 'This deployment runs against a node that is not confidentiality-enabled. Turn off confidential holdings to deploy transparently, which is the Sequentia default.',
-  502: 'The policy server refused or could not be reached. Nothing was minted.',
+  501: 'This deployment cannot run what the deploy asked for: either confidential holdings on a deployment without confidentiality, or network-enforced rules on a deployment without them. Pick a supported option and deploy again; nothing was minted.',
+  502: 'SeqPal’s transfer service refused or could not be reached. Nothing was minted.',
   503: 'The platform has no issuer token configured, so no deployment can be made from here right now.',
 }

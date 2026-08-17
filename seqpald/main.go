@@ -86,6 +86,10 @@ type config struct {
 
 	// M8 secondary-market cadence.
 	walletPollInterval time.Duration // wallet-initiated transfer capture from openampd /v1/log
+
+	// M10: OpenDAMP capability flag. Off by default; enforcement=network deploys
+	// are refused 501 until it is on (and the OpenDAMP path exists).
+	damp bool
 }
 
 type server struct {
@@ -111,6 +115,7 @@ type server struct {
 	clawMu       *keyedMutex // serializes clawbacks per (asset, holder)
 	redeliverMu  *keyedMutex // serializes the stranded-key runbook per (issuance, old, new)
 	drMu         *keyedMutex // serializes DR mint/redeem per issuance (M8)
+	supMu        *keyedMutex // serializes supervision freeze/unfreeze per issuance (M10)
 	servicingMu1 sync.Once   // lazily provisions the servicing mutexes above
 }
 
@@ -133,6 +138,9 @@ func (s *server) ensureServicingMu() {
 		}
 		if s.drMu == nil {
 			s.drMu = newKeyedMutex()
+		}
+		if s.supMu == nil {
+			s.supMu = newKeyedMutex()
 		}
 	})
 }
@@ -198,6 +206,7 @@ func main() {
 	atomicDefault := env("SEQPALD_ATOMIC_CLOSE", "1") == "1" || strings.EqualFold(env("SEQPALD_ATOMIC_CLOSE", "1"), "true")
 	flag.BoolVar(&cfg.atomicClose, "atomicclose", atomicDefault, "settle USDX subscriptions as one atomic delivery-versus-payment transaction (closing v2); falls back to the two-transaction close v1 when the policy server has no payment leg")
 	flag.Parse()
+	cfg.damp = env("SEQPALD_DAMP", "") == "1" || strings.EqualFold(env("SEQPALD_DAMP", ""), "true")
 	cfg.setupFeeUSD = envFloat("SEQPALD_SETUP_FEE_USD", 500)
 	cfg.escrowFeeBps = envInt("SEQPALD_ESCROW_FEE_BPS", 50)
 
@@ -253,6 +262,7 @@ func main() {
 		clawMu:      newKeyedMutex(),
 		redeliverMu: newKeyedMutex(),
 		drMu:        newKeyedMutex(),
+		supMu:       newKeyedMutex(),
 	}
 	s.startWorkers()
 
@@ -293,6 +303,25 @@ func (s *server) handler() http.Handler {
 	mux.HandleFunc("PATCH /api/issuances/{id}", s.requireSession(s.handlePatchIssuance))
 	mux.HandleFunc("POST /api/issuances/{id}/compile", s.requireSession(s.handleCompile))
 	mux.HandleFunc("POST /api/deploy", s.requireSession(s.handleDeploy))
+
+	// M10 bearer enforcement: the annually-refreshable attestation a bearer
+	// deploy requires, and the supervision (freeze/unfreeze) console for live
+	// bearer assets. The node holds no keys: builds return raw 32-byte messages
+	// the issuer's operational key signs in the browser.
+	mux.HandleFunc("POST /api/issuances/{id}/bearer-attestation", s.requireSession(s.handleBearerAttestation))
+	mux.HandleFunc("GET /api/issuances/{id}/supervision", s.requireSession(s.handleSupervisionStatus))
+	mux.HandleFunc("POST /api/issuances/{id}/supervision/freeze", s.requireSession(s.handleSupervisionFreeze))
+	mux.HandleFunc("POST /api/issuances/{id}/supervision/freeze/{fid}/complete", s.requireSession(s.handleSupervisionFreezeComplete))
+	mux.HandleFunc("POST /api/issuances/{id}/supervision/unfreeze", s.requireSession(s.handleSupervisionUnfreeze))
+	mux.HandleFunc("POST /api/issuances/{id}/supervision/unfreeze/{fid}/complete", s.requireSession(s.handleSupervisionUnfreezeComplete))
+
+	// M10 corporate actions (W-3): owner creates; the list and detail are
+	// PUBLIC (outpoints, atoms, tallies; never identities); claiming requires a
+	// session with a verified SeqPal ID (the endpoint-KYC gate).
+	mux.HandleFunc("POST /api/issuances/{id}/actions", s.requireSession(s.handleCreateAction))
+	mux.HandleFunc("GET /api/issuances/{id}/actions", s.handleListActions)
+	mux.HandleFunc("GET /api/actions/{aid2}", s.handleGetAction)
+	mux.HandleFunc("POST /api/actions/{aid2}/claim", s.requireSession(s.handleActionClaim))
 
 	// M4 legal artifact pipeline: session-gated actions.
 	mux.HandleFunc("POST /api/issuances/{id}/documents", s.requireSession(s.handleGenerateDocuments))

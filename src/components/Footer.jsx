@@ -24,7 +24,8 @@ const cols = [
     title: 'Resources',
     links: [
       { to: '/pricing', label: 'Pricing' },
-      { to: '/verify', label: 'Verify independently' },
+      { to: '/docs', label: 'Documentation' },
+      { to: '/docs/verify', label: 'Verify independently' },
       { to: '/onboarding', label: 'Start an issuance' },
       { to: '/dashboard', label: 'Dashboard' },
     ],
@@ -59,7 +60,7 @@ export default function Footer() {
                 Sequentia
               </span>
               <span className="rounded-full border border-white/15 px-2.5 py-1">
-                OpenAMP
+                Bitcoin anchored
               </span>
             </div>
           </div>

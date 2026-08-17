@@ -486,7 +486,10 @@ func TestCompilerConsumesAIFCharacterization(t *testing.T) {
 	terms := json.RawMessage(`{"jurisdictions":{"DE":{"access":"standard"},"US":{"access":"restricted"}}}`)
 
 	// The characterization memo itself: an SPV is an AIF with no EU retail lift.
-	ch := characterize("equity-spv")
+	ch, cherr := characterize("equity-spv")
+	if cherr != nil {
+		t.Fatalf("characterize equity-spv: %v", cherr)
+	}
 	if !ch.IsAIF || ch.EURetailLift || ch.UKGate != "cis-promotion" {
 		t.Fatalf("equity-spv memo = is_aif=%v eu_retail_lift=%v uk_gate=%q, want true/false/cis-promotion",
 			ch.IsAIF, ch.EURetailLift, ch.UKGate)
@@ -524,7 +527,7 @@ func TestCompilerConsumesAIFCharacterization(t *testing.T) {
 	if !toSet(ec.AllowedCategories)["j:DE:ret"] {
 		t.Fatalf("plain equity did not admit j:DE:ret; the retail lift is unavailable even for a non-AIF structure; allowed = %v", ec.AllowedCategories)
 	}
-	if characterize("native-equity").EURetailLift != true {
+	if nech, _ := characterize("native-equity"); nech.EURetailLift != true {
 		t.Fatalf("equity memo disables the retail lift; want it available")
 	}
 }
