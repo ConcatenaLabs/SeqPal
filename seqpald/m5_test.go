@@ -868,6 +868,11 @@ type fakeNode struct {
 	deposits map[string]nodeDeposit
 	invalid  map[string]bool
 	sends    []nodeSend
+
+	// extra (M10) lets a test install additional RPC methods (the supervision
+	// and raw-issuance surface) without touching the shared dispatch. It runs
+	// under n.mu.
+	extra func(method string, params []json.RawMessage) (any, int, string, bool)
 }
 
 func newFakeNode(t *testing.T, prefix string, height int64) *fakeNode {
@@ -927,7 +932,7 @@ func (n *fakeNode) dispatch(method string, params []json.RawMessage) (any, int, 
 		emit := func(addr string, d nodeDeposit) {
 			out = append(out, map[string]any{
 				"txid": d.txid, "address": addr, "amount": amount8(d.atoms),
-				"asset": d.asset, "confirmations": d.confs,
+				"asset": d.asset, "confirmations": d.confs, "spendable": true,
 			})
 		}
 		if len(addrs) > 0 {
@@ -987,6 +992,13 @@ func (n *fakeNode) dispatch(method string, params []json.RawMessage) (any, int, 
 		}
 		return nil, -5, "Invalid or non-wallet transaction id"
 	case "signrawtransactionwithwallet":
+		// M10 extension hook first: the supervision/raw-issuance stub owns this
+		// method when installed (its handles are not hex the M6 shape understands).
+		if n.extra != nil {
+			if res, code, msg, ok := n.extra(method, params); ok {
+				return res, code, msg
+			}
+		}
 		// M6 atomic close: the escrow wallet partially signs its own USDX payment
 		// inputs over the built tx. The body is returned unchanged (complete=false:
 		// the enclave + fee inputs remain for openampd to finish).
@@ -996,6 +1008,11 @@ func (n *fakeNode) dispatch(method string, params []json.RawMessage) (any, int, 
 		}
 		return map[string]any{"hex": txHex, "complete": false}, 0, ""
 	default:
+		if n.extra != nil {
+			if res, code, msg, ok := n.extra(method, params); ok {
+				return res, code, msg
+			}
+		}
 		return nil, -32601, "method not found: " + method
 	}
 }

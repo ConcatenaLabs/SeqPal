@@ -22,6 +22,7 @@ const EXTS = new Set(['.js', '.jsx', '.mjs', '.ts', '.tsx'])
 // hyphen between words so "confidential-by-default" is caught too.
 const RULES = [
   { name: 'em-dash', test: (s) => s.includes('—'), why: 'no em dashes in user-visible copy (house style)' },
+  { name: 'en-dash', test: (s) => s.includes('–'), why: 'no en dashes in user-visible copy (house style)' },
   { name: 'permissionless', test: (s) => /permissionless/i.test(s), why: 'assets are permissioned and policy co-signed, never "permissionless"' },
   { name: 'the-SEQ-chain', test: (s) => /\bthe\s+SEQ\s+(chain|network)\b/i.test(s) || /\bSEQ\s+chain\b/i.test(s), why: 'the network is "the Sequentia network"; SEQ is the token ticker' },
   { name: 'confidential-by-default', test: (s) => /confidential[\s-]by[\s-]default/i.test(s), why: 'Sequentia is transparent by default; confidentiality is opt-in' },
@@ -79,6 +80,61 @@ function stripComments(src) {
     })
     .join('\n')
 }
+
+// ── Flow-surface protocol-name gate ─────────────────────────────────────────
+// The issuance wizard, product, pricing, and checkout surfaces speak PLAIN
+// BUSINESS LANGUAGE: the protocol names live only on the Documentation surface
+// (src/pages/Docs.jsx) and the technical verification explainer it hosts
+// (src/pages/Verify.jsx, mounted at /docs/verify). This gate fails if a
+// protocol name appears in the flow-surface page sources. Comments are
+// stripped first, and import/export lines are skipped so a module path like
+// '../../lib/openamp' never trips the gate; everything else in those files,
+// including code identifiers, must stay free of the names.
+const FLOW_SURFACES = [
+  'pages/onboarding/NewIssuance.jsx',
+  'pages/onboarding/Steps.jsx',
+  'pages/Home.jsx',
+  'pages/Products.jsx',
+  'pages/Structures.jsx',
+  'pages/Pricing.jsx',
+  'pages/Faq.jsx',
+  'components/Navbar.jsx',
+  'components/Footer.jsx',
+]
+
+const PROTOCOL_RULES = [
+  { name: 'OpenAMP', test: (s) => /open\s?amp\b/i.test(s) },
+  { name: 'OpenDAMP', test: (s) => /open\s?damp\b/i.test(s) },
+  { name: 'supervised-asset', test: (s) => /supervised[\s-](asset|bearer)/i.test(s) },
+  { name: 'enclave', test: (s) => /enclave/i.test(s) },
+  { name: 'covenant', test: (s) => /covenant/i.test(s) },
+  { name: 'policy-server', test: (s) => /policy[\s-]server/i.test(s) },
+  { name: 'co-sign', test: (s) => /co-?sign/i.test(s) },
+  { name: 'tier-letter', test: (s) => /\btier\s+[A-D]\b/i.test(s) },
+]
+
+test('flow surfaces: no protocol names (plain business language everywhere but /docs)', () => {
+  const violations = []
+  for (const rel of FLOW_SURFACES) {
+    const file = join(SRC, rel)
+    const stripped = stripComments(readFileSync(file, 'utf8'))
+    stripped.split('\n').forEach((line, idx) => {
+      if (/^\s*(import|export)\b/.test(line) || /\bfrom\s+['"]/.test(line)) return
+      for (const rule of PROTOCOL_RULES) {
+        if (rule.test(line)) {
+          violations.push({ file: `src/${rel}`, line: idx + 1, rule: rule.name, text: line.trim().slice(0, 120) })
+        }
+      }
+    })
+  }
+  if (violations.length) {
+    const report = violations.map((v) => `  ${v.file}:${v.line} [${v.rule}] ${v.text}`).join('\n')
+    assert.fail(
+      `${violations.length} protocol-name violation(s) on flow surfaces. These pages speak plain ` +
+        `business language; the protocol names belong on the Documentation surface only:\n${report}`
+    )
+  }
+})
 
 test('SPA copy: no em dashes, no permissionless / the SEQ chain / confidential by default', () => {
   const violations = []

@@ -214,7 +214,7 @@ func (s *server) settleOne(iss *Issuance, escrow *EnclaveKey, sub *Subscription,
 
 	// --- RELEASE --------------------------------------------------------------
 	if st.ReleaseTxid == "" {
-		fee, net := escrowFeeSplit(sub, s.cfg.escrowFeeBps)
+		fee, net, feeAccrued := s.escrowFeeFor(sub)
 		relMarker := "seqpal-rel-" + sub.ID
 		// Reconcile before any retry (mirrors delivery): if a prior attempt already
 		// broadcast the release (state "releasing" but no recorded txid), find it by
@@ -241,7 +241,10 @@ func (s *server) settleOne(iss *Issuance, escrow *EnclaveKey, sub *Subscription,
 		_ = s.st.UpdateSettlementFields(sub.ID, map[string]any{"release_txid": recTxid, "fee_atoms": fee, "state": "released"})
 		st.ReleaseTxid = recTxid
 		if !reconciled {
-			if fee > 0 {
+			// W-6: when the fee accrued at deposit confirmation, its ledger row
+			// already exists; writing a second one here would double-count the
+			// books. Only the legacy (pre-accrual, e.g. fiat) path records it now.
+			if fee > 0 && !feeAccrued {
 				_ = s.st.InsertLedger(&LedgerEntry{
 					SubscriptionID: sub.ID, IssuanceID: iss.ID, Kind: "escrow_fee", Rail: sub.Rail,
 					Amount: fee, Ccy: sub.PayCcy, FundsSimulated: sub.FundsSimulated,
@@ -262,8 +265,8 @@ func (s *server) settleOne(iss *Issuance, escrow *EnclaveKey, sub *Subscription,
 	return settleResult(sub, "settled", "")
 }
 
-// escrowFeeSplit divides a deposited amount into the accrued escrow fee (bps) and
-// the net paid out to the issuer. It is defensive: a fee that would meet or exceed
+// escrowFeeSplit divides a deposited amount into the escrow fee (bps) and the
+// net paid out to the issuer. It is defensive: a fee that would meet or exceed
 // the deposit is dropped so the release is never negative.
 func escrowFeeSplit(sub *Subscription, bps int64) (fee, net uint64) {
 	fee = sub.DepositedAtoms * uint64(bps) / 10000
@@ -274,6 +277,24 @@ func escrowFeeSplit(sub *Subscription, bps int64) (fee, net uint64) {
 		fee, net = 0, sub.DepositedAtoms
 	}
 	return fee, net
+}
+
+// escrowFeeFor is the W-6 fee source of truth at settlement time: the fee that
+// ACCRUED when the deposit confirmed (moneywatch wrote it to the ledger), never
+// a recomputation, so a bps change between deposit and close cannot move an
+// already-due fee. accrued=false means no accrual row exists (a fiat-funded
+// subscription, or one deposited before W-6), and the legacy split computes it.
+func (s *server) escrowFeeFor(sub *Subscription) (fee, net uint64, accrued bool) {
+	if f, ok, err := s.st.AccruedEscrowFee(sub.ID); err == nil && ok {
+		net = sub.DepositedAtoms
+		if net > f {
+			return f, net - f, true
+		}
+		// Defensive, like escrowFeeSplit: never a negative release.
+		return 0, sub.DepositedAtoms, true
+	}
+	f, n := escrowFeeSplit(sub, s.cfg.escrowFeeBps)
+	return f, n, false
 }
 
 // atomicEligible reports whether a subscription can settle as one atomic DvP tx:
@@ -293,14 +314,14 @@ func (s *server) atomicEligible(iss *Issuance, sub *Subscription) bool {
 // (nil, false) ONLY when the policy server has no payment leg and nothing was
 // broadcast, so settleOne can fall back to closing v1 cleanly.
 func (s *server) settleOneAtomic(iss *Issuance, escrow *EnclaveKey, sub *Subscription, st *Settlement, investor *Account, closeHeight int64) (map[string]any, bool) {
-	fee, net := escrowFeeSplit(sub, s.cfg.escrowFeeBps)
+	fee, net, feeAccrued := s.escrowFeeFor(sub)
 
 	// Reconcile a lost write: a prior attempt may have broadcast the atomic tx
 	// (state "settling", no recorded txid). Because delivery and release are the
 	// SAME transaction, a chain-backed balance scan showing the tokens landed proves
 	// BOTH legs settled; never rebroadcast in that case.
 	if st.State == "settling" && s.deliveryAlreadyDone(iss, sub) {
-		s.recordAtomicSettled(iss, sub, st, investor, "reconciled", fee, net, closeHeight, true)
+		s.recordAtomicSettled(iss, sub, st, investor, "reconciled", fee, net, closeHeight, true, feeAccrued)
 		return settleResult(sub, "settled", ""), true
 	}
 
@@ -324,7 +345,7 @@ func (s *server) settleOneAtomic(iss *Issuance, escrow *EnclaveKey, sub *Subscri
 		// Build failed for a real reason with nothing broadcast: reconcile once (in
 		// case an earlier attempt landed), else refund the full deposit.
 		if s.deliveryAlreadyDone(iss, sub) {
-			s.recordAtomicSettled(iss, sub, st, investor, "reconciled", fee, net, closeHeight, true)
+			s.recordAtomicSettled(iss, sub, st, investor, "reconciled", fee, net, closeHeight, true, feeAccrued)
 			return settleResult(sub, "settled", ""), true
 		}
 		return s.refundSubscription(iss, sub, st, "atomic close build failed: "+berr.Error()), true
@@ -337,12 +358,12 @@ func (s *server) settleOneAtomic(iss *Issuance, escrow *EnclaveKey, sub *Subscri
 	txid, cerr := s.completeAtomicTransfer(escrow, built)
 	if cerr != nil {
 		if s.deliveryAlreadyDone(iss, sub) {
-			s.recordAtomicSettled(iss, sub, st, investor, "reconciled", fee, net, closeHeight, true)
+			s.recordAtomicSettled(iss, sub, st, investor, "reconciled", fee, net, closeHeight, true, feeAccrued)
 			return settleResult(sub, "settled", ""), true
 		}
 		return s.refundSubscription(iss, sub, st, "atomic close failed: "+cerr.Error()), true
 	}
-	s.recordAtomicSettled(iss, sub, st, investor, txid, fee, net, closeHeight, false)
+	s.recordAtomicSettled(iss, sub, st, investor, txid, fee, net, closeHeight, false, feeAccrued)
 	return settleResult(sub, "settled", ""), true
 }
 
@@ -351,7 +372,7 @@ func (s *server) settleOneAtomic(iss *Issuance, escrow *EnclaveKey, sub *Subscri
 // stamps US-tranche vesting and marks the subscription settled. On a reconciled
 // close (a prior attempt already landed the tx) the ledger entries are skipped, so
 // a replay never double-writes the books, exactly like the v1 reconcile paths.
-func (s *server) recordAtomicSettled(iss *Issuance, sub *Subscription, st *Settlement, investor *Account, txid string, fee, net uint64, closeHeight int64, reconciled bool) {
+func (s *server) recordAtomicSettled(iss *Issuance, sub *Subscription, st *Settlement, investor *Account, txid string, fee, net uint64, closeHeight int64, reconciled, feeAccrued bool) {
 	_ = s.st.UpdateSettlementFields(sub.ID, map[string]any{
 		"delivery_txid": txid, "release_txid": txid, "fee_atoms": fee, "state": "settled"})
 	st.DeliveryTxid, st.ReleaseTxid = txid, txid
@@ -360,7 +381,8 @@ func (s *server) recordAtomicSettled(iss *Issuance, sub *Subscription, st *Settl
 			SubscriptionID: sub.ID, IssuanceID: iss.ID, Kind: "delivery", Rail: sub.Rail,
 			Amount: sub.TokenAtoms, Ccy: iss.Ticker, Txid: txid, FundsSimulated: sub.FundsSimulated,
 		})
-		if fee > 0 {
+		// W-6: an accrued fee is already on the ledger; do not double-write it.
+		if fee > 0 && !feeAccrued {
 			_ = s.st.InsertLedger(&LedgerEntry{
 				SubscriptionID: sub.ID, IssuanceID: iss.ID, Kind: "escrow_fee", Rail: sub.Rail,
 				Amount: fee, Ccy: sub.PayCcy, FundsSimulated: sub.FundsSimulated,
@@ -646,6 +668,15 @@ func (s *server) maybeStampVesting(iss *Issuance, sub *Subscription, investor *A
 // refund) and marks the subscription refunded.
 func (s *server) refundSubscription(iss *Issuance, sub *Subscription, st *Settlement, reason string) map[string]any {
 	refMarker := "seqpal-ref-" + sub.ID
+	// W-6: the escrow fee accrued at deposit confirmation is due regardless of
+	// outcome, so it is WITHHELD from the refund. Its ledger row (written at
+	// accrual) is the record of the withholding; the refund row carries the net.
+	feeWithheld := uint64(0)
+	refundAtoms := sub.DepositedAtoms
+	if f, ok, err := s.st.AccruedEscrowFee(sub.ID); err == nil && ok && f < refundAtoms {
+		feeWithheld = f
+		refundAtoms -= f
+	}
 	// Reconcile before any retry: if a prior attempt already broadcast the refund
 	// (state "refunding" but no recorded txid), find it by its comment and record it
 	// rather than re-sending from the commingled escrow wallet.
@@ -653,9 +684,9 @@ func (s *server) refundSubscription(iss *Issuance, sub *Subscription, st *Settle
 		if txid, found := s.escrowFindSend(sub.Rail, refMarker); found {
 			_ = s.st.InsertLedger(&LedgerEntry{
 				SubscriptionID: sub.ID, IssuanceID: iss.ID, Kind: "refund", Rail: sub.Rail,
-				Amount: sub.DepositedAtoms, Ccy: sub.PayCcy, Txid: txid, FundsSimulated: false,
+				Amount: refundAtoms, Ccy: sub.PayCcy, Txid: txid, FundsSimulated: false,
 			})
-			_ = s.st.UpdateSettlementFields(sub.ID, map[string]any{"state": "refunded", "refund_txid": txid})
+			_ = s.st.UpdateSettlementFields(sub.ID, map[string]any{"state": "refunded", "refund_txid": txid, "fee_atoms": feeWithheld})
 			_ = s.st.UpdateSubscriptionFields(sub.ID, map[string]any{"state": "refunded"})
 			res := settleResult(sub, "refunded", reason)
 			res["refund_txid"] = txid
@@ -668,12 +699,12 @@ func (s *server) refundSubscription(iss *Issuance, sub *Subscription, st *Settle
 	var err error
 	switch sub.Rail {
 	case "usdx":
-		if sub.DepositedAtoms > 0 && sub.RefundAddress != "" {
-			txid, err = s.releaseUSDX(sub.RefundAddress, sub.DepositedAtoms, refMarker)
+		if refundAtoms > 0 && sub.RefundAddress != "" {
+			txid, err = s.releaseUSDX(sub.RefundAddress, refundAtoms, refMarker)
 		}
 	case "btc":
-		if sub.DepositedAtoms > 0 && sub.RefundAddress != "" {
-			txid, err = s.sendBTC(sub.RefundAddress, sub.DepositedAtoms, refMarker)
+		if refundAtoms > 0 && sub.RefundAddress != "" {
+			txid, err = s.sendBTC(sub.RefundAddress, refundAtoms, refMarker)
 		}
 	case "card", "bank":
 		txid, err = s.refundFiatForSubscription(sub)
@@ -685,13 +716,14 @@ func (s *server) refundSubscription(iss *Issuance, sub *Subscription, st *Settle
 	if txid != "" && !sub.FundsSimulated {
 		_ = s.st.InsertLedger(&LedgerEntry{
 			SubscriptionID: sub.ID, IssuanceID: iss.ID, Kind: "refund", Rail: sub.Rail,
-			Amount: sub.DepositedAtoms, Ccy: sub.PayCcy, Txid: txid, FundsSimulated: false,
+			Amount: refundAtoms, Ccy: sub.PayCcy, Txid: txid, FundsSimulated: false,
 		})
 	}
-	_ = s.st.UpdateSettlementFields(sub.ID, map[string]any{"state": "refunded", "refund_txid": txid})
+	_ = s.st.UpdateSettlementFields(sub.ID, map[string]any{"state": "refunded", "refund_txid": txid, "fee_atoms": feeWithheld})
 	_ = s.st.UpdateSubscriptionFields(sub.ID, map[string]any{"state": "refunded"})
 	s.st.Audit(sub.InvestorAID, "settle.refund", map[string]any{
 		"issuance_id": iss.ID, "sub": sub.ID, "refund_txid": txid, "reason": reason,
+		"refund_atoms": refundAtoms, "fee_withheld": feeWithheld,
 	})
 	res := settleResult(sub, "refunded", reason)
 	res["refund_txid"] = txid

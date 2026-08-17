@@ -43,7 +43,19 @@ SEQPALD_DB=/var/lib/seqpald/seqpald.db
 # Set to 1 only on a confidentiality-enabled node. Sequentia is transparent by
 # default and the public testnet node runs transparent, so leave this unset.
 SEQPALD_CONFIDENTIAL=
+# OpenDAMP capability flag (M10). Leave unset: a deploy electing
+# enforcement=network is refused 501 (the election is still recorded) until an
+# OpenDAMP deployment exists and this is set to 1. /api/health reports it as
+# "damp".
+SEQPALD_DAMP=
 ```
+
+Bearer (supervised) issuance and the W-3 corporate-action snapshots also depend
+on two variables that already exist for other features: `SEQPALD_NODE_URL` /
+`SEQPALD_NODE_USER` / `SEQPALD_NODE_PASS` (the node RPC now also carries the raw
+issuance flow and the supervision RPCs, and the seqpal-escrow wallet funds and
+receives bearer mints) and `SEQPALD_ELECTRS_URL` (the snapshot walker reads the
+asset index at `/asset/<id>/txs/chain` with `/tx/<txid>/outspend/<vout>`).
 
 ## 2. Pre-deploy probe
 

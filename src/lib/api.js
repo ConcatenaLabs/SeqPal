@@ -45,9 +45,12 @@ async function req(path, { method = 'GET', body } = {}) {
 }
 
 // ── public ──────────────────────────────────────────────────────────────
-// { ok, network, confidential, openamp_ok, issuer_token_ok }. ok is an
+// { ok, network, confidential, damp, openamp_ok, issuer_token_ok }. ok is an
 // authenticated upstream probe, so a false here means deployment really would
 // fail, and the UI can say so before checkout instead of at the mint.
+// `confidential` and `damp` are per-deployment capabilities: whether a
+// confidential mint, respectively a network-enforced (damp) deploy, would
+// succeed here rather than be refused with a 501.
 export const health = () => req('/health')
 
 export const challenge = (xonly) =>
@@ -389,6 +392,71 @@ export const drRedeem = (id, body) =>
 // The chain-derived circulating supply alone: { asset, circulating_atoms, height,
 // supply_source:'chain-derived' }. Never a stored counter.
 export const drSupply = (id) => req(`/issuances/${encodeURIComponent(id)}/dr/supply`)
+
+// ── bearer (freely-tradable) issuance ───────────────────────────────────────
+// Record the signed bearer attestation before a freely-tradable deploy. Body
+// { issuance_id, no_us_nexus, risk_accepted, aid, pubkey, sig } where sig is
+// the session key's tagged signature (keys.signBearerAttestation, tag
+// seqpal-bearer-attestation-v1) over sha256 of the canonical JSON of
+// { issuance_id, no_us_nexus, risk_accepted, aid }. Owner session only. The
+// deploy refuses a bearer issuance whose attestation is not on record.
+export const bearerAttestation = (id, body) =>
+  req(`/issuances/${encodeURIComponent(id)}/bearer-attestation`, { method: 'POST', body })
+
+// ── supervision: court-ordered freezes on a bearer asset ────────────────────
+// The supervision status for a bearer issuance: { supervised, enforcement,
+// asset, operational_key, recovery_key, pause, freezes:[{targethash, records,
+// txids, target?}], ops:[{id, kind, target, reason, order_hash, state, txid,
+// channel}] }. freezes is the consensus register (what the chain enforces);
+// ops is this platform's operation history carrying the human context (the
+// reason and the order fingerprint). Owner session only.
+export const supervision = (id) => req(`/issuances/${encodeURIComponent(id)}/supervision`)
+
+// Start a freeze or unfreeze; action is 'freeze' | 'unfreeze'. Body
+// { target_address, reason, order_hash } (order_hash = sha256 hex of the
+// court/regulator order document, computed in the browser; it is recorded
+// publicly beside the freeze; an unfreeze may instead name { freeze_id }).
+// Two-phase like a clawback: this BUILDS the operation and returns
+// { freeze_id | unfreeze_id, to_sign, ... } where to_sign is the raw 64-hex
+// 32-byte node-produced message the CURRENT operational key must sign
+// (keys.signSupervisionMessage); nothing takes effect until complete. On a
+// bearer deploy the operational key is the issuer's own session key.
+export const supervisionStart = (id, action, body) =>
+  req(`/issuances/${encodeURIComponent(id)}/supervision/${encodeURIComponent(action)}`, {
+    method: 'POST',
+    body,
+  })
+
+// Complete a supervision operation with the issuer's signature over the
+// 32-byte message. Body { sig }. Returns { freeze_id | unfreeze_id, txid,
+// state, channel? }; a replay returns the same txid with idempotent:true.
+export const supervisionComplete = (id, action, opId, body) =>
+  req(
+    `/issuances/${encodeURIComponent(id)}/supervision/${encodeURIComponent(action)}/${encodeURIComponent(opId)}/complete`,
+    { method: 'POST', body },
+  )
+
+// ── shareholder actions (corporate actions) ─────────────────────────────────
+// Owner: declare a dividend or a vote. Body { kind:'dividend'|'vote', memo,
+// record_height?, pool_atoms? (dividend), choices? (vote) } → { action }. The
+// snapshot of who holds what is taken from the on-chain register at the first
+// pass at or after the record height, never restated.
+export const createAction = (id, body) =>
+  req(`/issuances/${encodeURIComponent(id)}/actions`, { method: 'POST', body })
+
+// Owner: every declared action for an issuance: { actions:[...] }.
+export const listActions = (id) => req(`/issuances/${encodeURIComponent(id)}/actions`)
+
+// One action with its status, snapshot summary, tally, and claims. Readable by
+// any holder who has the action id (the claim link).
+export const getAction = (actionId) => req(`/actions/${encodeURIComponent(actionId)}`)
+
+// Claim an action as a holder. Body { pubkey, outpoints, payout_address|choice,
+// sig } where sig is the tagged holding proof (keys.signHoldingProof, tag
+// seqpal-holding-proof-v1) binding the outpoints and the payout address or
+// ballot choice to the claimant's key.
+export const claimAction = (actionId, body) =>
+  req(`/actions/${encodeURIComponent(actionId)}/claim`, { method: 'POST', body })
 
 // ── platform reviewer (admin-session only) ──────────────────────────────────
 export const reviewQueue = () => req('/admin/review-queue')

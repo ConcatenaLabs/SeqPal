@@ -6,12 +6,15 @@ import {
   encryptKey,
   generateEnclaveKey,
   signChallenge,
+  signBearerAttestation,
   signClawbackSighash,
   signClosing,
   signDocument,
+  signHoldingProof,
   signMandate,
   signSighash,
   signStatement,
+  signSupervisionMessage,
 } from './keys'
 
 // localStorage holds exactly two things, and neither is a financial fact:
@@ -315,6 +318,34 @@ export function StoreProvider({ children }) {
     return sigs
   }
 
+  // Sign the bearer attestation for a freely-tradable issuance with the
+  // session's in-memory key (tagged, over sha256 of the canonical JSON of the
+  // attestation fields). Returns null when locked.
+  const signBearerStmt = (fields) => (priv ? signBearerAttestation(priv, fields) : null)
+
+  // Sign a corporate-action holding proof with the session's in-memory key
+  // (tagged seqpal-holding-proof-v1). Returns null when locked.
+  const signHoldingStmt = (fields) => (priv ? signHoldingProof(priv, fields) : null)
+
+  // Sign one supervision (court-ordered freeze / unfreeze) message with the
+  // session's in-memory ISSUER key. to_sign is the raw 64-hex node-produced
+  // message from the supervision build. On a bearer deploy the operational key
+  // IS this session key by construction (the deploy refuses any other), which
+  // is what preserves the oracle guard here: a message only reaches this signer
+  // from a freeze or lift this issuer initiated on their own issuance, and when
+  // a pubkey does ride along it is still checked. Uses the distinct supervision
+  // signer so the intent is unambiguous at the call site. Returns null when the
+  // key is locked.
+  const signSupervision = (toSign) => {
+    if (!priv) return null
+    const mine = envelope?.xonly || account?.xonly
+    if (toSign?.pubkey && toSign.pubkey.toLowerCase() !== String(mine).toLowerCase()) {
+      throw new Error('This freeze asks for a signature from a key you do not hold. Nothing was signed.')
+    }
+    const msg = typeof toSign === 'string' ? toSign : toSign.message || toSign.sighash
+    return signSupervisionMessage(priv, msg)
+  }
+
   // ── in-memory simulation (portal drafts, subscriptions, servicing) ──
   // The latest chain-watch event for an issuance, or undefined until the SSE
   // stream delivers one (the surface then shows a distinct "awaiting" chip
@@ -356,6 +387,9 @@ export function StoreProvider({ children }) {
     signCloseStmt,
     signTransferSigs,
     signClawbackSigs,
+    signBearerStmt,
+    signHoldingStmt,
+    signSupervision,
     xonly: envelope?.xonly || account?.xonly,
     hasKey: !!priv,
     watch,

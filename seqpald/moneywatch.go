@@ -26,6 +26,10 @@ func (s *server) watchDeposits() {
 	s.watchSubscriptionDeposits()
 	s.watchFeeDeposits()
 	s.watchDistributionDeposits()
+	// W-3 corporate actions: fund-first dividend deposits, then any claims the
+	// funding just made payable.
+	s.watchActionDeposits()
+	s.payDueActionClaims()
 }
 
 func (s *server) watchSubscriptionDeposits() {
@@ -71,6 +75,12 @@ func (s *server) creditSubscription(sub *Subscription, dep deposit, btcRate floa
 	// and an audit note; the investor tops up or it is refunded on close abandonment.
 	sufficient := dep.Atoms >= sub.PayAmount
 	if dep.Confirmations >= s.cfg.escrowConfs && sufficient {
+		// W-6: the escrow fee accrues NOW, at deposit confirmation, due
+		// regardless of outcome. Written BEFORE the state flip so a crash
+		// between the two is healed by the next tick (the sub is still
+		// 'created', the accrual insert is idempotent); closing and refund
+		// consume this figure instead of recomputing.
+		s.accrueEscrowFee(sub, dep)
 		fields["state"] = "in_escrow"
 		if sub.Rail == "btc" && btcRate > 0 {
 			fields["usd_rate"] = btcRate
@@ -128,6 +138,32 @@ func (s *server) watchFeeDeposits() {
 		}
 		s.onFeeDepositConfirmed(inv, dep.Txid, dep.Atoms)
 	}
+}
+
+// accrueEscrowFee writes the W-6 deposit-time fee accrual: bps on the deposited
+// amount, one kind='escrow_fee' ledger row per subscription, idempotent (the
+// existing row IS the accrual). A zero-bps or zero-fee deposit accrues nothing;
+// closing then falls back to computing (the same zero).
+func (s *server) accrueEscrowFee(sub *Subscription, dep deposit) {
+	if _, ok, err := s.st.AccruedEscrowFee(sub.ID); err != nil || ok {
+		return
+	}
+	fee := mulDiv(dep.Atoms, uint64(s.cfg.escrowFeeBps), 10000)
+	if fee == 0 {
+		return
+	}
+	if err := s.st.InsertLedger(&LedgerEntry{
+		SubscriptionID: sub.ID, IssuanceID: sub.IssuanceID, Kind: "escrow_fee", Rail: sub.Rail,
+		Amount: fee, Ccy: sub.PayCcy, FundsSimulated: false,
+	}); err != nil {
+		log.Printf("moneywatch: accrue escrow fee %s: %v", sub.ID, err)
+		return
+	}
+	s.st.Audit(sub.InvestorAID, "escrow.fee_accrued", map[string]any{
+		"issuance_id": sub.IssuanceID, "sub": sub.ID, "fee_atoms": fee,
+		"deposited": dep.Atoms, "bps": s.cfg.escrowFeeBps,
+		"note": "the escrow fee accrues at deposit confirmation and is due regardless of outcome",
+	})
 }
 
 // runFiatCron drives the SIMULATED fiat processor's pending->settled transitions.

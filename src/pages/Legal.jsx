@@ -264,6 +264,29 @@ export default function Legal() {
         </p>
       </div>
 
+      {/* Business continuity, honestly disclosed */}
+      <div className="card mt-6 p-6">
+        <h2 className="font-bold text-ink-900">Business continuity</h2>
+        <p className="mt-2 text-sm leading-relaxed text-ink-700/85">
+          SeqPal’s transfer service, its books and records, and the credential that lets the platform
+          mint all run on one server today, with backups and a restore runbook. That is the honest
+          shape of this deployment, and it is disclosed rather than dressed up. If that server is
+          down, transfers of standard restricted assets pause until it is restored; tokens whose
+          rules the network enforces, and freely-tradable tokens, keep trading regardless.
+        </p>
+        <p className="mt-2 text-sm leading-relaxed text-ink-700/85">
+          Nothing held on chain is at stake in a server loss: assets, balances, and the register
+          live on the Sequentia network, and the platform’s records restore from backup. The
+          approval key sits behind a clean seam in the software, so replacing the single signer with
+          a group of signers that approve jointly changes no address and no asset id: a stronger
+          signing setup never strands an issued asset. The technical detail is on the{' '}
+          <Link to="/docs" className="font-medium text-seq-600 hover:underline">
+            Documentation
+          </Link>{' '}
+          page.
+        </p>
+      </div>
+
       {/* Per-jurisdiction: the issuer's obligations */}
       <div className="mt-8">
         <h2 className="text-xl font-bold text-ink-900">
@@ -321,7 +344,7 @@ export default function Legal() {
         <Link to="/status" className="font-medium text-seq-600 hover:underline">
           Status
         </Link>
-        <Link to="/verify" className="font-medium text-seq-600 hover:underline">
+        <Link to="/docs/verify" className="font-medium text-seq-600 hover:underline">
           Verify independently
         </Link>
       </div>

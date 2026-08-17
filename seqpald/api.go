@@ -311,6 +311,7 @@ func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"ok":              openampOK && issuerOK,
 		"network":         s.cfg.network,
 		"confidential":    s.cfg.confidential,
+		"damp":            s.cfg.damp,
 		"openamp_ok":      openampOK,
 		"issuer_token_ok": issuerOK,
 	})
