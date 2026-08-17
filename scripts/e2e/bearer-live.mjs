@@ -7,7 +7,9 @@ import {
   generateRecoveryKey,
   signChallenge,
   signBearerAttestation,
+  signSupervisionMessage,
 } from '../../src/lib/keys.js'
+import { createHash, randomBytes } from 'node:crypto'
 
 const BASE = process.env.SEQPAL_BASE || 'https://sequentiatestnet.com/seqpal/api'
 let cookie = ''
@@ -73,7 +75,7 @@ must(
 const iss = must(
   await call('POST', '/issuances', {
     name: 'Bearer Equity Live Proof',
-    ticker: 'BLPRF',
+    ticker: 'BL' + randomBytes(2).toString('hex').toUpperCase().slice(0, 4),
     structure_id: 'native-equity',
   }),
   'create issuance',
@@ -122,4 +124,68 @@ if (dep.status === 402) {
 } else {
   const d = must(dep, 'deploy')
   console.log(JSON.stringify(d, null, 1))
+
+  // 6. Wait for the mint to confirm: the chain's supervision registry only
+  // learns the asset at its first confirmation, and a freeze cannot be built
+  // before that.
+  let known = null
+  for (let i = 0; i < 40; i++) {
+    known = (await call('GET', `/issuances/${issId}/supervision`)).data
+    if (known && known.supervised) break
+    await new Promise((r) => setTimeout(r, 4000))
+  }
+  console.log('supervised     ', known && known.supervised)
+
+  // 7. Court-order freeze drill: freeze the treasury address, verify the
+  // consensus register shows it, then lift it. The operational key is this
+  // session's own key by construction.
+  const target = d.treasury_address
+  const orderHash = createHash('sha256').update('SIMULATED court order: freeze ' + target).digest('hex')
+  const fz = must(
+    await call('POST', `/issuances/${issId}/supervision/freeze`, {
+      target_address: target,
+      reason: 'live drill: simulated asset-freeze order',
+      order_hash: orderHash,
+    }),
+    'freeze build',
+  )
+  console.log('freeze to_sign ', fz.to_sign, 'freezable:', fz.freezable)
+  const fsig = signSupervisionMessage(key.priv, fz.to_sign)
+  const fdone = must(
+    await call('POST', `/issuances/${issId}/supervision/freeze/${fz.freeze_id}/complete`, { sig: fsig }),
+    'freeze complete',
+  )
+  console.log('freeze txid    ', fdone.txid, 'channel:', fdone.channel)
+
+  // Wait for the record to confirm, then check the register.
+  let sup = null
+  for (let i = 0; i < 30; i++) {
+    sup = (await call('GET', `/issuances/${issId}/supervision`)).data
+    if (sup && (sup.freezes || []).length > 0) break
+    await new Promise((r) => setTimeout(r, 4000))
+  }
+  console.log('register       ', JSON.stringify(sup && sup.freezes))
+
+  if (sup && (sup.freezes || []).length > 0) {
+    const uf = must(
+      await call('POST', `/issuances/${issId}/supervision/unfreeze`, {
+        target_address: target,
+        reason: 'live drill: order lifted',
+        order_hash: orderHash,
+      }),
+      'unfreeze build',
+    )
+    const usig = signSupervisionMessage(key.priv, uf.to_sign)
+    const udone = must(
+      await call('POST', `/issuances/${issId}/supervision/unfreeze/${uf.unfreeze_id}/complete`, { sig: usig }),
+      'unfreeze complete',
+    )
+    console.log('unfreeze txid  ', udone.txid)
+    for (let i = 0; i < 30; i++) {
+      sup = (await call('GET', `/issuances/${issId}/supervision`)).data
+      if (sup && (sup.freezes || []).length === 0) break
+      await new Promise((r) => setTimeout(r, 4000))
+    }
+    console.log('register after ', JSON.stringify(sup && sup.freezes))
+  }
 }
