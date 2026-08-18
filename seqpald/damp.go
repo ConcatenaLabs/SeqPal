@@ -95,6 +95,22 @@ type dampCompleteResponse struct {
 // than merely correct.
 const dampParamsMissing = "this deployment is prepared but not minted: your registrar must run `opendamp derive` against the document in this response and return its program identities and policy commitment, which you then submit with this deploy again. Nothing has been minted."
 
+// maxCoinsPerTransfer is how many coins of a network-enforced token a holder can
+// combine in ONE transfer.
+//
+// It is not a platform setting and not something an issuer can raise later: the
+// on-chain rules program checks each of a transfer's inputs and outputs against
+// the published lists, so the number of slots it checks is fixed when the program
+// is compiled, and that number is part of the program's identity. The shipped
+// program bounds a transfer to four inputs and six outputs, which leaves room for
+// two of the holder's own coins. A holder with more coins than that makes more
+// than one transfer.
+//
+// Every issuer-facing surface that offers network enforcement states this, because
+// discovering it at the moment a transfer fails would be the worst place to learn
+// it.
+const maxCoinsPerTransfer = 2
+
 func (s *server) deployNetwork(w http.ResponseWriter, acct *Account, iss *Issuance, p dampDeployParams) {
 	refuse := func(code int, reason string) {
 		s.st.Audit(acct.AID, "deploy.refused", map[string]any{

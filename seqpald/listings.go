@@ -108,7 +108,26 @@ func (s *server) handleListings(w http.ResponseWriter, r *http.Request) {
 				"note": "no issuer listing authorization on record; a venue can check eligibility separately at /api/eligibility"})
 			return
 		}
-		writeJSON(w, 200, map[string]any{"listing": l, "authorized": true})
+		out := map[string]any{"listing": l, "authorized": true}
+		// For a token whose rules the network enforces, a venue's real question is
+		// answered by the PUBLISHED HOLDER LIST rather than by anything this platform
+		// stamps, so the read carries that list's version and commitment. A venue can
+		// fetch the same document itself and reach the same answer, which is the point.
+		if iss, _ := s.st.IssuanceByAsset(asset); networkEnforced(iss) {
+			out["enforcement"] = "network"
+			out["eligibility_source"] = "the published holder list for this token, which the network itself checks on every transfer"
+			out["max_coins_per_transfer"] = maxCoinsPerTransfer
+			var pol publishedPolicy
+			if err := s.callOpenAMP("GET", "/v1/snapshots?asset="+asset, "", nil, &pol); err == nil {
+				out["policy"] = map[string]any{
+					"list_version":      pol.Seq,
+					"commitment":        pol.Pi,
+					"holder_count":      len(pol.Snapshot.Predicates.Whitelist.Entries),
+					"frozen_coin_count": len(pol.Snapshot.Predicates.Blacklist.Entries),
+				}
+			}
+		}
+		writeJSON(w, 200, out)
 		return
 	}
 	listings, err := s.st.AuthorizedListings(issuer)

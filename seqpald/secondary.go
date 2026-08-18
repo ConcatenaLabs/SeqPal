@@ -162,6 +162,16 @@ func (s *server) handleP2PInitiate(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 404, "not a SeqPal-managed asset")
 		return
 	}
+	// A token whose rules the network enforces needs neither this platform's
+	// approval nor its signature, and it has neither to give: there is no platform
+	// account holding the units and no co-signature in the transfer at all. The
+	// holder sends it themselves. Saying that plainly is the whole value of this
+	// branch, because the build below would otherwise ask for a signature over an
+	// account that holds nothing.
+	if s.refuseForNetwork(w, acct.AID, iss, "p2p",
+		"This token's rules are enforced by the network, so a transfer needs no approval and no signature from this platform. Send it from your own wallet: your wallet reads the published holder list and the frozen coins, builds the transfer against them, and the network checks it. Nothing here can build or approve it for you.") {
+		return
+	}
 
 	// Platform-layer market-abuse gate: the transfer surfaces are enabled only
 	// after the once-per-investor acknowledgment is on record.

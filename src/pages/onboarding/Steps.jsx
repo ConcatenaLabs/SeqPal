@@ -370,8 +370,9 @@ const ENFORCEMENT_MODELS = [
     body: 'Investors verify with SeqPal ID exactly as in the standard option, and only verified investors can hold this token. The difference: the network itself enforces your rules, so trading between approved investors keeps working even when SeqPal’s service is offline.',
     goodFor: 'Tokens that must keep trading no matter what, such as compliant stablecoins.',
     tradeoffs: [
-      'Rules are simpler: approved lists, blocked lists, transfer limits.',
+      'Rules are simpler: approved lists, blocked lists, holding periods, transfer limits.',
       'Rule changes and newly verified investors take effect when the updated list is published, not instantly.',
+      'A holder can combine at most two of their coins of this token in a single transfer, so a holder with more makes more than one transfer. One transfer also moves the coins of a single holder, so two holders cannot pay from the same transfer. Both are fixed when the token is created and cannot be raised later.',
       'Who holds what is public.',
     ],
     regulatory:

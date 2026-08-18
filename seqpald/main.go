@@ -315,6 +315,15 @@ func (s *server) handler() http.Handler {
 	mux.HandleFunc("POST /api/issuances/{id}/supervision/unfreeze", s.requireSession(s.handleSupervisionUnfreeze))
 	mux.HandleFunc("POST /api/issuances/{id}/supervision/unfreeze/{fid}/complete", s.requireSession(s.handleSupervisionUnfreezeComplete))
 
+	// M13 network enforcement: the holder-list and frozen-coin console for a live
+	// network-enforced asset. Same shape as the bearer console above and the same
+	// custody line: seqpald holds no key, the build returns the 32-byte message the
+	// issuer signs in their own browser, and only a signed change is published.
+	mux.HandleFunc("GET /api/issuances/{id}/policy", s.requireSession(s.handlePolicyStatus))
+	mux.HandleFunc("POST /api/issuances/{id}/policy/freeze", s.requireSession(s.handlePolicyFreeze))
+	mux.HandleFunc("POST /api/issuances/{id}/policy/unfreeze", s.requireSession(s.handlePolicyUnfreeze))
+	mux.HandleFunc("POST /api/issuances/{id}/policy/{opID}/complete", s.requireSession(s.handlePolicyComplete))
+
 	// M10 corporate actions (W-3): owner creates; the list and detail are
 	// PUBLIC (outpoints, atoms, tallies; never identities); claiming requires a
 	// session with a verified SeqPal ID (the endpoint-KYC gate).

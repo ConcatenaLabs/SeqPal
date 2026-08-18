@@ -355,6 +355,15 @@ func (s *server) handleEligibility(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "aid and asset query parameters are required")
 		return
 	}
+	// A token whose rules the network enforces has no category stamps to evaluate:
+	// who may hold it is the PUBLISHED HOLDER LIST, which the chain itself checks on
+	// every transfer. Answering from the category rules here would report an
+	// eligibility that no transfer respects, in either direction, so this branch
+	// reads the published list instead.
+	if iss, _ := s.st.IssuanceByAsset(asset); networkEnforced(iss) {
+		s.eligibilityFromPublishedList(w, aid, asset)
+		return
+	}
 	var user openampUser
 	if err := s.callOpenAMP("GET", "/v1/users/"+aid, "", nil, &user); err != nil {
 		writeJSON(w, 200, map[string]any{"aid": aid, "asset": asset, "eligible": false,

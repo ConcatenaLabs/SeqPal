@@ -42,6 +42,15 @@ func (s *server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 409, "the offer window for this issuance is closed")
 		return
 	}
+	// A subscription is a promise of delivery, and for a token whose rules the
+	// network enforces the delivery goes to the investor's own holding address and
+	// only the issuer's own wallet can sign it. Taking money for a delivery this
+	// platform cannot make would be the worst possible silence, so it refuses here,
+	// before an escrow address exists.
+	if s.refuseForNetwork(w, acct.AID, iss, "subscribe",
+		"This token's rules are enforced by the network, and this platform does not run its initial sale: the tokens are delivered to each investor's own holding address, which only the issuer's own wallet can sign. Subscriptions are open for tokens whose transfers this platform services.") {
+		return
+	}
 
 	var req subscribeReq
 	if err := readJSON(r, &req); err != nil {

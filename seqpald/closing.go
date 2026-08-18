@@ -42,6 +42,16 @@ func (s *server) handleClose(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 409, "this issuance is not live on chain")
 		return
 	}
+	// Closing IS the delivery, and for a token whose rules the network enforces the
+	// delivery is a transfer out of the issuer's own wallet into each investor's own
+	// holding address. This platform holds no such account and can sign no such
+	// transfer, so it refuses before the offer window closes and before any payment
+	// is released. Refusing at the entry point covers the whole state machine below:
+	// settleOne is reached from nowhere else.
+	if s.refuseForNetwork(w, acct.AID, iss, "close",
+		"This token's rules are enforced by the network, so this platform cannot deliver it: delivery goes to each investor's own holding address and only the issuer's own wallet can sign it. Closing runs for tokens whose transfers this platform services.") {
+		return
+	}
 	var req closeReq
 	if err := readJSON(r, &req); err != nil {
 		writeErr(w, 400, "bad request body")
