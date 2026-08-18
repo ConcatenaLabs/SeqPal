@@ -440,6 +440,44 @@ export const supervisionComplete = (id, action, opId, body) =>
     { method: 'POST', body },
   )
 
+// ── holder list and frozen coins on a network-enforced token ────────────────
+// The token's rules live in a list the network itself reads on every transfer,
+// so the two controls an issuer keeps are changing who may hold it and stopping
+// one specific coin. Both take effect when the updated list is published and the
+// on-chain rules output has moved onto it, never the moment the issuer presses a
+// button.
+//
+// The read: { network_enforced, max_coins_per_transfer, published: { seq,
+// commitment, holders:[{key, can_send_from_block?, can_receive_from_block?}],
+// frozen_coin_count, frozen_coin_prints }, ops:[...] }. ops is this platform's
+// change history, carrying the reason and the order fingerprint beside the
+// chain facts. Owner session only.
+export const policy = (id) => req(`/issuances/${encodeURIComponent(id)}/policy`)
+
+// Start a change; action is 'freeze' | 'unfreeze'. Body { holders:[key],
+// coins:[{txid,vout}], reason, order_hash } where order_hash is the sha256 of
+// the order document, computed in the browser: only the fingerprint is sent and
+// only the fingerprint is published. Returns { op_id, to_sign, ... }; nothing is
+// published until complete. A replay of the same order against the same targets
+// resumes the same change rather than opening a second one.
+export const policyStart = (id, action, body) =>
+  req(`/issuances/${encodeURIComponent(id)}/policy/${encodeURIComponent(action)}`, {
+    method: 'POST',
+    body,
+  })
+
+// Complete a change with the issuer's signature over the 32-byte message, plus
+// the two values only the issuer's registrar can produce (the recompiled rules
+// program and the finished rules transaction). Body { sig, verifier_program,
+// verifier_address?, rules_tx }. Without the registrar values the call answers
+// 409 carrying the document to compile against and the commands to run, which is
+// a step in the flow rather than a failure.
+export const policyComplete = (id, opId, body) =>
+  req(`/issuances/${encodeURIComponent(id)}/policy/${encodeURIComponent(opId)}/complete`, {
+    method: 'POST',
+    body,
+  })
+
 // ── shareholder actions (corporate actions) ─────────────────────────────────
 // Owner: declare a dividend or a vote. Body { kind:'dividend'|'vote', memo,
 // record_height?, pool_atoms? (dividend), choices? (vote) } → { action }. The

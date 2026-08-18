@@ -70,14 +70,56 @@ export default function Docs() {
             <p className="mt-1.5">
               The network-enforced model is <span className="font-semibold">OpenDAMP</span>
               (decentralized asset management policy): the issuer&rsquo;s rules, approved
-              lists, blocked lists, and transfer limits are published as on-chain
-              covenants that the Sequentia network&rsquo;s own validation enforces on every
-              spend. No SeqPal service touches a transfer: SeqPal verifies investors,
-              publishes the rule lists, and services the register, and trading between
-              approved holders keeps working even if every SeqPal service is offline. The
-              trade-offs follow from the mechanism: rules are simpler than OpenAMP&rsquo;s,
-              a rule change or a newly verified investor takes effect when the updated
-              list is published on chain rather than instantly, and holdings are public.
+              lists, blocked lists, per-holder height bounds, and transfer limits are
+              published as on-chain covenants that the Sequentia network&rsquo;s own
+              validation enforces on every spend. No SeqPal service touches a transfer:
+              SeqPal verifies investors, publishes the rule lists, and services the
+              register, and trading between approved holders keeps working even if every
+              SeqPal service is offline. The trade-offs follow from the mechanism: rules
+              are simpler than OpenAMP&rsquo;s, a rule change or a newly verified investor
+              takes effect when the updated list is published on chain rather than
+              instantly, and holdings are public.
+            </p>
+            <p className="mt-2">
+              Mechanically, an asset A is issued with a companion verifier asset V. Each
+              holding sits in a user covenant C_U(X) keyed by the holder&rsquo;s own x-only
+              key, and every regulated transfer must also spend the single verifier output
+              C_V(pi), which carries a fixed amount q of V and runs the policy program
+              P(pi). P is compiled against the policy commitment pi, so a different
+              whitelist root, blacklist root or transfer limit is a different program, a
+              different taproot address, and a stale proof cannot be pruned into a valid
+              spend. The whitelist is a depth-16 sorted tree (dmt-v1) whose leaf is
+              SHA256(0x00 || key || BE32(send_after) || BE32(recv_after)), so a lockup or a
+              receive window travels inside the same proof that shows a key is approved.
+              The blacklist is an interval tree over outpoint keys
+              SHA256(txid_internal || BE32(vout)), which makes non-membership one ordinary
+              membership proof. Removing a key stops that holder spending; listing an
+              outpoint stops that one coin; both are reversible by a further update.
+            </p>
+            <p className="mt-2">
+              A policy update is therefore two things at once: publish snapshot seq n+1,
+              signed by the issuer update key I over the tagged snapshot hash, and respend
+              the verifier output through the issuer path G(I) so the on-chain C_V commits
+              to pi_{'{'}n+1{'}'}. Until that respend confirms, holders transfer under the
+              previous policy, because the old C_V is what their transfers spend. openampd
+              is authoritative about policy and recomputes both roots and pi from the
+              snapshot chain it publishes; the SimplicityHL compiler in the opendamp crate
+              is authoritative about program identity, so a completion supplies a CMR
+              openampd cannot compile and openampd refuses it unless it is a new one whose
+              derived scriptPubKey matches, and unless the supplied transaction actually
+              consumes the recorded verifier outpoint and recreates C_V with exactly q of V.
+            </p>
+            <p className="mt-2">
+              Two shipped bounds are worth stating because they are committed into the
+              program identity and cannot be raised for an existing asset: the covenant
+              asserts at most 4 inputs and 6 outputs, which leaves room for exactly two
+              regulated inputs, so a holder may spend at most TWO coins of the asset in one
+              transfer. Raising it is a budget purchase (about 2,015 weight units and 65
+              pad words per extra input slot), not a design change. The covenant also
+              requires an explicit asset id on every input and output it scans, so a
+              network-enforced asset is transparent by construction and a blinded receipt
+              could not be spent. What is NOT enforced is named in
+              opendamp/STATUS.md section 2 rather than implied here.
             </p>
           </div>
           <div className="rounded-xl border border-ink-900/10 bg-ink-900/[0.02] p-4">

@@ -30,6 +30,10 @@ type fakeOpenAMP struct {
 	issueFail    atomic.Bool
 	existingTick atomic.Value // string: a ticker already live upstream
 	aidOverride  atomic.Value // string: AID to answer POST /v1/users with
+	// extra, when set to an http.Handler, answers any path the routes below do
+	// not, so a milestone's own test file can add the upstream surface it needs
+	// without this stub having to know about it.
+	extra atomic.Value
 }
 
 func newFakeOpenAMP(t *testing.T) *fakeOpenAMP {
@@ -84,6 +88,14 @@ func newFakeOpenAMP(t *testing.T) *fakeOpenAMP {
 			return
 		}
 		writeJSON(w, 404, map[string]any{"error": "no such asset"})
+	})
+
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if h, _ := f.extra.Load().(http.Handler); h != nil {
+			h.ServeHTTP(w, r)
+			return
+		}
+		writeJSON(w, 404, map[string]any{"error": "no such upstream route: " + r.URL.Path})
 	})
 
 	f.srv = httptest.NewServer(mux)

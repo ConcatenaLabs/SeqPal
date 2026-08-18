@@ -18,6 +18,7 @@ import ClosingCard from '../components/ClosingCard'
 import DistributionConsole from '../components/DistributionConsole'
 import FreezeClawbackConsole from '../components/FreezeClawbackConsole'
 import SupervisionConsole from '../components/SupervisionConsole'
+import PolicyConsole from '../components/PolicyConsole'
 import CorporateActionsCard from '../components/CorporateActionsCard'
 import AmendmentChainCard from '../components/AmendmentChainCard'
 import DRConsole from '../components/DRConsole'
@@ -300,7 +301,10 @@ function AssetCard({ iss, watch }) {
           Holders hold this token at addresses the network itself polices. Transfers do not need
           SeqPal to be online. The rules address is where your published policy lives on chain:
           every transfer of this token has to spend it, which is what makes the rules bind. Changing
-          the policy, or halting the token, is done from that address with your issuer key.
+          the policy, or halting the token, is done from that address with your issuer key, and a
+          change takes effect when the updated list is published rather than the moment you make it.
+          One limit worth knowing: a holder can combine at most two of their coins of this token in
+          a single transfer, and one transfer moves one holder's coins only, so two holders cannot pay from the same transfer, so a holder with more makes more than one transfer.
         </p>
       )}
       {live && iss.assetId && (
@@ -417,6 +421,7 @@ export default function IssuanceDetail() {
   const watch = watchFor(iss.id)
   const isRaise = iss.structureId !== 'depository-receipt'
   const bearerAsset = iss.enforcement === 'bearer'
+  const networkAsset = iss.enforcement === 'network'
 
   const openJ = JURISDICTIONS.filter((j) => iss.policy?.[j.code] === 'standard')
   const restrictedJ = JURISDICTIONS.filter((j) => iss.policy?.[j.code] === 'restricted')
@@ -485,6 +490,8 @@ export default function IssuanceDetail() {
                   <SupervisionConsole iss={iss} />
                   <CorporateActionsCard iss={iss} />
                 </>
+              ) : networkAsset ? (
+                <PolicyConsole iss={iss} />
               ) : (
                 <FreezeClawbackConsole iss={iss} />
               )}

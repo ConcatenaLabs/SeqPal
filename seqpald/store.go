@@ -847,6 +847,56 @@ CREATE TABLE damp_prepares (
     created_at           INTEGER NOT NULL
 );
 `,
+	// M13: the holder controls a network-enforced asset actually has.
+	//
+	// A serviced asset is frozen by withholding a signature, and a bearer asset by
+	// a consensus record. A network-enforced asset has neither: its rules live in a
+	// published policy the chain reads, so the only way to stop a holder or a
+	// specific coin is to publish the next policy AND move the on-chain rules
+	// output onto it. That is two round trips through the policy server plus a step
+	// only the issuer's registrar can run, so it needs a durable row.
+	//
+	// damp_policy_ops is that row, and it is the idempotency anchor exactly as
+	// supervision_ops is for a bearer asset: created at build with the policy
+	// server's operation id, the sequence number and commitment it will publish,
+	// the change in human terms, the reason and the order fingerprint; then
+	// carrying the registrar's program identity and the broadcast txid. A replayed
+	// build against the same order and the same targets resumes this row rather
+	// than opening a second sequence number.
+	//
+	// targets is the canonical JSON of what the request named (holder keys and
+	// coins). Together with kind and order_hash it identifies the operation, so two
+	// different orders against the same holder stay two operations.
+	// All additive; an M12 database migrates forward in place.
+	`
+CREATE TABLE damp_policy_ops (
+    id                 TEXT PRIMARY KEY,
+    issuance_id        TEXT    NOT NULL,
+    asset_id           TEXT    NOT NULL DEFAULT '',
+    kind               TEXT    NOT NULL,
+    policy_id          TEXT    NOT NULL DEFAULT '',
+    seq                INTEGER NOT NULL DEFAULT 0,
+    prev_pi            TEXT    NOT NULL DEFAULT '',
+    pi_next            TEXT    NOT NULL DEFAULT '',
+    targets            TEXT    NOT NULL DEFAULT '{}',
+    holders            TEXT    NOT NULL DEFAULT '[]',
+    holders_added      TEXT    NOT NULL DEFAULT '[]',
+    holders_removed    TEXT    NOT NULL DEFAULT '[]',
+    coins_frozen       TEXT    NOT NULL DEFAULT '[]',
+    coins_unfrozen     TEXT    NOT NULL DEFAULT '[]',
+    reason             TEXT    NOT NULL DEFAULT '',
+    order_hash         TEXT    NOT NULL DEFAULT '',
+    to_sign            TEXT    NOT NULL DEFAULT '',
+    registrar_document TEXT    NOT NULL DEFAULT '{}',
+    verifier_cmr       TEXT    NOT NULL DEFAULT '',
+    txid               TEXT    NOT NULL DEFAULT '',
+    state              TEXT    NOT NULL DEFAULT 'pending',
+    error              TEXT    NOT NULL DEFAULT '',
+    created_at         INTEGER NOT NULL,
+    updated_at         INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX idx_damp_policy_ops_issuance ON damp_policy_ops(issuance_id);
+`,
 }
 
 // Store is seqpald's persistent state. Every financial fact the UI shows is

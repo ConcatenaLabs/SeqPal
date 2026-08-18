@@ -47,6 +47,15 @@ func (s *server) handleDREnable(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 409, "this issuance is not live on chain")
 		return
 	}
+	// The programme rests on two things a network-enforced token does not have: a
+	// platform-held account to hold the receipts in, and transfer rules this
+	// platform checks when it approves a transfer (the US-person exclusion below is
+	// exactly such a rule). Enabling it would record a programme that could never
+	// mint, redeem, or exclude anyone.
+	if s.refuseForNetwork(w, acct.AID, iss, "dr.enable",
+		"A receipt programme needs this platform to hold the receipts and to check each transfer against your rules. This token's rules are enforced by the network instead, and its units sit in holders' own addresses, so there is nothing here to hold or to check and the programme cannot be enabled for it.") {
+		return
+	}
 	height, mutationID, err := s.applyUSExclusion(iss)
 	if err != nil {
 		writeErr(w, 502, "could not enforce the US-person exclusion category rule: %v", err)
@@ -121,6 +130,13 @@ func (s *server) handleDRMint(w http.ResponseWriter, r *http.Request) {
 	acct := principal(r)
 	iss := s.ownedIssuance(w, acct, r.PathValue("id"))
 	if iss == nil {
+		return
+	}
+	// A mint issues new units into an account this platform holds and signs for.
+	// There is no such account for a network-enforced token: new units go to an
+	// address the issuer controls, from the issuer's own wallet.
+	if s.refuseForNetwork(w, acct.AID, iss, "dr.mint",
+		"New units of this token are issued by you, into an address you control, from your own wallet. This platform holds no account for it and cannot issue them.") {
 		return
 	}
 	prog, _ := s.st.DRProgramByIssuance(iss.ID)
@@ -254,6 +270,13 @@ func (s *server) handleDRRedeem(w http.ResponseWriter, r *http.Request) {
 	}
 	if iss.Status != "live" || iss.AssetID == "" {
 		writeErr(w, 409, "this issuance is not live on chain")
+		return
+	}
+	// A redemption destroys units out of an account this platform holds and signs
+	// for. For a network-enforced token the units are in the holder's own wallet, so
+	// only the holder can destroy them, and this platform cannot sign it for them.
+	if s.refuseForNetwork(w, acct.AID, iss, "dr.redeem",
+		"Units of this token are destroyed by whoever holds them, from their own wallet. This platform holds none of them and cannot destroy them on a holder's behalf.") {
 		return
 	}
 	var req drRedeemReq
