@@ -219,7 +219,7 @@ export function amount8(atoms) {
 export function sendCommand(address, atoms, asset) {
   // The box's non-interactive PATH does not carry sequentia-cli, so name it by
   // path (SEQPAL_DRILL_CLI overrides) and pass the chain explicitly.
-  const cli = process.env.SEQPAL_DRILL_CLI || '/root/SequentiaByClaude/src/sequentia-cli -chain=test -rpcport=18200 -rpcuser=seq -rpcpassword=seq'
+  const cli = process.env.SEQPAL_DRILL_CLI || '/root/Sequentia/src/sequentia-cli -chain=test -rpcport=18200 -rpcuser=seq -rpcpassword=seq'
   // Verified positional order from src/wallet/rpc/spend.cpp sendtoaddress:
   // address, amount, comment, comment_to, subtractfeefromamount, replaceable,
   // conf_target, estimate_mode (a STRING, "unset", never null), avoid_reuse,
