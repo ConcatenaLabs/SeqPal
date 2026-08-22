@@ -6,11 +6,11 @@ ZEDE that lets issuers structure, issue, and service compliant security tokens o
 through **OpenAMP**, the open-source policy-server layer for issuer-governed
 assets (KYC whitelists, categories, velocity, vesting, freeze, clawback).
 
-This repo is the SeqPal product PoC: a faithful front-end plus a thin backend
+This repo is the SeqPal product PoC: a faithful front-end plus a Go backend
 that **actually issues restricted assets on the Sequentia testnet** through a
-live OpenAMP policy server. The compliance and legal scaffolding around it
-(identity verification, payments, incorporation, e-signature) is simulated so the
-flow can be walked end to end, but the token deployment itself is real.
+live OpenAMP policy server. The token deployment, the setup fee and the escrow
+are real; the identity verification, e-signature provider, incorporation and
+registrar steps are simulated so the flow can be walked end to end.
 
 ## What is real vs simulated
 
@@ -35,19 +35,33 @@ flow can be walked end to end, but the token deployment itself is real.
   gated per deployment (`SEQPALD_CONFIDENTIAL`); without it a confidential
   transfer is refused with a 501, never silently downgraded. Supervised
   (freely-tradable) assets are always transparent, by consensus.
+- The setup fee is invoiced in USDX and must be paid before deploy: seqpald's
+  chain watcher confirms the receipt, and `POST /api/deploy` is refused until it
+  has.
+- Escrow and settlement. Subscriptions fund a segregated per-offering escrow in
+  USDX on Sequentia or in native tBTC on Bitcoin testnet4 (the BTC rail is on
+  only when `SEQPALD_BTC_RPC_URL` is set). At closing the tokens leave the
+  escrow enclave by policy-co-signed transfer; a USDX subscription settles as
+  one atomic delivery-versus-payment transaction (tokens to the investor, USDX
+  to the issuer's mandate address, the platform fee output). Nothing is shown
+  as final at 0-conf.
 
 **Simulated (kept faithful to the intended product):**
 
-- KYC/KYB identity verification (no real vendor call, no document upload).
-- Payments — setup fees, ID fees, and the Escrow & Settlement Fee are never charged.
-- E-signature of documents and subscription agreements.
-- Próspera incorporation and RFSA filing (a demo "fast-forward" advances the
-  incorporation and filing steps; only the final deploy step touches the chain).
-- Escrow funding and the brokerage-custody relationship for Depository Receipts.
+- KYC/KYB identity verification: the sanctions screen runs against downloaded
+  lists, but document review is a simulated queue with no vendor call.
+- The card/fiat payment rail (its settlements are marked `funds_simulated`).
+- The e-signature provider: documents and subscription agreements are signed
+  with the SeqPal ID key (BIP340 over the content hash), not through a vendor.
+- Próspera incorporation and the RFSA registry (a filing gets a number and a
+  public lookup from a simulated registry).
+- The brokerage-custody relationship for Depository Receipts.
 
-Front-end state (your account, issuances, subscriptions) is kept in the browser's
-`localStorage`. Use **Reset demo** on the dashboard to clear it. Clearing it does
-not undo an already-minted on-chain asset.
+The browser keeps only your encrypted SeqPal ID key envelope
+(`localStorage` key `seqpal.id.v1`) and UI preferences. Accounts, issuances and
+subscriptions are records in seqpald's database and on chain. Export the key
+envelope when prompted: clearing browser storage loses the key, not the records,
+and never undoes an already-minted on-chain asset.
 
 ## What the product covers
 
@@ -59,21 +73,36 @@ not undo an already-minted on-chain asset.
   to access (the auto-whitelist network effect).
 - **Issuer Dashboard** — gated behind a SeqPal ID; lists your issuances, their
   lifecycle status, and placement-portal state.
-- **The six-step issuer onboarding flow** (the centrepiece):
+- **The seven-step issuer onboarding flow** (the centrepiece):
   1. Identity & principal — who applies/owns the new LLC (issuing as an individual
      is Native Equity only; SPV / Debt / DR require a corporate KYB principal). The
      new Próspera LLC is the issuer of record.
-  2. Architecture routing — choose an issuance structure (KYB-only ones are locked
-     for individual applicants).
-  3. Data room — dynamic deal-term inputs per structure; private vs public offering.
-  4. Document automation suite — generate and e-sign the document package.
-  5. Tokenomics & compliance — name the asset and configure the
+  2. Structure — choose an issuance structure (KYB-only ones are locked for
+     individual applicants).
+  3. Holders & enforcement — who may hold the token and the enforcement
+     election (below).
+  4. Data room — dynamic deal-term inputs per structure; private vs public offering.
+  5. Documents — generate the document package and sign it with the issuer key.
+  6. Tokenomics & compliance — name the asset and configure the
      jurisdiction/accreditation policy (Appendix C matrix, per-issuance caps, and
      the public-offering overlay) baked into the token.
-  6. Checkout — fixed-fee checkout; the LLC is submitted for incorporation.
-- **Issuance lifecycle** — checkout is not instant-live: payment → Próspera
-  incorporation → RFSA filing → OpenAMP deployment → live, shown as a timeline.
-  The deploy step performs the real OpenAMP mint.
+  7. Checkout & deploy — pay the setup fee in USDX, then deploy.
+- **Enforcement election** (step 3) — three models, recorded on the issuance
+  and sent with the deploy:
+  - *SeqPal enforces your rules* (`serviced`, the default) — an OpenAMP
+    restricted asset; the policy server co-signs every transfer off-chain, with
+    zero consensus changes.
+  - *The network enforces your rules* (`network`) — OpenDAMP: the rules are
+    published as on-chain covenants enforced by Sequentia consensus. A
+    deployment capability (`SEQPALD_DAMP`); refused with a 501 where it is unset.
+  - *Freely tradable* (`bearer`) — a node-level supervised asset: an ordinary
+    bearer token with on-chain freeze/unfreeze under the issuer's supervision
+    key plus an offline recovery key, always transparent.
+- **Issuance lifecycle** — draft → documents generated and issuer-signed → RFSA
+  filing (simulated registry, public lookup) → setup fee paid in USDX → deploy
+  (the real mint) → broadcast → confirmed → anchored, shown as a timeline.
+  Próspera incorporation and brokerage custody are off-platform checklist items
+  SeqPal does not observe. Nothing is labelled final at 0-conf.
 - **Automated Transfer Agent** — schedule distributions (dividend/coupon/yield),
   process corporate actions, and mint/redeem Depository Receipts, with an activity
   log; a Registry of Members and a Secondary Market card (assets can be listed on
@@ -85,24 +114,36 @@ not undo an already-minted on-chain asset.
 ## Architecture
 
 ```
-Browser (React SPA)
-  ├── OpenAMP public API   (register key, read assets/balances/addresses, log)
-  └── seqpald  /api/deploy  ── holds the issuer bearer token (never in the browser)
-                              └── OpenAMP issuer API (mint restricted asset)
-                                    └── Sequentia node (broadcast issuance tx)
+Browser (React SPA, served by seqpald)
+  ├── seqpald  /seqpal/api/*   sessions (BIP340 challenge), issuances, documents,
+  │     │                      RFSA, fees, escrow and closing, P2P transfers,
+  │     │                      servicing, enforcement consoles
+  │     ├── OpenAMP issuer API   (bearer token, never in the browser)
+  │     ├── Sequentia node RPC + electrs   (chain watcher, supervision RPCs,
+  │     │                                   bearer mints, escrow payouts)
+  │     └── Bitcoin testnet4 RPC           (native tBTC escrow rail)
+  └── OpenAMP public API  /openamp/v1/*   (register key, assets, balances,
+        │                                  addresses, transparency log)
+        └── Sequentia node (broadcast issuance tx)
 ```
 
-- `src/lib/openamp.js` — client for OpenAMP's public endpoints and the seqpald
-  deploy endpoint. Same-origin behind Caddy in production (`/openamp/`, `/seqpal/`).
-- `seqpald/` — a tiny stateless Go backend. OpenAMP gates issuance behind a bearer
-  token that must never reach the browser, so seqpald is the one component that
-  holds it and proxies the privileged mint. It holds no keys and no database.
+- `src/lib/api.js` and `src/lib/openamp.js` — clients for seqpald and for
+  OpenAMP's public endpoints. Same-origin behind Caddy in production
+  (`/seqpal/`, `/openamp/`).
+- `seqpald/` — the Go backend and the platform's books and records: a SQLite
+  database (accounts, issuances, subscriptions, documents, the hash-chained
+  audit log) plus the per-offering escrow enclave key it uses to settle
+  closings. Holder keys never leave the browser. seqpald also holds the OpenAMP
+  issuer token, which must never reach a browser, and is the only party that
+  calls the issuer API.
 
 ## Running locally
 
 ```bash
 npm install
-npm run dev      # http://localhost:5173 (points at the live testnet OpenAMP + seqpald)
+npm run dev      # http://localhost:5173; proxies /seqpal and /openamp to LOCAL backends
+                 # (127.0.0.1:8730 and :8722). Set VITE_SEQPAL_API / VITE_OPENAMP_API to
+                 # aim at the live testnet; that mints real assets.
 npm test         # pure-logic + enclave-key unit suite
 npm run build    # production build to dist/
 ```
@@ -114,7 +155,8 @@ cd seqpald && go build -o seqpald .
 OPENAMPD_URL=http://127.0.0.1:8722 OPENAMPD_ISSUER_TOKEN=<token> ./seqpald
 ```
 
-Deployment to the testnet box is documented in `seqpald/DEPLOY.md`.
+Every configuration variable is listed in `seqpald/DEPLOY.md`, which also
+documents deployment to the testnet box.
 
 ## Tech
 
