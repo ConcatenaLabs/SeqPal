@@ -5,9 +5,9 @@ that **actually issues restricted assets on the Sequentia testnet** through a li
 [OpenAMP](https://github.com/GracedEternalKingCabbageMan/openamp) policy server.
 
 `README.md`'s "What is real vs simulated" section is the most important thing in the repo. The
-token deployment is real; the compliance and legal scaffolding around it (KYC/KYB, payments,
-e-signature, incorporation, escrow) is simulated so the flow can be walked end to end. Never blur
-that line in code or in copy.
+token deployment, the USDX setup fee and the USDX / tBTC escrow are real; the scaffolding around
+them (KYC/KYB review, the e-signature provider, incorporation and the RFSA registry, the card
+rail) is simulated so the flow can be walked end to end. Never blur that line in code or in copy.
 
 Node and consensus conventions live in the
 [`Sequentia`](https://github.com/GracedEternalKingCabbageMan/Sequentia) repo.
@@ -16,7 +16,7 @@ Node and consensus conventions live in the
 
 | Path | What |
 |---|---|
-| `src/` | The React + Vite single-page app. Front-end state lives in the browser's `localStorage`. |
+| `src/` | The React + Vite single-page app. The browser keeps only the encrypted SeqPal ID key envelope and UI preferences in `localStorage`; records come from seqpald. |
 | `seqpald/` | The Go backend, its own module. It serves the built SPA (with history-API fallback) *and* the API, so one reverse-proxy route covers both. |
 | `scripts/` | `live-probe.sh`, the `e2e/` driver, and the `regenesis/` runbook scripts. |
 | `seqpald/M*-CONTRACT.md` | Per-milestone contracts, each with a matching `m*_test.go`. |
@@ -37,16 +37,17 @@ There is no CI. Those commands are the whole gate.
 
 - The browser generates a real secp256k1 enclave keypair per SeqPal ID (`src/lib/keys.js`). **The
   private key never leaves the browser.** Only the x-only public key reaches the backend.
-- `seqpald` is deliberately **not** a custodian. It registers the holder's public key and mints the
-  initial supply into that holder's own enclave.
-- `seqpald` exists for one security reason: OpenAMP's issuer endpoint is bearer-token gated, and
-  that token is a server-side secret that must never reach a browser. `seqpald` holds it and is the
-  only party that calls the issuer endpoint.
+- `seqpald` never holds a holder's key. It registers the holder's public key; the mint lands in a
+  per-offering escrow enclave whose key seqpald custodies and uses only to settle closings, and
+  it keeps the books and records (the SQLite DB).
+- `seqpald` also holds the one server-side secret: OpenAMP's issuer endpoint is bearer-token gated,
+  and that token must never reach a browser. `seqpald` holds it and is the only party that calls
+  the issuer endpoint.
 - Everything the browser can read without the token — assets, balances, enclave addresses, the
   transparency log — it fetches from OpenAMP's public endpoints directly, same-origin.
 
 Do not add a route that proxies a browser request straight through to an issuer endpoint, and do
-not move any key material server-side.
+not move any holder key material server-side.
 
 ## Traps
 
@@ -62,7 +63,8 @@ not move any key material server-side.
   (`confidential: true` on POST /api/transfers), gated per deployment by `SEQPALD_CONFIDENTIAL`.
   There is no such thing as a confidential asset; do not reintroduce an issuance-time election.
   Supervised bearer assets stay transparent by consensus.
-- Clearing browser state resets the demo but does **not** undo an already-minted on-chain asset.
+- Clearing browser state loses the key envelope, not the records, and does **not** undo an
+  already-minted on-chain asset.
 - Public copy has been rewritten several times to correct licensing and regulatory positioning.
   Treat copy changes as substantive, not cosmetic.
 
@@ -83,8 +85,7 @@ module cache.
   and its reasoning are recorded, not because anyone is waiting to review it. There is no review
   process. If you are ever told to leave one specific PR open, that applies to that PR only and
   never becomes the default.
-- PRs go against `claude/session-85GzG`, which is this repository's default branch. It is an odd
-  name for a default branch, but it is the one GitHub serves and the only branch that exists.
+- PRs go against `main`, the default branch.
 - **Deployment is pull-only.** The server pulls this repo from GitHub and builds there; see
   `seqpald/DEPLOY.md`. Never edit source on the server and never copy binaries onto it.
 
