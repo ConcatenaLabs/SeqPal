@@ -218,8 +218,10 @@ export function amount8(atoms) {
 // null to take the wallet defaults, and 8 (avoid_reuse) as false.
 export function sendCommand(address, atoms, asset) {
   // The box's non-interactive PATH does not carry sequentia-cli, so name it by
-  // path (SEQPAL_DRILL_CLI overrides) and pass the chain explicitly.
-  const cli = process.env.SEQPAL_DRILL_CLI || '/root/Sequentia/src/sequentia-cli -chain=test -rpcport=18200 -rpcuser=seq -rpcpassword=seq'
+  // path (SEQPAL_DRILL_CLI overrides) and pass the chain explicitly. The RPC
+  // credentials are never in the repo: set SEQPAL_DRILL_CLI with the box's
+  // -rpcuser/-rpcpassword, or rely on the node's cookie file.
+  const cli = process.env.SEQPAL_DRILL_CLI || '/root/Sequentia/src/sequentia-cli -chain=test -rpcport=18200'
   // Verified positional order from src/wallet/rpc/spend.cpp sendtoaddress:
   // address, amount, comment, comment_to, subtractfeefromamount, replaceable,
   // conf_target, estimate_mode (a STRING, "unset", never null), avoid_reuse,

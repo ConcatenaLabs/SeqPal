@@ -7,8 +7,8 @@ usability defect to fix, not a gap to paper over with this document.
 
 Every capability below is proven by one or more of:
 
-- a Go test (deterministic, runs in CI: `go test ./...` in `seqpald/` and
-  `openamp/openampd/`),
+- a Go test (deterministic; `go test ./...` in `seqpald/` and
+  `openamp/openampd/`, run locally before every PR: there is no CI),
 - a driver step in the live acceptance driver
   (`scripts/e2e/run.mjs`, run as `--only mN`), which signs EXACTLY as the browser
   by importing `src/lib/keys.js`, or
@@ -22,7 +22,7 @@ real USDX / tBTC on the Sequentia testnet, chain-derived, nothing final at 0-con
 
 ## Status legend
 
-- `PASS` proven by a committed Go test (green in CI).
+- `PASS` proven by a committed Go test (green locally; there is no CI).
 - `DRIVER` shaped + signed by the acceptance driver and validated in `--dry-run`;
   completes live once the operator funds the referenced wallet.
 - `LIVE-OP` needs a privileged box fund movement (funding hook / manual step);
@@ -143,7 +143,7 @@ command from the environment. It never holds or prints a box credential.
 | Market-abuse ack gates the transfer surfaces (signed variant) | `TestM8_MarketAbuseAckGatesSurfaceAndSignedVariant`; driver step 11 (`MARKET_ABUSE_TAG`) | PASS / DRIVER |
 | DE per-category holder cap refuses the third DE-retail recipient; offeree counter at the gate | `TestM5OffereeCap150Blocked`, `TestM5OffereeCountingMechanism` (149/150 on regtest) | PASS |
 | DR redeem burn txid lowers chain-derived supply | `TestM8_DRRedeemBurnLowersChainDerivedSupplyIdempotent`; driver `--only m8` step 14 | PASS / DRIVER |
-| Confidential asset issues to a blech32 enclave address, no node000 flag flipped | `oa8_lm_test.go` (OA-8 per-call blinding); driver step 15 | PASS / DRIVER (LIVE-OP funding) |
+| Confidential P2P transfer elected per transfer (no confidential assets): the settled tx carries blinded outputs to a blech32 (`tsqb`) address, no node000 flag flipped; `GET /api/transfers` shows `confidential:true` | `oa8_lm_test.go` (OA-8 per-call blinding); driver step 15 | PASS / DRIVER (LIVE-OP funding) |
 | Category log entries carry set-hashes, not raw lists | `oa8_lm_test.go` (OA-LM); driver step 16 | PASS / DRIVER |
 | Issuer freezes a holder (simulated court order), then a real clawback with reason, issuer-signed in the browser (M9), txid + log | `TestM9Console_ExternalClawbackIsTwoPhase`, `TestM9Redeliver_ExternalPausesForIssuerSignatureThenCompletes`; driver `--only m9` step 18 (`signClawbackSighash`) | PASS / DRIVER |
 | New asset's contract shows the entity `issuer_pubkey` (external), server holds no issuer key | `TestM9Deploy_ExternalKeyIsOwnBrowserKey`; driver `--only m9` step 17 | PASS / DRIVER |
@@ -167,7 +167,7 @@ endpoints) and completed live once the operator funds the referenced wallet.
 | M8 policy-co-signed P2P transfer settles | `--only m8` | investor holding the asset; both AIDs registered | DRIVER + LIVE-OP |
 | M8 lockup / ineligible resale returns a real 403 + reason | `--only m8` | a locked-up or ineligible beneficiary | DRIVER |
 | M8 DR redeem burn lowers chain-derived supply | `--only m8` | a custodied balance to burn | DRIVER + LIVE-OP |
-| M8 confidential issuance to a blech32 enclave address | `--only m8` | full onboarding + setup fee funded for a confidential deploy | DRIVER + LIVE-OP |
+| M8 confidential P2P transfer elected per transfer, blinded outputs to a blech32 address | `--only m8` | a delivered holding to move and `SEQPALD_CONFIDENTIAL=1` on the deployment | DRIVER + LIVE-OP |
 | M8 category event logs a set-hash | `--only m8` | a category mutation in the log window | DRIVER |
 | M9 new external-issuer-key asset; contract shows the entity key | `--only m9` | full onboarding + setup fee funded for the new deploy | DRIVER + LIVE-OP |
 | M9 two-phase clawback broadcasts ONLY after the issuer browser signature | `--only m9` | an external-issuer `ISSUANCE_ID` with a holder to sweep | DRIVER + LIVE-OP |
@@ -182,7 +182,7 @@ below prints its deposit address + amount and pauses (or runs `--fund-cmd`):
    for network fees.
 3. A holder balance to clawback / burn / transfer (M7 clawback, M8 DR redeem,
    M8 P2P transfer).
-4. The setup fee (USDX) that gates a new deploy (M8 confidential, M9 external-key).
+4. The setup fee (USDX) that gates a new deploy (M9 external-key).
 
 All other checks are proven by the committed Go tests and the offline `--dry-run`.
 

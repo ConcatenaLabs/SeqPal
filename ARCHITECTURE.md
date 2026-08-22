@@ -1,5 +1,10 @@
 # SeqPal — architecture & QA notes
 
+> **Historical (pre-overhaul, July 2026).** This describes the browser-only demo
+> before milestones M1-M13: state in `localStorage`, two backend routes, a
+> "fast-forward" lifecycle. None of that is current. For the system as built see
+> `README.md`, `seqpald/M*-CONTRACT.md` and `OVERHAUL.md`.
+
 The SeqPal tokenization-as-a-service PoC, inferred from the business plan
 (currently **v0.72**). The front-end and compliance/legal scaffolding are
 faithful but simulated; the token deployment is real: issuing an asset mints a
@@ -165,9 +170,10 @@ conditions → subscriptions settle into the Registry of Members.
 → the `seqpald` backend → the OpenAMP issuer API, which mints a real restricted
 asset on Sequentia. The asset id, txid, contract hash and issuer AID shown on the
 issuance page come back from the chain. Clawback defaults on; the contract commits
-to a `terms_hash` over SeqPal's compliance configuration. Confidential issuance is
-an opt-in toggle, available where the node is confidentiality-enabled (transparent
-on the public testnet, enabled on mainnet).
+to a `terms_hash` over SeqPal's compliance configuration. Every deploy is a
+transparent mint; confidentiality is per transfer, never per asset. Any holder
+may elect it on an individual transfer (`confidential: true` on
+`POST /api/transfers`), refused with a 501 when `SEQPALD_CONFIDENTIAL` is unset.
 
 **Mocked.** KYC/KYB verification, payments (setup/ID/E&S fees), e-signature,
 Próspera incorporation and RFSA filing (the "fast-forward" advances those steps),
