@@ -86,7 +86,7 @@ native-BTC escrow rail is off unless `SEQPALD_BTC_RPC_URL` is set.
 | `SEQPALD_DEV_ORIGINS` (`-devorigins`) | empty | comma-separated extra CORS origins for local development |
 | `SEQPALD_ADMIN_AIDS` (`-adminaids`) | empty | comma-separated AIDs allowed to use the manual-review surface |
 | `SEQPALD_SCREEN_DIR` (`-screendir`) | `./sanctions-cache` | cache directory for downloaded sanctions lists |
-| `SEQPALD_BLOCKS_PER_DAY` (`-blocksperday`) | `144` | assumed Sequentia blocks per day for lockup height conversion |
+| `SEQPALD_BLOCKS_PER_DAY` (`-blocksperday`) | `1440` | assumed Sequentia blocks per day for lockup height conversion (60-second spacing: 1440) |
 | `SEQPALD_TIP_HEIGHT` (`-tipheight`) | `0` | fallback tip height when no node RPC is configured |
 | `SEQPALD_NODE_URL` (`-nodeurl`) | empty | Sequentia node JSON-RPC URL: chain watcher, tip height, supervision RPCs, bearer mints |
 | `SEQPALD_NODE_USER` (`-nodeuser`) | empty | node RPC username |
@@ -98,7 +98,7 @@ native-BTC escrow rail is off unless `SEQPALD_BTC_RPC_URL` is set.
 | `SEQPALD_ENTITY_NAME` (`-entityname`) | empty | optional issuer display name added to the contract |
 | `SEQPALD_OPERATOR_NAME` (`-operatorname`) | empty | optional operator identity added to the contract |
 | `SEQPALD_OPERATOR_REGISTRATION` (`-operatorreg`) | empty | optional operator registration added to the contract |
-| `SEQPALD_POLICY_FEE_SATS` (`-policyfeesats`) | `1000` | network fee reference (in atoms) used to derive `fee_convert_atoms` |
+| `SEQPALD_POLICY_FEE_SATS` (`-policyfeesats`) | `1000` | network fee reference in rfa (1e-8 reference fee units) used to derive `fee_convert_atoms` |
 | `SEQPALD_BTC_RPC_URL` (`-btcurl`) | empty | Bitcoin testnet4 node RPC URL for the native-tBTC escrow (empty = BTC rail disabled) |
 | `SEQPALD_BTC_RPC_USER` (`-btcuser`) | empty | testnet4 RPC username (the node's `mainchainrpcuser`) |
 | `SEQPALD_BTC_RPC_PASS` (`-btcpass`) | empty | testnet4 RPC password (the node's `mainchainrpcpassword`) |
