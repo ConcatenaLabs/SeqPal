@@ -185,7 +185,7 @@ func main() {
 	var adminAIDs string
 	flag.StringVar(&adminAIDs, "adminaids", env("SEQPALD_ADMIN_AIDS", ""), "comma-separated AIDs allowed to use the manual-review surface")
 	flag.StringVar(&cfg.screenDir, "screendir", env("SEQPALD_SCREEN_DIR", "./sanctions-cache"), "cache directory for downloaded sanctions lists")
-	flag.Int64Var(&cfg.blocksPerDay, "blocksperday", envInt("SEQPALD_BLOCKS_PER_DAY", 144), "assumed Sequentia blocks per day for lockup height conversion")
+	flag.Int64Var(&cfg.blocksPerDay, "blocksperday", envInt("SEQPALD_BLOCKS_PER_DAY", 1440), "assumed Sequentia blocks per day for lockup height conversion (60-second spacing: 1440)")
 	flag.Int64Var(&cfg.assumedTip, "tipheight", envInt("SEQPALD_TIP_HEIGHT", 0), "fallback tip height when no node RPC is configured")
 	flag.StringVar(&cfg.nodeURL, "nodeurl", env("SEQPALD_NODE_URL", ""), "Sequentia node JSON-RPC URL for the chain watcher and tip height (optional)")
 	flag.StringVar(&cfg.nodeUser, "nodeuser", env("SEQPALD_NODE_USER", ""), "node RPC username")
@@ -197,7 +197,7 @@ func main() {
 	flag.StringVar(&cfg.entityName, "entityname", env("SEQPALD_ENTITY_NAME", ""), "optional issuer display name added to the contract (OA-1)")
 	flag.StringVar(&cfg.operatorName, "operatorname", env("SEQPALD_OPERATOR_NAME", ""), "optional operator identity added to the contract (OA-1)")
 	flag.StringVar(&cfg.operatorRegistration, "operatorreg", env("SEQPALD_OPERATOR_REGISTRATION", ""), "optional operator registration added to the contract (OA-1)")
-	flag.Int64Var(&cfg.policyFeeSats, "policyfeesats", envInt("SEQPALD_POLICY_FEE_SATS", 1000), "network fee reference in SEQ-sats used to derive fee_convert_atoms")
+	flag.Int64Var(&cfg.policyFeeSats, "policyfeesats", envInt("SEQPALD_POLICY_FEE_SATS", 1000), "network fee reference in rfa (1e-8 reference fee units) used to derive fee_convert_atoms")
 	flag.StringVar(&cfg.btcURL, "btcurl", env("SEQPALD_BTC_RPC_URL", ""), "testnet4 (parent-chain) Bitcoin node RPC URL for the native-BTC escrow (empty = BTC rail disabled)")
 	flag.StringVar(&cfg.btcUser, "btcuser", env("SEQPALD_BTC_RPC_USER", ""), "testnet4 Bitcoin RPC username (mainchainrpcuser)")
 	flag.StringVar(&cfg.btcPass, "btcpass", env("SEQPALD_BTC_RPC_PASS", ""), "testnet4 Bitcoin RPC password (mainchainrpcpassword)")
