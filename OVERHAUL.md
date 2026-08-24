@@ -441,7 +441,7 @@ This checklist is an ENGINEERING artifact: the sequence of real operations we pe
 This section's content was extracted on 2026-07-11, expanded per Andreas's directive to also cover SWK (the Sequentia Wallet Kit) and every wallet built with it, and now lives at its canonical location:
 
 **`openamp` repo: `spec/venue-wallet-integration.md`**
-(https://github.com/GracedEternalKingCabbageMan/openamp/blob/main/spec/venue-wallet-integration.md)
+(https://github.com/ConcatenaLabs/openamp/blob/main/spec/venue-wallet-integration.md)
 
 Scope of the spec: Part 0 shared foundations (enclave model, AID, endpoint reference, signing formats incl. tagged-hash domain separation, what openampd does not provide, first-principles UI duties); Part 1 the wallet conformance spec (canonical m/5/0 enclave key, SWK kit work items SWK-1..7 incl. the new openamp client module and the contract-JSON fidelity fix that today makes registry verification reject OpenAMP assets, web wallet work items WW-1..9 incl. the m/3/0-to-m/5/0 identity migration, the atoms-encoding interop bug, and the generic sign card); Part 2 the venue (SeqDEX) spec (the former Section 9 content: preconditions, fill-time seller signing, the /v1/cosign settlement model, the OA-7 precondition, order lifecycle, regulatory notes, structural exclusions, API touchpoints); Parts 3-4 conformance checklists and the dependency table.
 

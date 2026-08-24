@@ -1,4 +1,4 @@
-module github.com/GracedEternalKingCabbageMan/SeqPal/seqpald
+module github.com/ConcatenaLabs/SeqPal/seqpald
 
 go 1.25.0
 
