@@ -2,7 +2,7 @@
 
 A tokenization-as-a-service platform proof of concept: a React front-end plus a thin Go backend
 that **actually issues restricted assets on the Sequentia testnet** through a live
-[OpenAMP](https://github.com/GracedEternalKingCabbageMan/openamp) policy server.
+[OpenAMP](https://github.com/ConcatenaLabs/openamp) policy server.
 
 `README.md`'s "What is real vs simulated" section is the most important thing in the repo. The
 token deployment, the USDX setup fee and the USDX / tBTC escrow are real; the scaffolding around
@@ -10,7 +10,7 @@ them (KYC/KYB review, the e-signature provider, incorporation and the RFSA regis
 rail) is simulated so the flow can be walked end to end. Never blur that line in code or in copy.
 
 Node and consensus conventions live in the
-[`Sequentia`](https://github.com/GracedEternalKingCabbageMan/Sequentia) repo.
+[`Sequentia`](https://github.com/ConcatenaLabs/Sequentia) repo.
 
 ## Two halves
 
