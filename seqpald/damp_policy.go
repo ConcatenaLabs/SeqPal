@@ -431,7 +431,8 @@ func (s *server) policyChange(w http.ResponseWriter, r *http.Request, kind strin
 		CoinsFrozen:   rawList(prep.Change.AddedOutpoints),
 		CoinsUnfrozen: rawList(prep.Change.RemovedOutpoints),
 		Reason:        strings.TrimSpace(req.Reason), OrderHash: orderHash,
-		ToSign: prep.ToSign, RegistrarDoc: prep.DeriveSnapshot, State: "pending",
+		ToSign: prep.ToSign, SnapshotHash: prep.SnapshotHash,
+		RegistrarDoc: prep.DeriveSnapshot, State: "pending",
 	}
 	if err := s.st.InsertDampPolicyOp(op); err != nil {
 		// The policy server has prepared and cannot be un-prepared, so losing the row
@@ -469,6 +470,7 @@ type dampPolicyPrepareResponse struct {
 		RemovedOutpoints []string `json:"removed_outpoints"`
 	} `json:"change"`
 	ToSign         string          `json:"to_sign"`
+	SnapshotHash   string          `json:"snapshot_hash"`
 	DeriveSnapshot json.RawMessage `json:"derive_snapshot"`
 }
 
@@ -478,6 +480,10 @@ func policyBuildResponse(op *DampPolicyOp) map[string]any {
 		"kind":      op.Kind,
 		"to_sign":   op.ToSign,
 		"sign_with": "issuer",
+		// What to_sign is the TAGGED hash of. The issuer's wallet signs under the
+		// tag itself, so it never signs bytes it cannot check.
+		"snapshot_hash": op.SnapshotHash,
+		"snapshot_tag":  "OpenDAMP/snapshot/v1",
 		"state":     op.State,
 		"seq":       op.Seq,
 		"note": "sign the 32-byte message with your own key, then POST it to /policy/" + op.ID +

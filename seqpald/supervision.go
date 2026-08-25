@@ -185,11 +185,24 @@ func (s *server) handleSupervisionFreeze(w http.ResponseWriter, r *http.Request)
 func (s *server) freezeBuildResponse(op *SupervisionOp, probe *frozenProbe) map[string]any {
 	resp := map[string]any{
 		"freeze_id": op.ID,
-		"to_sign":   op.Sighash, // RAW 32-byte node-produced message; sign with the operational key, NOT tagged
+		"to_sign":   op.Sighash, // the node-produced message, for a signer that already knows this layout
 		"sign_with": "operational",
 		"state":     op.State,
-		"note": "sign the 32-byte message with the operational key (a raw BIP340 signature over the bytes as given), " +
-			"then POST it to /supervision/freeze/" + op.ID + "/complete; the record is submitted over the private producer channel so it cannot be front-run",
+		// The FIELDS the message commits to, so the issuer's wallet can rebuild
+		// it instead of being handed a digest. The node's message is a BIP340
+		// tagged hash over exactly these, and a wallet that cannot check what it
+		// signs must refuse to sign: the operational key is also half of the
+		// 2-of-2 every restricted asset that issuer holds sits behind.
+		"record": map[string]any{
+			"kind":   "freeze",
+			"asset":  op.AssetID,
+			"target": op.Target,
+			"txid":   op.FundTxid,
+			"vout":   op.FundVout,
+		},
+		"note": "the issuer's wallet rebuilds this record from the fields in `record` and signs it with the " +
+			"operational key, then POSTs the signature to /supervision/freeze/" + op.ID + "/complete; the record " +
+			"is submitted over the private producer channel so it cannot be front-run",
 	}
 	if probe != nil {
 		resp["freezable"] = probe.Freezable
@@ -387,11 +400,22 @@ func (s *server) unfreezeBuildResponse(op *SupervisionOp) map[string]any {
 	resp := map[string]any{
 		"unfreeze_id": op.ID,
 		"freeze_id":   op.RefID,
-		"to_sign":     op.Sighash, // RAW 32-byte node-produced message; sign with the CURRENT operational key
+		"to_sign":     op.Sighash, // the node-produced message, for a signer that already knows this layout
 		"sign_with":   "operational",
 		"state":       op.State,
 		"targethash":  op.TargetHash,
-		"note":        "sign the 32-byte message with the operational key, then POST it to /supervision/unfreeze/" + op.ID + "/complete; spending the record is what lifts the freeze",
+		"note":        "the issuer's wallet rebuilds this from the fields in `record` and signs it with the operational key, then POSTs the signature to /supervision/unfreeze/" + op.ID + "/complete; spending the record is what lifts the freeze",
+	}
+	// A lift spends the freeze RECORD, so the outpoint the message binds is that
+	// record's own, not a funding input.
+	if freezeOp, err := s.st.SupervisionOpByID(op.RefID); err == nil && freezeOp != nil {
+		resp["record"] = map[string]any{
+			"kind":   "unfreeze",
+			"asset":  op.AssetID,
+			"target": op.Target,
+			"txid":   freezeOp.Txid,
+			"vout":   freezeOp.RecordVout,
+		}
 	}
 	if op.Txid != "" {
 		resp["txid"] = op.Txid

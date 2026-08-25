@@ -366,18 +366,59 @@ export function StoreProvider({ children }) {
   const signTransferSigs = (built, opts) => signSpend(built, { ...opts, leaf: 'transfer' })
   const signClawbackSigs = (built, opts) => signSpend(built, { ...opts, leaf: 'claw' })
 
-  // A supervision (court-ordered freeze / unfreeze) message is a RAW 32-byte
-  // digest the node produced over the freeze operation. No wallet can recompute
-  // it, so no wallet may sign it: a key that signs a digest it cannot verify is
-  // a signing oracle, and this key is half of the 2-of-2 every restricted asset
-  // the holder owns sits behind. The surface says so rather than offering a
-  // button that cannot work.
-  const signSupervision = () => {
-    throw new Error(
-      'Court-ordered supervision cannot be authorized from a wallet-held SeqPal ID yet: the ' +
-        'message is a node-produced digest a wallet cannot verify, and signing an unverifiable ' +
-        'digest with your enclave key would put every restricted asset you hold at risk.'
-    )
+  // Authorize a supervision action (a court-ordered freeze or the lift of one)
+  // on a supervised asset this account is the operational key for.
+  //
+  // The wallet is handed the RECORD, never the message: the node's message is a
+  // tagged hash over the asset, the frozen address and the outpoint the record
+  // is bound to, so the wallet rebuilds it from those, shows them, and signs its
+  // own reconstruction. That is what lets an issuer freeze with one approval
+  // without the enclave key ever signing bytes it could not check.
+  const signSupervision = async (built) => {
+    if (!signer) return null
+    if (signer.kind !== 'extension') {
+      throw new Error(
+        'A freeze has to be authorized by a wallet that can rebuild and check the record it is ' +
+          'signing. Sign in with the browser wallet extension to authorize it.'
+      )
+    }
+    const rec = built?.record
+    if (!rec) {
+      throw new Error(
+        'This build did not return what the freeze commits to, which a wallet needs in order to ' +
+          'check it. Nothing was signed.'
+      )
+    }
+    return wallet.signSupervision({
+      kind: rec.kind,
+      asset: rec.asset,
+      address: rec.target,
+      txid: rec.txid,
+      vout: rec.vout,
+    })
+  }
+
+  // Authorize a NETWORK-ENFORCED (OpenDAMP) policy change: a freeze or a lift
+  // that the chain's own rules enforce, rather than a supervision record.
+  //
+  // What the issuer's key signs there is the TAGGED hash of the policy snapshot,
+  // so the wallet is given the snapshot hash and applies the tag itself. The
+  // change it represents (which holders, which coins, the reason) is shown on
+  // this page before the wallet is asked, which is where it can be read.
+  const signPolicySnapshot = async (built) => {
+    if (!signer) return null
+    const hash = built?.snapshotHash
+    const tag = built?.snapshotTag
+    if (!hash || !tag) {
+      throw new Error(
+        'This build did not return the policy snapshot the change commits to, which a wallet ' +
+          'needs in order to sign under its own tag. Nothing was signed.'
+      )
+    }
+    return signTagged(tag, {
+      hash,
+      label: 'Policy update (' + (built.action || 'change') + ')',
+    })
   }
 
   // ── in-memory simulation (portal drafts, subscriptions, servicing) ──
@@ -420,6 +461,7 @@ export function StoreProvider({ children }) {
     signBearerStmt,
     signHoldingStmt,
     signSupervision,
+    signPolicySnapshot,
     signer,
     signerKind: signer?.kind || null,
     xonly: signer?.xonly || account?.xonly,

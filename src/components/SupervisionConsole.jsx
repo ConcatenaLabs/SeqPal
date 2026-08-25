@@ -9,9 +9,12 @@ import { txUrl } from '../lib/chain'
 // transfer restrictions on these tokens; the ONE intervention the issuer keeps
 // is freezing a specific balance when a court or regulator orders it, and the
 // network itself enforces the freeze. The flow is two-phase like a clawback:
-// the platform builds the freeze, then the issuer signs the 32-byte message in
-// this browser with their own key (store.signSupervision), and only a completed
-// operation takes effect. The order document is hashed IN the browser; only its
+// the platform builds the freeze, then the issuer's own Sequentia wallet
+// authorizes it (store.signSupervision) and only a completed operation takes
+// effect. The wallet is given what the record commits to, not a digest: which
+// asset, which address, and the outpoint the record is bound to. It rebuilds the
+// message from those and shows them, so an issuer approves a freeze they can
+// read, and a misdescribed one produces a signature the network rejects. The order document is hashed IN the browser; only its
 // fingerprint (sha256) is sent, and that fingerprint is recorded publicly
 // beside the freeze.
 
@@ -109,7 +112,9 @@ export default function SupervisionConsole({ iss }) {
       })
       setPending({
         op_id: action === 'unfreeze' ? res.unfreeze_id : res.freeze_id,
-        to_sign: res.to_sign,
+        // What the record commits to, so the issuer's wallet rebuilds and shows
+        // it rather than signing a digest handed to it.
+        record: res.record,
         action,
       })
     } catch (e) {
@@ -129,7 +134,7 @@ export default function SupervisionConsole({ iss }) {
     try {
       let sig
       try {
-        sig = signSupervision(pending.to_sign)
+        sig = await signSupervision(pending)
       } catch (e) {
         setErr(e.message)
         return
