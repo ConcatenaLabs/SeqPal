@@ -459,7 +459,8 @@ export default function IdRegister() {
                 there; otherwise they stay and continue to verification. */}
             <AuthPanel onDone={() => next && navigate(next)} />
             <p className="mt-4 text-center text-sm text-ink-700/70">
-              Already have an ID on another device? Use Import backup.
+              Already have a SeqPal ID? Sign in with the same Sequentia wallet and you are back
+              in the same account, on any device.
             </p>
           </div>
         ) : (
