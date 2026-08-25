@@ -16,7 +16,7 @@ Node and consensus conventions live in the
 
 | Path | What |
 |---|---|
-| `src/` | The React + Vite single-page app. The browser keeps only the encrypted SeqPal ID key envelope and UI preferences in `localStorage`; records come from seqpald. |
+| `src/` | The React + Vite single-page app. It holds no key material: `localStorage` keeps UI preferences and, for a wallet linked by hand, the account's PUBLIC key. Records come from seqpald. |
 | `seqpald/` | The Go backend, its own module. It serves the built SPA (with history-API fallback) *and* the API, so one reverse-proxy route covers both. |
 | `scripts/` | `live-probe.sh`, the `e2e/` driver, and the `regenesis/` runbook scripts. |
 | `seqpald/M*-CONTRACT.md` | Per-milestone contracts, each with a matching `m*_test.go`. |
@@ -75,8 +75,8 @@ not move any holder key material server-side.
   (`confidential: true` on POST /api/transfers), gated per deployment by `SEQPALD_CONFIDENTIAL`.
   There is no such thing as a confidential asset; do not reintroduce an issuance-time election.
   Supervised bearer assets stay transparent by consensus.
-- Clearing browser state loses the key envelope, not the records, and does **not** undo an
-  already-minted on-chain asset.
+- Clearing browser state costs a reconnect and nothing else: the key is in the holder's wallet,
+  backed up by that wallet's own recovery. It never undoes an already-minted on-chain asset.
 - Public copy has been rewritten several times to correct licensing and regulatory positioning.
   Treat copy changes as substantive, not cosmetic.
 
