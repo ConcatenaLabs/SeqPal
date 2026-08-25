@@ -6,7 +6,7 @@ Builds on M1-M9 (all deployed live). Plan: `../OVERHAUL.md` M10 row (line 264), 
 2. A testnet regenesis recovery runbook + scripts, tested against a throwaway LOCAL stack.
 3. A Section 8 QA checklist and its execution notes.
 4. A full LIVE end-to-end acceptance DRIVER (Node) that produces the deferred on-chain proofs
-   from M5-M9, reusing the real SPA signers in `src/lib/keys.js`.
+   from M5-M9, signing as a holder's wallet does over the SPA's statement bytes.
 
 No product-behavior changes; this milestone verifies, documents, and drives what M1-M9 built.
 Everything additive. NO em dashes; "Sequentia" spelled out; nothing final at 0-conf.
@@ -44,10 +44,11 @@ internal engineering QA list (NOT user-facing guidance); the product UI must be 
 
 ## 4. Live end-to-end acceptance DRIVER (the flagship)
 
-A Node ESM driver (`~/SeqPal/scripts/e2e/…`, runnable with `node`) that imports the REAL SPA
-signers from `../src/lib/keys.js` (computeAID, signChallenge, signMandate, signClosing,
-signSighash, signClawbackSighash, signStatement, MARKET_ABUSE_TAG, LISTING_TAG) so the driver
-signs EXACTLY as the browser does. It exercises the platform against a configurable base URL
+A Node ESM driver (`~/SeqPal/scripts/e2e/…`, runnable with `node`) that plays the holder's
+wallet (`lib/wallet-signer.mjs`: computeAID, signChallenge, signMandate, signClosing,
+signSighash, signClawbackSighash, signStatement) over the statement constructions the SPA
+ships in `src/lib/statements.js` (MARKET_ABUSE_TAG, LISTING_TAG), so the driver signs EXACTLY
+what a real holder's wallet produces. It exercises the platform against a configurable base URL
 (default the live box `https://sequentiatestnet.com`, paths `/seqpal/api/*` and `/openamp/v1/*`)
 and produces the deferred proofs, each printing the on-chain txid / evidence:
 - M6: an ATOMIC USDX close, ONE tx delivering restricted tokens to the investor enclave AND USDX

@@ -1,15 +1,25 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Icon } from './icons'
-import { DemoNote } from './ui'
-import { useStore, downloadEnvelope, envelopeFilename } from '../lib/store'
-import { passphraseStrength } from '../lib/keys'
+import { useStore } from '../lib/store'
+import { isXonly } from '../lib/statements'
+import * as wallet from '../lib/wallet'
 import { RESIDENCE_OPTIONS } from '../data/jurisdictions'
 
-// The three account forms for a SeqPal ID: create a new enclave key, unlock the
-// one stored in this browser, or import a backup file. Registration is
-// role-agnostic: it never asks whether you intend to issue or invest. The real
-// eligibility verification (document review + sanctions screen) is a separate
-// step on /id/register once the identity exists.
+// Attaching a SeqPal ID to a Sequentia wallet.
+//
+// SeqPal is not a wallet and does not make one for you: a SeqPal ID IS the
+// OpenAMP enclave account your Sequentia wallet already derives, which is why a
+// security token issued to it is one you can see and move in that wallet. There
+// is no "create a key here" path, and there is no backup file to lose — your
+// wallet's own seed already covers the key.
+//
+// Two ways in. A wallet that injects window.sequentia is asked directly. Any
+// other Sequentia wallet is linked by its public enclave key, and signs each
+// statement out of band (see WalletSignPrompt).
+//
+// Registration stays role-agnostic: it never asks whether you intend to issue
+// or invest. The real eligibility verification (document review + sanctions
+// screen) is a separate step on /id/register once the identity exists.
 
 export function Field({ id, label, children, hint }) {
   return (
@@ -34,51 +44,23 @@ export function Spinner() {
   )
 }
 
-/* ─────────────────────────── Create ─────────────────────────── */
+/* ─────────────────────── the profile a new account needs ─────────────────── */
 
-export function CreateId({ onDone }) {
-  const { prepareId, registerWithKey } = useStore()
-  const [form, setForm] = useState({
-    name: '',
-    residence: 'AE',
-    accredited: false,
-    passphrase: '',
-    confirm: '',
-  })
-  const [phase, setPhase] = useState('form') // form | sealing | export | registering
-  const [pending, setPending] = useState(null) // { priv, envelope }
-  const [exported, setExported] = useState(false)
+function NewAccount({ identity, onDone }) {
+  const { registerId } = useStore()
+  const [form, setForm] = useState({ name: '', residence: 'AE', accredited: false })
+  const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
 
   const res = RESIDENCE_OPTIONS.find((r) => r.code === form.residence)
   const docVerify = ['US', 'CA'].includes(form.residence)
-  const strength = passphraseStrength(form.passphrase)
-  const mismatch = form.confirm.length > 0 && form.confirm !== form.passphrase
-  const canSeal =
-    form.name.trim().length > 1 &&
-    strength.level !== 'weak' &&
-    form.confirm === form.passphrase
 
-  const seal = async (e) => {
+  const submit = async (e) => {
     e.preventDefault()
     setErr(null)
-    setPhase('sealing')
+    setBusy(true)
     try {
-      setPending(await prepareId(form.passphrase))
-      setPhase('export')
-    } catch (e2) {
-      setErr(e2.message)
-      setPhase('form')
-    }
-  }
-
-  const finish = async () => {
-    setErr(null)
-    setPhase('registering')
-    try {
-      await registerWithKey({
-        priv: pending.priv,
-        envelope: pending.envelope,
+      await registerId(identity, {
         displayName: form.name.trim(),
         residence: form.residence,
         profile: {
@@ -94,74 +76,27 @@ export function CreateId({ onDone }) {
       onDone?.()
     } catch (e2) {
       setErr(e2.message)
-      setPhase('export')
+    } finally {
+      setBusy(false)
     }
   }
 
-  if (phase === 'export' || phase === 'registering') {
-    const env = pending.envelope
-    return (
-      <div className="space-y-4">
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3.5 text-sm text-amber-900">
-          <div className="flex items-center gap-2 font-semibold">
-            <Icon.lock width={16} height={16} /> Save your backup before you finish
-          </div>
-          <p className="mt-1.5 leading-relaxed">
-            Your enclave key is generated and encrypted with your passphrase. It is one half
-            of the 2-of-2 that every asset you hold sits behind. If this browser is cleared
-            and you have no backup, that half is gone for good: assets already minted stay on
-            chain without you, and there is no reset and no support recovery.
-          </p>
-        </div>
-        <div className="rounded-xl border border-ink-900/10 bg-ink-900/[0.02] px-4 py-3 text-xs">
-          <div className="flex justify-between gap-4">
-            <span className="text-ink-700/70">Account id (AID)</span>
-            <span className="font-mono text-ink-900">{env.aid}</span>
-          </div>
-          <div className="mt-1.5 flex justify-between gap-4">
-            <span className="text-ink-700/70">Backup file</span>
-            <span className="font-mono text-ink-900">{envelopeFilename(env.aid)}</span>
-          </div>
-        </div>
-        <button
-          onClick={() => {
-            downloadEnvelope(env)
-            setExported(true)
-          }}
-          className={exported ? 'btn-outline w-full' : 'btn-primary w-full'}
-        >
-          <Icon.upload width={16} height={16} className="rotate-180" />
-          {exported ? 'Download again' : 'Download my encrypted backup'}
-        </button>
-        <ErrorNote>{err}</ErrorNote>
-        <button
-          onClick={finish}
-          disabled={!exported || phase === 'registering'}
-          className="btn-primary w-full disabled:opacity-50"
-        >
-          {phase === 'registering' ? (
-            <>
-              <Spinner />
-              Signing the challenge and registering
-            </>
-          ) : (
-            <>
-              Finish and continue to verification
-              <Icon.arrowRight width={16} height={16} />
-            </>
-          )}
-        </button>
-        {!exported && (
-          <p className="text-center text-xs text-ink-700/60">
-            Download the backup to continue. No export, no account.
-          </p>
-        )}
-      </div>
-    )
-  }
-
   return (
-    <form onSubmit={seal} className="space-y-4">
+    <form onSubmit={submit} className="space-y-4">
+      <div className="rounded-xl border border-ink-900/10 bg-ink-900/[0.02] px-4 py-3 text-xs">
+        <div className="flex justify-between gap-4">
+          <span className="text-ink-700/70">Account id (AID)</span>
+          <span className="font-mono text-ink-900">{identity.aid}</span>
+        </div>
+        <div className="mt-1.5 flex justify-between gap-4">
+          <span className="text-ink-700/70">Enclave key</span>
+          <span className="truncate font-mono text-ink-900">{identity.xonly}</span>
+        </div>
+      </div>
+      <p className="text-sm leading-relaxed text-ink-700/80">
+        This wallet has no SeqPal ID yet. Tell us who you are and we will register this account
+        with the policy server.
+      </p>
       <Field id="ind-name" label="Full legal name">
         <input
           id="ind-name"
@@ -189,68 +124,27 @@ export function CreateId({ onDone }) {
           ))}
         </select>
       </Field>
-
-      <div className="rounded-xl border border-ink-900/15 p-4">
-        <div className="flex items-center gap-2 text-sm font-semibold text-ink-900">
-          <Icon.lock width={16} height={16} className="text-btc-600" />
-          Passphrase for your enclave key
-        </div>
-        <p className="mt-1 text-xs leading-relaxed text-ink-700/70">
-          Your key is generated here and encrypted with this passphrase before anything is
-          stored or exported. SeqPal never sees the key or the passphrase, and neither can be
-          recovered.
-        </p>
-        <div className="mt-3 space-y-3">
+      {res?.accreditationLabel && (
+        <label className="flex items-start gap-2.5 text-sm text-ink-700">
           <input
-            id="ind-pass"
-            type="password"
-            className="input"
-            placeholder="Passphrase"
-            autoComplete="new-password"
-            value={form.passphrase}
-            onChange={(e) => setForm({ ...form, passphrase: e.target.value })}
+            type="checkbox"
+            className="mt-0.5"
+            checked={form.accredited}
+            onChange={(e) => setForm({ ...form, accredited: e.target.checked })}
           />
-          {form.passphrase && (
-            <p
-              className={`text-xs ${
-                strength.level === 'strong'
-                  ? 'text-emerald-600'
-                  : strength.level === 'fair'
-                    ? 'text-amber-700'
-                    : 'text-rose-600'
-              }`}
-            >
-              {strength.label}
-            </p>
-          )}
-          <input
-            id="ind-pass2"
-            type="password"
-            className="input"
-            placeholder="Repeat passphrase"
-            autoComplete="new-password"
-            value={form.confirm}
-            onChange={(e) => setForm({ ...form, confirm: e.target.value })}
-          />
-          {mismatch && <p className="text-xs text-rose-600">The passphrases do not match.</p>}
-        </div>
-      </div>
-
-      <DemoNote>
-        Document verification, liveness, and PEP screening are SIMULATED in this build, with
-        real states. Sanctions screening runs against the real public lists. Authentication is
-        proof that you hold the enclave key, checked by signature on every sign-in.
-      </DemoNote>
+          <span>{res.accreditationLabel}</span>
+        </label>
+      )}
       <ErrorNote>{err}</ErrorNote>
       <button
         type="submit"
-        disabled={!canSeal || phase === 'sealing'}
+        disabled={busy || form.name.trim().length < 2}
         className="btn-primary w-full disabled:opacity-50"
       >
-        {phase === 'sealing' ? (
+        {busy ? (
           <>
             <Spinner />
-            Generating and encrypting your key
+            Signing the challenge and registering
           </>
         ) : (
           <>
@@ -263,176 +157,158 @@ export function CreateId({ onDone }) {
   )
 }
 
-/* ─────────────────────────── Sign in ─────────────────────────── */
+/* ───────────────────────── linking a wallet by hand ──────────────────────── */
 
-export function UnlockId({ onDone }) {
-  const { unlock, envelope } = useStore()
-  const [pass, setPass] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState(null)
-
-  const submit = async (e) => {
-    e.preventDefault()
-    setErr(null)
-    setBusy(true)
-    try {
-      await unlock(pass)
-      onDone?.()
-    } catch (e2) {
-      setErr(e2.message)
-    } finally {
-      setBusy(false)
-    }
-  }
-
+function LinkWallet({ onIdentity, onBack, busy }) {
+  const [xonly, setXonly] = useState('')
+  const value = xonly.trim().toLowerCase()
   return (
-    <form onSubmit={submit} className="space-y-4">
-      <div className="rounded-xl border border-ink-900/10 bg-ink-900/[0.02] px-4 py-3 text-xs">
-        <div className="flex justify-between gap-4">
-          <span className="text-ink-700/70">SeqPal ID in this browser</span>
-          <span className="font-mono text-ink-900">
-            {envelope.aid.slice(0, 8)}…{envelope.aid.slice(-6)}
-          </span>
-        </div>
+    <div className="space-y-4">
+      <p className="text-sm leading-relaxed text-ink-700/80">
+        Any Sequentia wallet works. Find your account key, the x-only public key your wallet
+        derives at <span className="font-mono text-xs">m/5/0</span>, shown wherever it lists
+        your restricted-asset account, and paste it here. SeqPal will ask that wallet to sign a
+        challenge to prove you hold it, and will ask it again for every statement you sign
+        afterwards.
+      </p>
+      <Field
+        id="link-xonly"
+        label="Your OpenAMP account key (x-only, 64 hex)"
+        hint="A public key. It is safe to paste, and it is all SeqPal keeps."
+      >
+        <input
+          id="link-xonly"
+          className="input font-mono text-xs"
+          spellCheck={false}
+          placeholder="0000…"
+          value={xonly}
+          onChange={(e) => setXonly(e.target.value)}
+        />
+      </Field>
+      <div className="flex gap-3">
+        <button
+          onClick={() => onIdentity({ kind: 'linked', xonly: value, aid: null })}
+          disabled={busy || !isXonly(value)}
+          className="btn-primary flex-1 disabled:opacity-50"
+        >
+          {busy ? (
+            <>
+              <Spinner />
+              Verifying
+            </>
+          ) : (
+            'Link this wallet'
+          )}
+        </button>
+        <button onClick={onBack} className="btn-outline">
+          Back
+        </button>
       </div>
-      <Field
-        id="unlock-pass"
-        label="Passphrase"
-        hint="Unlocking decrypts your key locally and signs a one-time challenge from the server. The passphrase never leaves this browser."
-      >
-        <input
-          id="unlock-pass"
-          type="password"
-          className="input"
-          autoComplete="current-password"
-          value={pass}
-          onChange={(e) => setPass(e.target.value)}
-        />
-      </Field>
-      <ErrorNote>{err}</ErrorNote>
-      <button disabled={busy || !pass} className="btn-primary w-full disabled:opacity-50">
-        {busy ? (
-          <>
-            <Spinner />
-            Signing the challenge
-          </>
-        ) : (
-          <>
-            Unlock and sign in
-            <Icon.arrowRight width={16} height={16} />
-          </>
-        )}
-      </button>
-    </form>
+    </div>
   )
 }
 
-/* ─────────────────────────── Import ─────────────────────────── */
+/* ───────────────────────────────── panel ─────────────────────────────────── */
 
-export function ImportId({ onDone }) {
-  const { importId } = useStore()
-  const [file, setFile] = useState(null)
-  const [pass, setPass] = useState('')
+export function AuthPanel({ onDone }) {
+  const { connectExtension, signIn } = useStore()
+  const [phase, setPhase] = useState('choose') // choose | link | profile
+  const [identity, setIdentity] = useState(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
+  const [ext, setExt] = useState('checking') // checking | present | absent
 
-  const submit = async (e) => {
-    e.preventDefault()
+  useEffect(() => {
+    let cancelled = false
+    wallet.waitForProvider().then((p) => {
+      if (!cancelled) setExt(p ? 'present' : 'absent')
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // Attach an identity, then sign in with it. seqpald answering "no account for
+  // this key" is not an error: it is a new holder, and the profile form follows.
+  const attach = async (get) => {
     setErr(null)
     setBusy(true)
     try {
-      const env = JSON.parse(await file.text())
-      await importId(env, pass)
-      onDone?.()
-    } catch (e2) {
-      setErr(e2 instanceof SyntaxError ? 'That file is not a SeqPal ID backup.' : e2.message)
+      const id = await get()
+      setIdentity(id)
+      const acct = await signIn(id)
+      if (acct) onDone?.()
+      else setPhase('profile')
+    } catch (e) {
+      setErr(e.message)
     } finally {
       setBusy(false)
     }
   }
 
-  return (
-    <form onSubmit={submit} className="space-y-4">
-      <Field
-        id="imp-file"
-        label="Backup file"
-        hint="The seqpal-id file you downloaded when you created the ID. It is encrypted, so it is useless to anyone without your passphrase."
-      >
-        <input
-          id="imp-file"
-          type="file"
-          accept="application/json,.json"
-          className="input py-2"
-          onChange={(e) => setFile(e.target.files?.[0] || null)}
-        />
-      </Field>
-      <Field id="imp-pass" label="Passphrase">
-        <input
-          id="imp-pass"
-          type="password"
-          className="input"
-          autoComplete="current-password"
-          value={pass}
-          onChange={(e) => setPass(e.target.value)}
-        />
-      </Field>
-      <ErrorNote>{err}</ErrorNote>
-      <button
-        disabled={busy || !file || !pass}
-        className="btn-primary w-full disabled:opacity-50"
-      >
-        {busy ? (
-          <>
-            <Spinner />
-            Unlocking and signing in
-          </>
-        ) : (
-          <>
-            Import and sign in
-            <Icon.arrowRight width={16} height={16} />
-          </>
-        )}
-      </button>
-    </form>
-  )
-}
+  if (phase === 'profile' && identity) {
+    return (
+      <div className="card p-7">
+        <NewAccount identity={identity} onDone={onDone} />
+      </div>
+    )
+  }
 
-// The three-tab auth panel, shared by the landing and the register page.
-export function AuthPanel({ onDone, initialTab }) {
-  const { hasLocalId } = useStore()
-  const [tab, setTab] = useState(initialTab || (hasLocalId ? 'unlock' : 'create'))
   return (
     <div className="card p-7">
-      <div className="flex gap-1 rounded-xl bg-ink-900/[0.04] p-1">
-        {[
-          ['create', 'Create an ID'],
-          ['unlock', 'Sign in'],
-          ['import', 'Import backup'],
-        ].map(([k, label]) => (
-          <button
-            key={k}
-            onClick={() => setTab(k)}
-            className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
-              tab === k ? 'bg-white text-ink-900 shadow-card' : 'text-ink-700 hover:text-ink-900'
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      <div className="mt-6">
-        {tab === 'create' && <CreateId onDone={onDone} />}
-        {tab === 'unlock' &&
-          (hasLocalId ? (
-            <UnlockId onDone={onDone} />
-          ) : (
-            <div className="rounded-xl border border-dashed border-ink-900/20 p-6 text-center text-sm text-ink-700/70">
-              No SeqPal ID is stored in this browser. Import your backup file, or create a new
-              ID.
-            </div>
-          ))}
-        {tab === 'import' && <ImportId onDone={onDone} />}
-      </div>
+      {phase === 'link' ? (
+        <>
+          <h2 className="text-lg font-bold text-ink-900">Link another Sequentia wallet</h2>
+          <div className="mt-5">
+            <LinkWallet
+              busy={busy}
+              onBack={() => setPhase('choose')}
+              onIdentity={(id) => attach(async () => id)}
+            />
+          </div>
+          <ErrorNote>{err}</ErrorNote>
+        </>
+      ) : (
+        <>
+          <h2 className="text-lg font-bold text-ink-900">Use your Sequentia wallet</h2>
+          <p className="mt-2 text-sm leading-relaxed text-ink-700/80">
+            Your SeqPal ID is the OpenAMP account your wallet already holds restricted assets in.
+            SeqPal never sees your key, and there is no separate backup to keep: your wallet&apos;s
+            own recovery covers it.
+          </p>
+
+          <div className="mt-5 space-y-3">
+            <button
+              onClick={() => attach(connectExtension)}
+              disabled={busy || ext !== 'present'}
+              className="btn-primary w-full disabled:opacity-50"
+            >
+              {busy ? (
+                <>
+                  <Spinner />
+                  Waiting for your wallet
+                </>
+              ) : (
+                <>
+                  <Icon.lock width={16} height={16} />
+                  Continue with my browser wallet
+                </>
+              )}
+            </button>
+            {ext === 'absent' && (
+              <p className="text-center text-xs text-ink-700/60">
+                No Sequentia wallet extension is installed in this browser.
+              </p>
+            )}
+            <button onClick={() => setPhase('link')} className="btn-outline w-full">
+              Link another Sequentia wallet
+            </button>
+          </div>
+          <div className="mt-4">
+            <ErrorNote>{err}</ErrorNote>
+          </div>
+        </>
+      )}
     </div>
   )
 }

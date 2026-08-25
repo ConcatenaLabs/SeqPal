@@ -123,19 +123,20 @@ type Clawback struct {
 	Error      string `json:"error,omitempty"`
 	OaID       string `json:"oa_id,omitempty"`   // openampd two-phase build id (external issuer)
 	ToSign     string `json:"to_sign,omitempty"` // cached leaf sighashes JSON (external issuer)
+	Tx         string `json:"tx,omitempty"`      // the built sweep transaction, hex (external issuer)
 	CreatedAt  int64  `json:"created_at"`
 	UpdatedAt  int64  `json:"updated_at"`
 }
 
-const clawbackCols = `id, issuance_id, asset_id, holder_aid, reason, state, atoms, txid, by_aid, context, error, oa_id, to_sign, created_at, updated_at`
+const clawbackCols = `id, issuance_id, asset_id, holder_aid, reason, state, atoms, txid, by_aid, context, error, oa_id, to_sign, tx, created_at, updated_at`
 
 func (s *Store) InsertClawback(c *Clawback) error {
 	now := time.Now().Unix()
 	c.CreatedAt, c.UpdatedAt = now, now
 	_, err := s.db.Exec(
-		`INSERT INTO clawbacks (`+clawbackCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		`INSERT INTO clawbacks (`+clawbackCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		c.ID, c.IssuanceID, c.AssetID, c.HolderAID, c.Reason, c.State, c.Atoms, c.Txid,
-		c.ByAID, c.Context, c.Error, c.OaID, c.ToSign, c.CreatedAt, c.UpdatedAt)
+		c.ByAID, c.Context, c.Error, c.OaID, c.ToSign, c.Tx, c.CreatedAt, c.UpdatedAt)
 	return err
 }
 
@@ -177,7 +178,7 @@ func (s *Store) AwaitingClawback(assetID, holderAID string) (*Clawback, error) {
 func scanClawback(row *sql.Row) (*Clawback, error) {
 	var c Clawback
 	err := row.Scan(&c.ID, &c.IssuanceID, &c.AssetID, &c.HolderAID, &c.Reason, &c.State, &c.Atoms,
-		&c.Txid, &c.ByAID, &c.Context, &c.Error, &c.OaID, &c.ToSign, &c.CreatedAt, &c.UpdatedAt)
+		&c.Txid, &c.ByAID, &c.Context, &c.Error, &c.OaID, &c.ToSign, &c.Tx, &c.CreatedAt, &c.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}

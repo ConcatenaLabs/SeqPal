@@ -16,10 +16,13 @@ registrar steps are simulated so the flow can be walked end to end.
 
 **Real (on the Sequentia testnet):**
 
-- Each SeqPal ID generates a real secp256k1 enclave keypair (`src/lib/keys.js`).
-  The private key stays in the browser; only the x-only public key is registered
-  with OpenAMP, from which the policy server derives the account id (AID) and the
-  2-of-2 enclave address restricted assets live in.
+- A SeqPal ID is the OpenAMP enclave account of a Sequentia wallet the holder
+  already has — the secp256k1 key that wallet derives at `m/5/0`. SeqPal makes no
+  key and holds none: only the x-only public key is registered with OpenAMP, from
+  which the policy server derives the account id (AID) and the 2-of-2 enclave
+  address restricted assets live in. A wallet that injects `window.sequentia` is
+  asked directly; any other Sequentia wallet is linked by that public key and
+  signs each statement out of band.
 - Deploying an issuance mints a real OpenAMP restricted asset: the SeqPal backend
   (`seqpald`) registers the issuer's enclave key and calls OpenAMP's issuer API,
   which builds and broadcasts the issuance transaction on Sequentia. The returned
@@ -52,16 +55,18 @@ registrar steps are simulated so the flow can be walked end to end.
   lists, but document review is a simulated queue with no vendor call.
 - The card/fiat payment rail (its settlements are marked `funds_simulated`).
 - The e-signature provider: documents and subscription agreements are signed
-  with the SeqPal ID key (BIP340 over the content hash), not through a vendor.
+  with the SeqPal ID key in the holder's own wallet (BIP340 over the content
+  hash), not through a vendor.
 - Próspera incorporation and the RFSA registry (a filing gets a number and a
   public lookup from a simulated registry).
 - The brokerage-custody relationship for Depository Receipts.
 
-The browser keeps only your encrypted SeqPal ID key envelope
-(`localStorage` key `seqpal.id.v1`) and UI preferences. Accounts, issuances and
-subscriptions are records in seqpald's database and on chain. Export the key
-envelope when prompted: clearing browser storage loses the key, not the records,
-and never undoes an already-minted on-chain asset.
+The browser keeps no key material at all: `localStorage` holds UI preferences
+and, for a wallet linked by hand, the public key of the account signed in
+(`seqpal.signer.v1`). Accounts, issuances and subscriptions are records in
+seqpald's database and on chain. Clearing browser storage costs you a reconnect
+and nothing else — the key is in your wallet, backed up by your wallet's own
+recovery.
 
 ## What the product covers
 
@@ -97,7 +102,7 @@ and never undoes an already-minted on-chain asset.
     deployment capability (`SEQPALD_DAMP`); refused with a 501 where it is unset.
   - *Freely tradable* (`bearer`) — a node-level supervised asset: an ordinary
     bearer token with on-chain freeze/unfreeze under the issuer's supervision
-    key plus an offline recovery key, always transparent.
+    key plus a recovery key in a second wallet, always transparent.
 - **Issuance lifecycle** — draft → documents generated and issuer-signed → RFSA
   filing (simulated registry, public lookup) → setup fee paid in USDX → deploy
   (the real mint) → broadcast → confirmed → anchored, shown as a timeline.
@@ -133,7 +138,7 @@ Browser (React SPA, served by seqpald)
 - `seqpald/` — the Go backend and the platform's books and records: a SQLite
   database (accounts, issuances, subscriptions, documents, the hash-chained
   audit log) plus the per-offering escrow enclave key it uses to settle
-  closings. Holder keys never leave the browser. seqpald also holds the OpenAMP
+  closings. Holder keys never leave the holder's wallet. seqpald also holds the OpenAMP
   issuer token, which must never reach a browser, and is the only party that
   calls the issuer API.
 
@@ -144,7 +149,7 @@ npm install
 npm run dev      # http://localhost:5173; proxies /seqpal and /openamp to LOCAL backends
                  # (127.0.0.1:8730 and :8722). Set VITE_SEQPAL_API / VITE_OPENAMP_API to
                  # aim at the live testnet; that mints real assets.
-npm test         # pure-logic + enclave-key unit suite
+npm test         # pure-logic + signed-statement unit suite
 npm run build    # production build to dist/
 ```
 

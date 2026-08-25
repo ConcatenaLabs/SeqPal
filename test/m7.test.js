@@ -2,7 +2,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import { canonicalJSON } from '../src/lib/openamp.js'
-import { xonlyOf, taggedHash, signMandate, MANDATE_TAG } from '../src/lib/keys.js'
+import { xonlyOf, taggedHash, signMandate } from '../scripts/e2e/lib/wallet-signer.mjs'
+import { MANDATE_TAG } from '../src/lib/statements.js'
 import { schnorr } from '@noble/curves/secp256k1'
 import { bytesToHex, hexToBytes } from '@noble/curves/abstract/utils'
 

@@ -91,12 +91,14 @@ function DocRow({ doc, offerOpen, canSign }) {
   const sign = async () => {
     setState({ busy: true, err: null, ok: false })
     try {
-      const sig = signDoc(doc.hash)
+      // The label only names the document in the wallet's prompt; the
+      // signature commits to the hash, which is what seqpald verifies.
+      const sig = await signDoc(doc.hash, meta.label)
       if (!sig) {
         setState({
           busy: false,
           ok: false,
-          err: 'Unlock your SeqPal ID to sign. The enclave key signs in this browser and never leaves it.',
+          err: 'Connect your Sequentia wallet to sign. SeqPal never holds the key that signs this.',
         })
         return
       }

@@ -68,9 +68,9 @@ export default function ClosingCard({ iss }) {
         refreshBook()
         return
       }
-      const sig = signCloseStmt(prep.sign_this)
+      const sig = await signCloseStmt(prep.sign_this)
       if (!sig) {
-        setErr('Unlock your SeqPal ID to sign the closing authorization.')
+        setErr('Connect your Sequentia wallet to sign the closing authorization.')
         return
       }
       const res = await api.close(iss.id, { signature: sig, signer_xonly: xonly })
@@ -209,7 +209,7 @@ export default function ClosingCard({ iss }) {
       </button>
       {!hasKey && (
         <p className="mt-2 text-center text-xs text-amber-700">
-          Unlock your SeqPal ID to sign the closing authorization.
+          Connect your Sequentia wallet to sign the closing authorization.
         </p>
       )}
       {ledger.length > 0 && (

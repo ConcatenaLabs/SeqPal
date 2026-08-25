@@ -160,16 +160,18 @@ export default function Docs() {
 
       <Section icon={Icon.lock} title="Key custody">
         <p>
-          Every key that can move value is generated in a browser and never leaves it. A
-          SeqPal ID is a secp256k1 keypair created client-side; only the x-only public key
-          reaches the server, and the private key is persisted solely as an AES-GCM
-          envelope encrypted under the user&rsquo;s passphrase. In the OpenAMP model the
+          SeqPal holds no keys and makes none. A SeqPal ID is the OpenAMP enclave account
+          your own Sequentia wallet derives at m/5/0: the wallet registers its x-only public
+          key with the policy server, which derives the account id and the enclave address
+          from it, and nothing but that public key ever reaches SeqPal. Your wallet&rsquo;s
+          own recovery therefore covers the key, and a security token issued to a SeqPal ID
+          is one you can see and move in the wallet you already use. In the OpenAMP model the
           holder&rsquo;s key is one half of the 2-of-2 enclave, which makes it negative
           control: it can refuse a transfer but cannot, alone, move a clawback-enabled
-          position. The issuer key on every asset is the issuing entity&rsquo;s own browser
+          position. The issuer key on every asset is the issuing entity&rsquo;s own wallet
           key, so reclaiming tokens is two-phase, the issuer signs first and the policy
           server co-signs, and the platform holds no key that can move a holder&rsquo;s
-          position. For freely-tradable assets the issuer additionally generates a recovery
+          position. For freely-tradable assets the issuer additionally names a recovery
           key, exported to an encrypted offline backup before deploy, whose public half is
           registered on the asset as the replacement path for a stolen issuer key.
         </p>

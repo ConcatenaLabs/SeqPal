@@ -897,6 +897,16 @@ CREATE TABLE damp_policy_ops (
 );
 CREATE INDEX idx_damp_policy_ops_issuance ON damp_policy_ops(issuance_id);
 `,
+	// A SeqPal ID is the enclave key of the holder's own Sequentia wallet, and a
+	// wallet refuses to sign a digest it cannot check: it recomputes every sighash
+	// from the transaction itself. So a two-phase clawback has to hand back the
+	// built sweep transaction alongside its sighashes, and a resumed build has to
+	// re-surface the same one. Additive with a safe default; an existing database
+	// migrates forward in place, and a clawback built before this column simply
+	// has no transaction to re-surface and is rebuilt.
+	`
+ALTER TABLE clawbacks ADD COLUMN tx TEXT NOT NULL DEFAULT '';
+`,
 }
 
 // Store is seqpald's persistent state. Every financial fact the UI shows is

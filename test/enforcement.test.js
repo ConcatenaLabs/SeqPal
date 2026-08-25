@@ -5,15 +5,12 @@ import {
   generateEnclaveKey,
   generateRecoveryKey,
   taggedHash,
-  encryptKey,
-  decryptKey,
-  BEARER_ATTESTATION_TAG,
-  HOLDING_PROOF_TAG,
   signBearerAttestation,
   signHoldingProof,
   signSupervisionMessage,
   signChallenge,
-} from '../src/lib/keys.js'
+} from '../scripts/e2e/lib/wallet-signer.mjs'
+import { BEARER_ATTESTATION_TAG, HOLDING_PROOF_TAG, isXonly } from '../src/lib/statements.js'
 import { canonicalJSON } from '../src/lib/openamp.js'
 import { toTerms, view } from '../src/lib/issuance.js'
 import { schnorr } from '@noble/curves/secp256k1'
@@ -145,15 +142,22 @@ test('supervision: raw 32-byte signer with the clawback-style guards', () => {
   )
 })
 
-test('recovery key: an independent keypair with the same envelope round-trip', async () => {
-  const key = generateRecoveryKey()
+// The recovery key registered on a freely-tradable asset is a SECOND Sequentia
+// wallet, and only its public half is ever named. Its whole purpose is to still
+// be the issuer's after the everyday key is stolen, which a key derived from the
+// same seed would not be, so what the deploy accepts is an x-only key that is
+// well-formed and is not the one signing.
+test('recovery key: an independent public key, never the session key', () => {
   const main = generateEnclaveKey()
-  assert.notEqual(key.xonly, main.xonly, 'the recovery key must be independent of the main key')
-  const envelope = await encryptKey(key.priv, 'a strong passphrase 1234')
-  envelope.xonly = key.xonly
-  assert.ok(envelope.ct && envelope.salt && envelope.iv, 'the backup is the AES-GCM envelope, never plaintext')
-  assert.equal(await decryptKey(envelope, 'a strong passphrase 1234'), key.priv)
-  await assert.rejects(() => decryptKey(envelope, 'wrong'), /Wrong passphrase/)
+  const recovery = generateRecoveryKey()
+  assert.notEqual(recovery.xonly, main.xonly, 'the recovery key must be a different wallet')
+  assert.ok(isXonly(recovery.xonly), 'a recovery key is registered as an x-only public key')
+  assert.ok(!isXonly(''), 'an empty key is refused')
+  assert.ok(!isXonly(recovery.xonly.slice(0, 62)), 'a short key is refused')
+  assert.ok(!isXonly('z'.repeat(64)), 'a non-hex key is refused')
+  // Only the public half is registered; nothing about the private half is
+  // SeqPal's to hold, keep or back up.
+  assert.equal(typeof recovery.xonly, 'string')
 })
 
 // ── the live-drill drivers' primitives (scripts/e2e) ────────────────────────

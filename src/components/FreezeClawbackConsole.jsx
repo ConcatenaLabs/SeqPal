@@ -155,20 +155,27 @@ export default function FreezeClawbackConsole({ iss }) {
   const completeClawback = async () => {
     setErr(null)
     if (!hasKey) {
-      setErr('Unlock your SeqPal ID to sign the clawback. The issuer key authorizes the seizure; nothing is swept until you sign.')
+      setErr('Connect your Sequentia wallet to sign the clawback. The issuer key authorizes the seizure; nothing is swept until you sign.')
       return
     }
     setBusy('sign')
     try {
       let sigs
       try {
-        sigs = signClawbackSigs(pending.to_sign)
+        // The wallet is handed the sweep TRANSACTION and the holder whose
+        // enclave output it spends: the clawback leaf comes from that holder's
+        // address, and the wallet recomputes each sighash from it rather than
+        // signing a digest seqpald handed over.
+        sigs = await signClawbackSigs(pending, {
+          asset: pending.asset || iss.asset_id || iss.assetId,
+          fromAid: pending.holder_aid,
+        })
       } catch (e) {
         setErr(e.message)
         return
       }
       if (!sigs) {
-        setErr('Unlock your SeqPal ID to sign the clawback.')
+        setErr('Connect your Sequentia wallet to sign the clawback.')
         return
       }
       const res = await api.consoleClawbackComplete(iss.id, pending.clawback_id, { sigs })
@@ -207,7 +214,7 @@ export default function FreezeClawbackConsole({ iss }) {
         {external ? (
           <>
             <span className="font-semibold">External issuer key.</span> This asset&rsquo;s issuer key
-            is your own SeqPal ID key, held in your browser, not by the platform. A clawback is
+            is your own SeqPal ID key, held in your Sequentia wallet, not by the platform. A clawback is
             two-phase: the platform builds the sweep and logs the reason, then you authorize the
             seizure with your key and the registrar co-signs. SeqPal cannot move a holder&rsquo;s
             position on its own.
@@ -336,7 +343,7 @@ export default function FreezeClawbackConsole({ iss }) {
             </div>
             {!hasKey && (
               <p className="mt-2 text-xs font-medium text-amber-700">
-                Unlock your SeqPal ID to sign. Cancelling leaves nothing swept; the reason stays in
+                Connect your Sequentia wallet to sign. Cancelling leaves nothing swept; the reason stays in
                 the log.
               </p>
             )}

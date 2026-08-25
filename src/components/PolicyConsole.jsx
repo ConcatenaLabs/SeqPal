@@ -15,7 +15,7 @@ import { txUrl } from '../lib/chain'
 // this surface rather than left to be discovered.
 //
 // The custody line is the same as everywhere else on the platform: nothing is
-// signed here except by the issuer, in this browser, with their own key. The
+// signed here except by the issuer, in their own wallet, with their own key. The
 // order document is hashed in the browser and only its fingerprint is sent and
 // published.
 
@@ -164,7 +164,7 @@ export default function PolicyConsole({ iss }) {
   const complete = async (extra) => {
     setErr(null)
     if (!hasKey) {
-      setErr('Unlock your SeqPal ID to sign. Nothing is published until you sign.')
+      setErr('Connect your Sequentia wallet to sign. Nothing is published until you sign.')
       return
     }
     setBusy('sign')
@@ -177,7 +177,7 @@ export default function PolicyConsole({ iss }) {
         return
       }
       if (!sig) {
-        setErr('Unlock your SeqPal ID to sign.')
+        setErr('Connect your Sequentia wallet to sign.')
         return
       }
       const res = await api.policyComplete(iss.id, pending.op_id, { sig, ...(extra || {}) })
@@ -384,7 +384,7 @@ export default function PolicyConsole({ iss }) {
             </div>
             {!hasKey && (
               <p className="mt-2 text-xs font-medium text-amber-700">
-                Unlock your SeqPal ID to sign. Cancelling leaves everything unchanged.
+                Connect your Sequentia wallet to sign. Cancelling leaves everything unchanged.
               </p>
             )}
           </div>

@@ -133,11 +133,14 @@ func (s *server) handleConsoleClawback(w http.ResponseWriter, r *http.Request) {
 			})
 		default:
 			writeJSON(w, 200, map[string]any{
-				"clawback": c, "clawback_id": c.ID, "to_sign": toSign, "atoms": c.Atoms,
+				"clawback": c, "clawback_id": c.ID, "to_sign": toSign, "atoms": c.Atoms, "tx": c.Tx,
+				"asset": iss.AssetID, "holder_aid": holder,
 				"pubkey": iss.IssuerPubkey, "two_phase": true, "reason": reason, "log_url": "/openamp/v1/log",
 				"complete_url": "/api/issuances/" + iss.ID + "/clawback/" + c.ID + "/complete",
 				"note": "external issuer key: the reason is already in the public transparency log, but nothing is swept " +
-					"until the issuer signs these sighashes with the SeqPal ID key and posts them to complete_url; nothing is final at 0-conf",
+					"until the issuer's own wallet co-signs this transaction and posts the signatures to complete_url. " +
+					"The transaction is returned because a wallet recomputes every sighash from it rather than signing " +
+					"a digest it was handed; nothing is final at 0-conf",
 			})
 		}
 		return
@@ -248,7 +251,7 @@ func (s *server) doClawbackBuild(iss *Issuance, holderAID, reason, byAID, contex
 	// UTXOs. openampd's pending build survives the wait; re-surfacing its sighashes
 	// keeps the issuer signing one canonical sweep.
 	if pend, _ := s.st.AwaitingClawback(iss.AssetID, holderAID); pend != nil {
-		if toSign, err := decodeToSign(pend.ToSign); err == nil && len(toSign) > 0 {
+		if toSign, err := decodeToSign(pend.ToSign); err == nil && len(toSign) > 0 && pend.Tx != "" {
 			return pend, toSign, nil
 		}
 	}
@@ -283,7 +286,7 @@ func (s *server) doClawbackBuild(iss *Issuance, holderAID, reason, byAID, contex
 	c := &Clawback{
 		ID: mustID(), IssuanceID: iss.ID, AssetID: iss.AssetID, HolderAID: holderAID,
 		Reason: reason, State: "awaiting_signature", Atoms: built.Atoms, ByAID: byAID, Context: context,
-		OaID: built.ID, ToSign: string(tsJSON),
+		OaID: built.ID, ToSign: string(tsJSON), Tx: built.Tx,
 	}
 	if err := s.st.InsertClawback(c); err != nil {
 		return nil, nil, err

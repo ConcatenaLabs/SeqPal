@@ -165,20 +165,23 @@ export default function TransferConsole({ holdings }) {
   const complete = async () => {
     setErr(null)
     if (!hasKey) {
-      setErr('Unlock your SeqPal ID to sign the transfer.')
+      setErr('Connect your Sequentia wallet to sign the transfer.')
       return
     }
     setBusy(true)
     try {
       let sigs
       try {
-        sigs = signTransferSigs(built.to_sign)
+        // The wallet gets the transaction seqpald built, never its sighashes: it
+        // recomputes every digest from the enclave leaf itself and refuses on a
+        // mismatch, so no site can turn the enclave key into a digest signer.
+        sigs = await signTransferSigs(built, { asset, recipientAid: toAid.trim() })
       } catch (e) {
         setErr(e.message)
         return
       }
       if (!sigs) {
-        setErr('Unlock your SeqPal ID to sign the transfer.')
+        setErr('Connect your Sequentia wallet to sign the transfer.')
         return
       }
       const res = await api.completeTransfer(built.transfer_id, { sigs })
@@ -357,7 +360,7 @@ export default function TransferConsole({ holdings }) {
           )}
           {!hasKey && (
             <p className="text-xs text-amber-700">
-              Your SeqPal ID key is locked. Sign in again to unlock it before signing.
+              No Sequentia wallet is connected. Sign in again with your wallet before signing.
             </p>
           )}
           <div className="flex flex-wrap gap-2">

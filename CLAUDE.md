@@ -35,8 +35,20 @@ There is no CI. Those commands are the whole gate.
 
 ## The custody line
 
-- The browser generates a real secp256k1 enclave keypair per SeqPal ID (`src/lib/keys.js`). **The
-  private key never leaves the browser.** Only the x-only public key reaches the backend.
+- **SeqPal is not a wallet and must never become one.** A SeqPal ID IS the OpenAMP enclave
+  account of a Sequentia wallet the holder already has: the secp256k1 key that wallet derives
+  at `m/5/0`. SeqPal generates no keys, holds none, unlocks none, and stores no key-at-rest
+  format. Only the x-only public key reaches the backend. `src/lib/statements.js` defines the
+  bytes that get signed; `src/lib/wallet.js` asks a wallet to sign them. There is a test
+  (`test/logic.test.js`) that fails if a signer or key generator ever reappears in `src/`.
+- Two ways a wallet attaches: a browser extension injecting `window.sequentia` (asked directly
+  through `openampGetIdentity` / `openampSignTagged` / `openampSignSpend`), or any other
+  Sequentia wallet linked by its public key, signing each statement out of band. Never add a
+  third that makes a key here.
+- **A wallet is never handed a digest to sign.** Application statements are domain-TAGGED, and
+  an enclave spend is sent as the TRANSACTION so the wallet recomputes each sighash itself. The
+  enclave key is half of the 2-of-2 every restricted asset sits behind, so a digest signer over
+  it is a signing oracle that drains the account.
 - `seqpald` never holds a holder's key. It registers the holder's public key; the mint lands in a
   per-offering escrow enclave whose key seqpald custodies and uses only to settle closings, and
   it keeps the books and records (the SQLite DB).

@@ -1,8 +1,8 @@
 // Shared helpers for the bearer live drivers (bearer-live.mjs and
 // action-drill.mjs): the cookie-holding API client, identity registration and
 // verification, the bearer attestation + deploy flow, electrs reads, and the
-// persisted drill state. Everything signs through the REAL SPA signers in
-// src/lib/keys.js, exactly as the browser does.
+// persisted drill state. Everything signs through wallet-signer.mjs, which plays
+// the holder's wallet over the message constructions the SPA ships.
 import { readFileSync, writeFileSync, chmodSync, existsSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { schnorr } from '@noble/curves/secp256k1'
@@ -14,8 +14,8 @@ import {
   signChallenge,
   signBearerAttestation,
   taggedHash,
-  HOLDING_PROOF_TAG,
-} from '../../../src/lib/keys.js'
+} from './wallet-signer.mjs'
+import { HOLDING_PROOF_TAG } from '../../../src/lib/statements.js'
 
 export const BASE = process.env.SEQPAL_BASE || 'https://sequentiatestnet.com/seqpal/api'
 // The public electrs (esplora) REST base on the box; /blocks/tip/height,

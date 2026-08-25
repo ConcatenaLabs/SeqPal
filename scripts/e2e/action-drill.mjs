@@ -21,7 +21,7 @@
 // a rerun resumes where the last run stopped.
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { generateEnclaveKey, generateRecoveryKey } from '../../src/lib/keys.js'
+import { generateEnclaveKey, generateRecoveryKey } from './lib/wallet-signer.mjs'
 import {
   Client,
   must,

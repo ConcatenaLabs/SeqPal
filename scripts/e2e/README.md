@@ -2,10 +2,11 @@
 
 `run.mjs` produces the deferred on-chain proofs from M5-M9 against a running
 SeqPal stack, signing EXACTLY as the browser by importing the real SPA signers
-from `src/lib/keys.js`. It is the flagship of M10 deliverable 4; the QA mapping it
+from `lib/wallet-signer.mjs`, which plays the holder's wallet over the statement
+constructions in `src/lib/statements.js`. It is the flagship of M10 deliverable 4; the QA mapping it
 feeds lives in `../../ACCEPTANCE.md`.
 
-It holds no secrets. The base URL, the identity backups + passphrases, and any
+It holds no secrets. The base URL, the identity keys it signs with, and any
 funding command all come from the environment or flags. Wallet funding is a hook,
 never an embedded box credential. A `--dry-run` mode signs and shapes every
 request without broadcasting, so the driver validates offline.
@@ -15,7 +16,7 @@ request without broadcasting, so the driver validates offline.
 - `run.mjs` the driver: config, the health probe, and the M6/M7/M8/M9 proof steps.
 - `lib/http.mjs` a same-origin client with a cookie jar (the `seqpal_session`
   cookie seqpald sets, scoped to `/seqpal`). No third-party dependency.
-- `lib/id.mjs` a `SeqPalID` wrapping the real `keys.js` signers, with the
+- `lib/id.mjs` a `SeqPalID` wrapping `wallet-signer.mjs`, with the
   store.jsx `signTransferSigs` / `signClawbackSigs` oracle guards verbatim.
 - `lib/util.mjs` step logging, assertions that print their evidence, the funding
   hook, and the confirmation waiter (nothing final at 0-conf).

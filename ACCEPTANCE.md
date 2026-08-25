@@ -10,8 +10,9 @@ Every capability below is proven by one or more of:
 - a Go test (deterministic; `go test ./...` in `seqpald/` and
   `openamp/openampd/`, run locally before every PR: there is no CI),
 - a driver step in the live acceptance driver
-  (`scripts/e2e/run.mjs`, run as `--only mN`), which signs EXACTLY as the browser
-  by importing `src/lib/keys.js`, or
+  (`scripts/e2e/run.mjs`, run as `--only mN`), which signs EXACTLY as a holder's
+  wallet does by pairing `scripts/e2e/lib/wallet-signer.mjs` with the statement
+  constructions the SPA ships in `src/lib/statements.js`, or
 - a LIVE OPERATOR action on the box (a fund movement needing box-held keys), which
   the driver makes reproducible but cannot perform itself.
 
@@ -44,8 +45,8 @@ ISSUANCE_ID=<deployed-issuance> \
   node scripts/e2e/run.mjs --only m6 --fund-cmd './box-fund.sh'
 ```
 
-The driver reads its base URL, identity backups + passphrases, and any funding
-command from the environment. It never holds or prints a box credential.
+The driver reads its base URL, its identity keys, and any funding command from
+the environment. It never holds or prints a box credential.
 
 ---
 
@@ -73,7 +74,7 @@ command from the environment. It never holds or prints a box credential.
 | Check | Proof | Status |
 | --- | --- | --- |
 | Deterministic content-addressed documents with statutory wording | `m4_test.go` (document generation, terms_hash binding) | PASS |
-| Issuer signs the manifest hash with the entity key | `signDocument` (keys.js) + `m4_test.go` | PASS |
+| Issuer signs the manifest hash with the entity key | `signDocument` (wallet-signer.mjs, over `DOCUMENT_TAG`) + `m4_test.go` | PASS |
 | RFSA sim-registry filing number, publicly look-up-able | `m4_test.go` RFSA filing/lookup | PASS |
 | Setup fee invoiced in USDX, paid, watcher-confirmed receipt txid | `TestM5UnpaidSetupFeeBlocksDeploy` + `LIVE-OP` fee payment | PASS / LIVE-OP |
 
@@ -145,7 +146,7 @@ command from the environment. It never holds or prints a box credential.
 | DR redeem burn txid lowers chain-derived supply | `TestM8_DRRedeemBurnLowersChainDerivedSupplyIdempotent`; driver `--only m8` step 14 | PASS / DRIVER |
 | Confidential P2P transfer elected per transfer (no confidential assets): the settled tx carries blinded outputs to a blech32 (`tsqb`) address, no node000 flag flipped; `GET /api/transfers` shows `confidential:true` | `oa8_lm_test.go` (OA-8 per-call blinding); driver step 15 | PASS / DRIVER (LIVE-OP funding) |
 | Category log entries carry set-hashes, not raw lists | `oa8_lm_test.go` (OA-LM); driver step 16 | PASS / DRIVER |
-| Issuer freezes a holder (simulated court order), then a real clawback with reason, issuer-signed in the browser (M9), txid + log | `TestM9Console_ExternalClawbackIsTwoPhase`, `TestM9Redeliver_ExternalPausesForIssuerSignatureThenCompletes`; driver `--only m9` step 18 (`signClawbackSighash`) | PASS / DRIVER |
+| Issuer freezes a holder (simulated court order), then a real clawback with reason, issuer-signed in the issuer's wallet (M9), txid + log | `TestM9Console_ExternalClawbackIsTwoPhase`, `TestM9Redeliver_ExternalPausesForIssuerSignatureThenCompletes`; driver `--only m9` step 18 (`signClawbackSighash`) | PASS / DRIVER |
 | New asset's contract shows the entity `issuer_pubkey` (external), server holds no issuer key | `TestM9Deploy_ExternalKeyIsOwnBrowserKey`; driver `--only m9` step 17 | PASS / DRIVER |
 | Legacy single-key clawback still works and is disclosed as legacy | `TestM9Console_LegacyClawbackStillSingleCall` | PASS |
 | Status page: policy-server health, FROST roadmap, one-token disclosure, deprecated legacy assets, anchor depth | `LIVE-OP` status page review | LIVE-OP |
@@ -170,7 +171,7 @@ endpoints) and completed live once the operator funds the referenced wallet.
 | M8 confidential P2P transfer elected per transfer, blinded outputs to a blech32 address | `--only m8` | a delivered holding to move and `SEQPALD_CONFIDENTIAL=1` on the deployment | DRIVER + LIVE-OP |
 | M8 category event logs a set-hash | `--only m8` | a category mutation in the log window | DRIVER |
 | M9 new external-issuer-key asset; contract shows the entity key | `--only m9` | full onboarding + setup fee funded for the new deploy | DRIVER + LIVE-OP |
-| M9 two-phase clawback broadcasts ONLY after the issuer browser signature | `--only m9` | an external-issuer `ISSUANCE_ID` with a holder to sweep | DRIVER + LIVE-OP |
+| M9 two-phase clawback broadcasts ONLY after the issuer's wallet signature | `--only m9` | an external-issuer `ISSUANCE_ID` with a holder to sweep | DRIVER + LIVE-OP |
 
 ## Live steps that need operator funding
 
@@ -191,6 +192,7 @@ All other checks are proven by the committed Go tests and the offline `--dry-run
 `node scripts/e2e/run.mjs --dry-run` against `https://sequentiatestnet.com`:
 read-only surfaces reachable (`health` reports `ok:true`, `openamp_ok:true`,
 `issuer_token_ok:true`; 10 assets visible); every proof produced a real BIP340
-signature from `src/lib/keys.js` and shaped its exact request body; the atomic,
+signature from a wallet signer over the SPA's statement bytes and shaped its
+exact request body; the atomic,
 reconciliation, refusal-guard, supply, external-key, and set-hash invariants all
 asserted PASS; no request was broadcast and no secret was read or printed.

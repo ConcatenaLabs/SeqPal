@@ -85,7 +85,7 @@ const SECTIONS = [
       {
         q: 'What is a SeqPal ID?',
         a: [
-          'A SeqPal ID is the identity layer, and there is one registration flow, identical for everyone; it never asks whether you are an issuer or an investor. It produces a verified identity bound to a key you generate in your browser.',
+          'A SeqPal ID is the identity layer, and there is one registration flow, identical for everyone; it never asks whether you are an issuer or an investor. It produces a verified identity bound to the account key of the Sequentia wallet you already have.',
           'An investor needs one to hold or trade these restricted assets anywhere on Sequentia, including on a venue that lists them, and an issuer uses the same credential to issue. "Issuer" and "investor" are things a verified identity does later, never a type chosen at signup.',
         ],
       },
@@ -110,7 +110,7 @@ const SECTIONS = [
       {
         q: 'What key do I hold, and what does it control?',
         a: [
-          'You hold your own key, generated in your browser and stored only as an encrypted backup under your passphrase. For a restricted asset it is one half of a shared 2-of-2 address, which makes it negative control: it lets you refuse a transfer, and it does not, on its own, move an asset whose issuer kept the recovery power. The key that can reclaim tokens is the issuing entity’s own, held in the issuer’s browser, so the issuer directs a seizure and SeqPal adds the second signature. The platform holds no key that can move your position.',
+          'You hold your own key, in your own Sequentia wallet: a SeqPal ID is the account that wallet already holds your restricted tokens in, so there is no separate SeqPal key to back up and your wallet’s recovery covers it. For a restricted asset it is one half of a shared 2-of-2 address, which makes it negative control: it lets you refuse a transfer, and it does not, on its own, move an asset whose issuer kept the recovery power. The key that can reclaim tokens is the issuing entity’s own wallet key, so the issuer directs a seizure and SeqPal adds the second signature. The platform holds no key that can move your position.',
         ],
       },
       {

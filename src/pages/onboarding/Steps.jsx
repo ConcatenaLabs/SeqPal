@@ -6,7 +6,7 @@ import Modal from '../../components/Modal'
 import { useStore } from '../../lib/store'
 import { toTerms } from '../../lib/issuance'
 import { termsHash } from '../../lib/openamp'
-import { encryptKey, generateRecoveryKey, passphraseStrength } from '../../lib/keys'
+import { isXonly } from '../../lib/statements'
 import { bearerAttestation, compileIssuance, health } from '../../lib/api'
 import { STRUCTURES, getStructure } from '../../data/structures'
 import {
@@ -1797,51 +1797,38 @@ function CompiledRulesView({ preview }) {
 
 /* ──────── Freely-tradable prerequisites: recovery key + attestation ──────── */
 
-// The two extra things a freely-tradable deploy requires: (a) a generated and
-// EXPORTED recovery key, a second real browser keypair whose public key is
-// registered at deploy; (b) the two attestation statements, signed with the
-// session key at deploy time. The private recovery key exists only in this
-// browser session and in the encrypted backup file the issuer downloads, which
-// is why the export is mandatory before the deploy button enables.
-function BearerRequirements({ data, update, hasKey }) {
-  const [pass, setPass] = useState('')
-  const [busy, setBusy] = useState(false)
+// The two extra things a freely-tradable deploy requires: (a) a recovery key,
+// whose public half is registered at deploy; (b) the two attestation statements,
+// signed with the session key at deploy time.
+//
+// The recovery key is a SECOND Sequentia wallet, not something generated here.
+// Its whole purpose is to still be yours after your everyday key is stolen, and
+// a key SeqPal made in this tab fails that twice over: it would put SeqPal in
+// the business of running wallets for issuers, and a sibling derived from the
+// same seed as the everyday key would be stolen in the same breath. So the
+// issuer names the OpenAMP account key of a different wallet -- ideally one on
+// different hardware -- and only its public half ever leaves that wallet.
+function BearerRequirements({ data, update, hasKey, sessionXonly }) {
+  const [entry, setEntry] = useState('')
   const [err, setErr] = useState(null)
-  const strength = passphraseStrength(pass)
   const rec = data.recovery
+  const value = entry.trim().toLowerCase()
 
-  const generate = async () => {
+  const use = () => {
     setErr(null)
-    if (strength.level === 'weak') {
-      setErr('Choose a stronger passphrase for the recovery key backup. It is the only thing protecting the file.')
+    if (!isXonly(value)) {
+      setErr('A recovery key is an x-only public key: 64 hex characters.')
       return
     }
-    setBusy(true)
-    try {
-      const key = generateRecoveryKey()
-      const envelope = await encryptKey(key.priv, pass)
-      envelope.xonly = key.xonly
-      envelope.kind = 'recovery'
-      update({ recovery: { xonly: key.xonly, envelope, exported: false } })
-      setPass('')
-    } catch (e) {
-      setErr(e.message)
-    } finally {
-      setBusy(false)
+    if (sessionXonly && value === String(sessionXonly).toLowerCase()) {
+      setErr(
+        'That is the key you are signed in with. A recovery key has to be a DIFFERENT wallet, ' +
+          'or it is stolen along with the one it is meant to replace.'
+      )
+      return
     }
-  }
-
-  const exportKey = () => {
-    const blob = new Blob([JSON.stringify(rec.envelope, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `seqpal-recovery-key-${rec.xonly.slice(0, 8)}.json`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    URL.revokeObjectURL(url)
-    update({ recovery: { ...rec, exported: true } })
+    update({ recovery: { xonly: value } })
+    setEntry('')
   }
 
   return (
@@ -1850,36 +1837,36 @@ function BearerRequirements({ data, update, hasKey }) {
         <div className="flex items-center gap-2">
           <Icon.lock width={18} height={18} className="text-seq-600" />
           <h3 className="font-bold text-ink-900">Emergency recovery key</h3>
-          {rec?.exported && (
+          {rec?.xonly && (
             <Badge color="emerald" className="ml-auto">
-              <Icon.check width={12} height={12} /> exported
+              <Icon.check width={12} height={12} /> set
             </Badge>
           )}
         </div>
         <p className="mt-1.5 text-sm leading-relaxed text-ink-700/80">
-          A separate emergency key. If your everyday key is ever stolen, this key replaces
-          it. Keep it offline. It is generated in this browser like your SeqPal ID key,
-          stored only as a backup file encrypted under the passphrase you choose here, and
-          only its public half is registered with your token.
+          A second Sequentia wallet. If your everyday key is ever stolen, this key replaces it,
+          so it has to be a wallet you keep separately, ideally on different hardware. Paste the
+          account key that wallet shows for your Sequentia account. Only the public half is
+          registered with your token; the wallet that holds it is backed up by its own recovery,
+          not by SeqPal.
         </p>
-        {!rec ? (
+        {!rec?.xonly ? (
           <div className="mt-4 flex flex-wrap items-end gap-3">
-            <div className="min-w-[220px] flex-1">
-              <label className="label" htmlFor="rec-pass">
-                Backup passphrase
+            <div className="min-w-[260px] flex-1">
+              <label className="label" htmlFor="rec-xonly">
+                Recovery wallet account key
               </label>
               <input
-                id="rec-pass"
-                type="password"
-                className="input"
-                placeholder="A passphrase for the backup file"
-                value={pass}
-                onChange={(e) => setPass(e.target.value)}
+                id="rec-xonly"
+                className="input font-mono text-xs"
+                spellCheck={false}
+                placeholder="64 hex characters"
+                value={entry}
+                onChange={(e) => setEntry(e.target.value)}
               />
-              {pass && <p className="mt-1 text-xs text-ink-700/60">{strength.label}</p>}
             </div>
-            <button onClick={generate} disabled={busy || !pass} className="btn-primary disabled:opacity-50">
-              {busy ? 'Generating…' : 'Generate recovery key'}
+            <button onClick={use} disabled={!value} className="btn-primary disabled:opacity-50">
+              Use this key
             </button>
           </div>
         ) : (
@@ -1887,18 +1874,9 @@ function BearerRequirements({ data, update, hasKey }) {
             <div className="rounded-lg bg-ink-900/[0.03] px-3 py-2 font-mono text-xs text-ink-800">
               recovery public key: {rec.xonly.slice(0, 16)}…{rec.xonly.slice(-8)}
             </div>
-            {!rec.exported ? (
-              <button onClick={exportKey} className="btn-primary w-full">
-                <Icon.upload width={15} height={15} className="rotate-180" />
-                Download the recovery key backup (required)
-              </button>
-            ) : (
-              <p className="text-xs leading-relaxed text-emerald-700">
-                Backup downloaded. Store it offline, separately from your everyday SeqPal
-                ID backup. Without the file and its passphrase, the recovery key cannot be
-                used.
-              </p>
-            )}
+            <button onClick={() => update({ recovery: null })} className="btn-outline w-full">
+              Use a different wallet
+            </button>
           </div>
         )}
         {err && <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{err}</p>}
@@ -1953,7 +1931,7 @@ function BearerRequirements({ data, update, hasKey }) {
         </label>
         <p className="mt-3 text-xs leading-relaxed text-amber-800/80">
           When you deploy, these statements are signed with your SeqPal ID key and recorded
-          with the issuance. {!hasKey && 'Your SeqPal ID is locked: unlock it before deploying so the signature can be made.'}
+          with the issuance. {!hasKey && 'No Sequentia wallet is connected: sign in with your wallet before deploying so the signature can be made.'}
         </p>
       </div>
     </div>
@@ -1993,8 +1971,8 @@ export function Step7Checkout({ data, update, onDeployed }) {
   const [prepared, setPrepared] = useState(null)
   const [paramsOpen, setParamsOpen] = useState(false)
   // A freely-tradable deploy needs two extra things before the button enables:
-  // the exported recovery key and both attestation checkboxes.
-  const bearerReady = !bearer || (!!data.recovery?.exported && !!data.bearerNoUs && !!data.bearerRisk)
+  // the recovery wallet's key and both attestation checkboxes.
+  const bearerReady = !bearer || (!!data.recovery?.xonly && !!data.bearerNoUs && !!data.bearerRisk)
   // One whole token per unit of the target raise, defaulting to 1,000,000 for
   // structures without a raise.
   const supply = Math.max(1, Math.round(parseMoney(data.raise) || 1_000_000))
@@ -2041,8 +2019,8 @@ export function Step7Checkout({ data, update, onDeployed }) {
           risk_accepted: !!data.bearerRisk,
           aid: account?.aid,
         }
-        const sig = signBearerStmt(fields)
-        if (!sig) throw new Error('Unlock your SeqPal ID to sign the attestation before deploying.')
+        const sig = await signBearerStmt(fields)
+        if (!sig) throw new Error('Connect your Sequentia wallet to sign the attestation before deploying.')
         await bearerAttestation(issuanceId, { ...fields, pubkey: xonly, sig })
       }
       const dep = await deployIssuance({
@@ -2061,7 +2039,7 @@ export function Step7Checkout({ data, update, onDeployed }) {
         // deploying account.
         ...(xonly ? { issuer_pubkey: xonly } : {}),
         // The emergency key for a freely-tradable asset, generated and exported
-        // in this browser; only its public key is sent. The pause election is
+        // in a second wallet the issuer names; only its public key is sent. The pause election is
         // permanent and committed into the token, so it travels with the deploy.
         ...(bearer && data.recovery?.xonly ? { recovery_pubkey: data.recovery.xonly } : {}),
         ...(bearer ? { pause: data.bearerPause !== false } : {}),
@@ -2182,7 +2160,9 @@ export function Step7Checkout({ data, update, onDeployed }) {
         sub="Review the summary and deploy. The setup fee is simulated in this build; the deploy is real and mints the asset on Sequentia."
       />
 
-      {bearer && <BearerRequirements data={data} update={update} hasKey={hasKey} />}
+      {bearer && (
+        <BearerRequirements data={data} update={update} hasKey={hasKey} sessionXonly={xonly} />
+      )}
       {network && (
         <NetworkRuleParameters
           params={params}
@@ -2304,7 +2284,7 @@ export function Step7Checkout({ data, update, onDeployed }) {
           </button>
           {!bearerReady && (
             <p className="mt-2 text-center text-xs leading-relaxed text-amber-700">
-              A freely-tradable deploy needs the exported recovery key and both signed
+              A freely-tradable deploy needs the recovery wallet's key and both signed
               statements above first.
             </p>
           )}

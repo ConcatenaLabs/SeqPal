@@ -33,7 +33,7 @@ const holds = [
   ['Eligibility categories', 'Jurisdiction and investor-class tokens the policy server enforces on every transfer'],
   [
     'Sequentia enclave key',
-    'The x-only key registered as your Sequentia account. Assets you hold live in its 2-of-2 enclave, and one half of that 2-of-2 is the key in your browser.',
+    'The x-only key registered as your Sequentia account. Assets you hold live in its 2-of-2 enclave, and one half of that 2-of-2 is the key in your own wallet.',
   ],
 ]
 
@@ -180,7 +180,8 @@ export default function IdLanding() {
                     <Icon.arrowRight width={16} height={16} />
                   </Link>
                   <p className="mt-3 text-center text-xs text-ink-700/60">
-                    Registration takes a passphrase and a mandatory encrypted backup.
+                    Registration takes the Sequentia wallet you already have. No new key, no
+                    backup file.
                   </p>
                 </div>
               )}

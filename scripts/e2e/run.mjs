@@ -3,7 +3,7 @@
 //
 // Produces the deferred on-chain proofs from M5-M9 against a running SeqPal stack,
 // signing EXACTLY as the browser does by importing the real SPA signers from
-// src/lib/keys.js (via lib/id.mjs). It never holds a secret: the base URL and any
+// a holder's wallet (via lib/id.mjs). It never holds a secret: the base URL and any
 // identity backups + passphrases come from the environment or flags, wallet
 // funding is a clearly-marked hook (never embedded box credentials), and a
 // --dry-run mode shapes + signs every request without broadcasting so the driver
@@ -24,7 +24,7 @@
 //
 // The driver reads config; it never writes one. See README.md.
 
-import { MARKET_ABUSE_TAG, LISTING_TAG } from '../../src/lib/keys.js'
+import { MARKET_ABUSE_TAG, LISTING_TAG } from '../../src/lib/statements.js'
 import { Http, ApiError } from './lib/http.mjs'
 import { SeqPalID } from './lib/id.mjs'
 import {
@@ -435,7 +435,7 @@ async function main() {
   await probeHealth(cfg, http)
 
   // Identities. Live steps that sign as the issuer/investor require real backups.
-  step('Load identities (real signers from src/lib/keys.js)')
+  step('Load identities (a real wallet signer over the SPA statement bytes)')
   const issuer = await loadID(cfg, cfg.issuerEnvelope, cfg.issuerPass, 'issuer')
   const investor = await loadID(cfg, cfg.investorEnvelope, cfg.investorPass, 'investor')
   evidence('issuer AID', issuer.aid)
