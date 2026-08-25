@@ -41,6 +41,11 @@ type DampPolicyOp struct {
 	Reason          string          `json:"reason,omitempty"`
 	OrderHash       string          `json:"order_hash,omitempty"`
 	ToSign          string          `json:"to_sign,omitempty"`
+	// SnapshotHash is what ToSign is the TAGGED hash of, under the policy
+	// server's OpenDAMP/snapshot/v1 tag. The issuer's wallet is given this rather
+	// than ToSign, so it applies the tag itself and never signs a digest it was
+	// simply handed.
+	SnapshotHash    string          `json:"snapshot_hash,omitempty"`
 	RegistrarDoc    json.RawMessage `json:"registrar_document,omitempty"`
 	VerifierProgram string          `json:"verifier_program,omitempty"`
 	Txid            string          `json:"txid,omitempty"`
@@ -52,7 +57,7 @@ type DampPolicyOp struct {
 
 const dampPolicyOpCols = `id, issuance_id, asset_id, kind, policy_id, seq, prev_pi, pi_next, targets,
     holders, holders_added, holders_removed, coins_frozen, coins_unfrozen, reason, order_hash, to_sign,
-    registrar_document, verifier_cmr, txid, state, error, created_at, updated_at`
+    registrar_document, verifier_cmr, txid, snapshot_hash, state, error, created_at, updated_at`
 
 func (s *Store) InsertDampPolicyOp(o *DampPolicyOp) error {
 	now := time.Now().Unix()
@@ -64,12 +69,12 @@ func (s *Store) InsertDampPolicyOp(o *DampPolicyOp) error {
 		return string(raw)
 	}
 	_, err := s.db.Exec(
-		`INSERT INTO damp_policy_ops (`+dampPolicyOpCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		`INSERT INTO damp_policy_ops (`+dampPolicyOpCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		o.ID, o.IssuanceID, o.AssetID, o.Kind, o.PolicyID, o.Seq, o.PrevPi, o.PiNext, j(o.Targets, "{}"),
 		j(o.Holders, "[]"), j(o.HoldersAdded, "[]"), j(o.HoldersRemoved, "[]"),
 		j(o.CoinsFrozen, "[]"), j(o.CoinsUnfrozen, "[]"),
 		o.Reason, o.OrderHash, o.ToSign, j(o.RegistrarDoc, "{}"), o.VerifierProgram, o.Txid,
-		o.State, o.Error, o.CreatedAt, o.UpdatedAt)
+		o.SnapshotHash, o.State, o.Error, o.CreatedAt, o.UpdatedAt)
 	return err
 }
 
@@ -123,7 +128,7 @@ func scanDampPolicyOpInto(sc scanner) (*DampPolicyOp, error) {
 	var targets, holders, added, removed, frozen, unfrozen, doc string
 	if err := sc.Scan(&o.ID, &o.IssuanceID, &o.AssetID, &o.Kind, &o.PolicyID, &o.Seq, &o.PrevPi, &o.PiNext,
 		&targets, &holders, &added, &removed, &frozen, &unfrozen, &o.Reason, &o.OrderHash, &o.ToSign,
-		&doc, &o.VerifierProgram, &o.Txid, &o.State, &o.Error, &o.CreatedAt, &o.UpdatedAt); err != nil {
+		&doc, &o.VerifierProgram, &o.Txid, &o.SnapshotHash, &o.State, &o.Error, &o.CreatedAt, &o.UpdatedAt); err != nil {
 		return nil, err
 	}
 	o.Targets = json.RawMessage(targets)

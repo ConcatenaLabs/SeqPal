@@ -431,8 +431,10 @@ export const supervisionStart = (id, action, body) =>
     body,
   })
 
-// Complete a supervision operation with the issuer's signature over the
-// 32-byte message. Body { sig }. Returns { freeze_id | unfreeze_id, txid,
+// Complete a supervision operation with the issuer's signature. The build
+// returns `record`, the fields the message commits to, and the issuer's wallet
+// rebuilds and signs it from those rather than being handed a digest.
+// Body { sig }. Returns { freeze_id | unfreeze_id, txid,
 // state, channel? }; a replay returns the same txid with idempotent:true.
 export const supervisionComplete = (id, action, opId, body) =>
   req(
@@ -466,7 +468,8 @@ export const policyStart = (id, action, body) =>
     body,
   })
 
-// Complete a change with the issuer's signature over the 32-byte message, plus
+// Complete a change with the issuer's signature over the policy snapshot (the
+// wallet signs its hash under the policy server's own tag), plus
 // the two values only the issuer's registrar can produce (the recompiled rules
 // program and the finished rules transaction). Body { sig, verifier_program,
 // verifier_address?, rules_tx }. Without the registrar values the call answers

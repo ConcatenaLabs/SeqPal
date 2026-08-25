@@ -907,6 +907,15 @@ CREATE INDEX idx_damp_policy_ops_issuance ON damp_policy_ops(issuance_id);
 	`
 ALTER TABLE clawbacks ADD COLUMN tx TEXT NOT NULL DEFAULT '';
 `,
+	// A network-enforced freeze is authorized by a signature over the TAGGED
+	// hash of the policy snapshot, so the issuer's wallet needs the snapshot
+	// hash rather than the already-tagged message: it applies the tag itself and
+	// never signs a digest it was simply handed. Additive with a safe default; a
+	// policy op prepared before this column has no snapshot hash to re-surface
+	// and is prepared again.
+	`
+ALTER TABLE damp_policy_ops ADD COLUMN snapshot_hash TEXT NOT NULL DEFAULT '';
+`,
 }
 
 // Store is seqpald's persistent state. Every financial fact the UI shows is

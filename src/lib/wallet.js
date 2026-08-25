@@ -136,3 +136,21 @@ export async function connectSilently() {
   const id = await p.request({ method: 'openampGetIdentity', params: {} })
   return id?.xonly && id?.aid ? { aid: id.aid, xonly: id.xonly } : null
 }
+
+// Authorize a supervised asset's freeze, pause or lift, with the wallet's key in
+// its role as the asset's OPERATIONAL key. The wallet is given the fields the
+// node's message commits to, never the message: it rebuilds the record from the
+// asset, the address and the outpoint, shows them, and signs its own
+// reconstruction. Misdescribe any of them and the network rejects the signature
+// rather than enforcing a freeze the issuer did not intend.
+export async function signSupervision({ kind, asset, address, txid, vout }) {
+  if (!asset || txid === undefined || vout === undefined) {
+    throw new Error(
+      'This build of seqpald did not return what the freeze commits to, which a wallet needs in ' +
+        'order to rebuild and check it. Nothing was signed.'
+    )
+  }
+  const res = await request('openampSignSupervision', { kind, asset, address, txid, vout })
+  if (!res?.signature) throw new Error('The wallet returned no signature.')
+  return res.signature
+}

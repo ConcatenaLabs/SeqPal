@@ -80,7 +80,7 @@ function OpRow({ op }) {
 }
 
 export default function PolicyConsole({ iss }) {
-  const { signSupervision, hasKey } = useStore()
+  const { signPolicySnapshot, hasKey } = useStore()
   const [pol, setPol] = useState(null) // null = loading
   const [holder, setHolder] = useState('')
   const [coin, setCoin] = useState('')
@@ -150,7 +150,14 @@ export default function PolicyConsole({ iss }) {
         reason: reason.trim(),
         order_hash: orderHash,
       })
-      setPending({ op_id: res.op_id, to_sign: res.to_sign, action })
+      setPending({
+        op_id: res.op_id,
+        // The snapshot hash, which the wallet signs UNDER the policy server's
+        // tag; the already-tagged to_sign is not what a wallet should be given.
+        snapshotHash: res.snapshot_hash,
+        snapshotTag: res.snapshot_tag,
+        action,
+      })
     } catch (e) {
       setErr(e.message)
     } finally {
@@ -171,7 +178,7 @@ export default function PolicyConsole({ iss }) {
     try {
       let sig
       try {
-        sig = signSupervision(pending.to_sign)
+        sig = await signPolicySnapshot(pending)
       } catch (e) {
         setErr(e.message)
         return
