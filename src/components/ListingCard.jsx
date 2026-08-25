@@ -5,7 +5,7 @@ import * as api from '../lib/api'
 import { usePoll } from '../lib/poll'
 import { useStore } from '../lib/store'
 import { canonicalJSON } from '../lib/openamp'
-import { LISTING_TAG } from '../lib/keys'
+import { LISTING_TAG } from '../lib/statements'
 
 // The venue listing authorization (contract section 7, integration spec Part 2.2).
 // An issuer GRANTS that its asset may be listed on a venue (SeqDEX, the Sequentia
@@ -37,15 +37,15 @@ export default function ListingCard({ iss }) {
       const body = { authorized, venues: vs }
       if (sign && authorized) {
         if (!hasKey) {
-          setErr('Unlock your SeqPal ID to sign the authorization, or grant it unsigned.')
+          setErr('Connect your Sequentia wallet to sign the authorization, or grant it unsigned.')
           return
         }
         // The exact canonical bytes seqpald verifies (listings.go listingStatement),
         // signed TAGGED with the issuer's own key.
         const statement = canonicalJSON({ role: 'listing', asset: iss.assetId, authorized, venues: vs })
-        const sig = signWithKey(LISTING_TAG, statement)
+        const sig = await signWithKey(LISTING_TAG, statement)
         if (!sig) {
-          setErr('Unlock your SeqPal ID to sign the authorization, or grant it unsigned.')
+          setErr('Connect your Sequentia wallet to sign the authorization, or grant it unsigned.')
           return
         }
         body.signature = sig

@@ -8,7 +8,7 @@ import {
   signSighash,
   signChallenge,
   signDocument,
-} from '../src/lib/keys.js'
+} from '../scripts/e2e/lib/wallet-signer.mjs'
 import { schnorr } from '@noble/curves/secp256k1'
 import { bytesToHex, hexToBytes } from '@noble/curves/abstract/utils'
 

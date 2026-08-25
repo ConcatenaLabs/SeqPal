@@ -56,7 +56,7 @@ export default function InvestorMandateCard() {
       return
     }
     if (!hasKey) {
-      setErr('Unlock your SeqPal ID to sign the mandate.')
+      setErr('Connect your Sequentia wallet to sign the mandate.')
       return
     }
     setBusy(true)
@@ -69,9 +69,9 @@ export default function InvestorMandateCard() {
         refresh()
         return
       }
-      const sig = signMandateStmt(prep.sign_this)
+      const sig = await signMandateStmt(prep.sign_this)
       if (!sig) {
-        setErr('Unlock your SeqPal ID to sign the mandate.')
+        setErr('Connect your Sequentia wallet to sign the mandate.')
         return
       }
       // Phase 2: resubmit with the signature.
@@ -137,7 +137,8 @@ export default function InvestorMandateCard() {
         {warn && address.trim() && <p className="text-xs text-amber-700">{warn}</p>}
         {!hasKey && (
           <p className="text-xs text-amber-700">
-            Your SeqPal ID key is locked. Sign in again to unlock it before signing the mandate.
+            No Sequentia wallet is connected. Sign in again with your wallet before signing the
+            mandate.
           </p>
         )}
         {err && <p className="text-sm font-medium text-rose-600">{err}</p>}

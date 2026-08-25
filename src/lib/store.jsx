@@ -1,31 +1,39 @@
-import { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import * as api from './api'
+import * as wallet from './wallet'
 import {
-  computeAID,
-  decryptKey,
-  encryptKey,
-  generateEnclaveKey,
-  signChallenge,
-  signBearerAttestation,
-  signClawbackSighash,
-  signClosing,
-  signDocument,
-  signHoldingProof,
-  signMandate,
-  signSighash,
-  signStatement,
-  signSupervisionMessage,
-} from './keys'
+  BEARER_ATTESTATION_TAG,
+  CLOSE_TAG,
+  HOLDING_PROOF_TAG,
+  MANDATE_TAG,
+  bearerAttestationDigest,
+  holdingProofDigest,
+} from './statements'
 
-// localStorage holds exactly two things, and neither is a financial fact:
-//   - the ENCRYPTED enclave-key envelope {v, salt, iv, ct, xonly, aid}
-//   - UI preferences
-// Accounts, entities, issuances, asset ids and balances are read from seqpald
-// and the policy server. Placement-portal drafts and the simulated subscription
-// flow live in memory for the session only, so nothing fabricated is ever
-// written down as if it were a record.
-const ENVELOPE_KEY = 'seqpal.id.v1'
+// A SeqPal ID is the enclave key of a Sequentia wallet the holder already has
+// (see wallet.js). This browser holds no key material at all: localStorage keeps
+// UI preferences and, for a wallet linked by hand, the PUBLIC x-only key of the
+// account signed in, so a reload knows whose signature to ask for. Accounts,
+// entities, issuances, asset ids and balances are read from seqpald and the
+// policy server. Placement-portal drafts and the simulated subscription flow
+// live in memory for the session only, so nothing fabricated is ever written
+// down as if it were a record.
+const SIGNER_KEY = 'seqpal.signer.v1'
 const PREFS_KEY = 'seqpal.prefs.v1'
+
+// The tag every SeqPal application statement is signed under, by tag name, so a
+// linked wallet can be told exactly what it is being asked to sign.
+export const TAG_LABELS = {
+  'openamp-challenge-v1': 'Sign-in challenge',
+  'openamp-document-v1': 'Offering document',
+  'seqpal-ubo-v1': 'UBO declaration',
+  [MANDATE_TAG]: 'Payout mandate',
+  [CLOSE_TAG]: 'Closing authorization',
+  [BEARER_ATTESTATION_TAG]: 'Bearer issuance attestation',
+  [HOLDING_PROOF_TAG]: 'Holding proof',
+  'seqpal-market-abuse-ack-v1': 'Market-abuse acknowledgment',
+  'seqpal-listing-v1': 'Listing acknowledgment',
+}
 
 function readJSON(key) {
   try {
@@ -36,30 +44,12 @@ function readJSON(key) {
   }
 }
 
-export function loadEnvelope() {
-  const env = readJSON(ENVELOPE_KEY)
-  return env?.ct && env?.xonly ? env : null
-}
-
-export function envelopeFilename(aid) {
-  return `seqpal-id-${aid}.json`
-}
-
-// Build the export/backup file. It is the same envelope localStorage holds:
-// encrypted under the user's passphrase, useless without it.
-export function envelopeFile(envelope) {
-  return new Blob([JSON.stringify(envelope, null, 2)], { type: 'application/json' })
-}
-
-export function downloadEnvelope(envelope) {
-  const url = URL.createObjectURL(envelopeFile(envelope))
-  const a = document.createElement('a')
-  a.href = url
-  a.download = envelopeFilename(envelope.aid)
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  URL.revokeObjectURL(url)
+// The signed-in signer, as far as this browser needs to remember it: which kind
+// of wallet, and its PUBLIC key. Never a secret, so localStorage is the right
+// home and clearing it costs nothing but a reconnect.
+function loadSigner() {
+  const s = readJSON(SIGNER_KEY)
+  return s?.kind && s?.xonly ? s : null
 }
 
 const StoreContext = createContext(null)
@@ -71,11 +61,16 @@ export function StoreProvider({ children }) {
   const [account, setAccount] = useState(null)
   const [entities, setEntities] = useState([])
   const [issuances, setIssuances] = useState([])
-  const [envelope, setEnvelope] = useState(loadEnvelope)
   const [prefs, setPrefsState] = useState(() => readJSON(PREFS_KEY) || {})
-  // The decrypted key is held for the session only: it signs login challenges
-  // and, later, enclave co-signatures. It is never persisted in the clear.
-  const [priv, setPriv] = useState(null)
+  // The wallet this session signs with: { kind: 'extension' | 'linked', xonly,
+  // aid }. Never a key. An 'extension' signer means every signature is a
+  // request to the wallet extension; a 'linked' one means the holder produces
+  // it in their own wallet and pastes it back.
+  const [signer, setSignerState] = useState(loadSigner)
+  // One outstanding request for a hand-signed statement, for a linked wallet.
+  // The signing surfaces await a promise; the prompt resolves it.
+  const [pendingSig, setPendingSig] = useState(null)
+  const pendingRef = useRef(null)
   // Browser-session simulation of surfaces that have no server-side home yet
   // (placement portal, subscriptions, servicing activity). In memory on purpose.
   const [sim, setSim] = useState({})
@@ -98,6 +93,12 @@ export function StoreProvider({ children }) {
     return data
   }, [applyMe])
 
+  const setSigner = useCallback((s) => {
+    if (s) localStorage.setItem(SIGNER_KEY, JSON.stringify(s))
+    else localStorage.removeItem(SIGNER_KEY)
+    setSignerState(s)
+  }, [])
+
   // A live session cookie is what signs you in, not anything in this browser's
   // storage: the page reloads straight back into the account it belongs to.
   useEffect(() => {
@@ -114,6 +115,33 @@ export function StoreProvider({ children }) {
       cancelled = true
     }
   }, [applyMe])
+
+  // Re-attach the browser wallet after a reload. The extension answers silently
+  // when this origin is already connected and the wallet unlocked, so a signed-in
+  // holder gets their signing ability back without a prompt; if it stays locked,
+  // the first signature prompts for the unlock, which is the extension's job and
+  // not this page's.
+  useEffect(() => {
+    if (status !== 'in' || !account?.xonly) return undefined
+    if (signer && signer.xonly === account.xonly) return undefined
+    let cancelled = false
+    ;(async () => {
+      const p = await wallet.waitForProvider()
+      if (!p || cancelled) return
+      try {
+        const id = await wallet.connectSilently()
+        if (!cancelled && id && id.xonly === account.xonly) {
+          setSigner({ kind: 'extension', xonly: id.xonly, aid: id.aid })
+        }
+      } catch {
+        // Not connected, locked, or an older extension: the holder reconnects
+        // from the ID page. Nothing here should nag.
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [status, account?.xonly, signer, setSigner])
 
   // One Server-Sent Events connection for the signed-in principal. EventSource
   // sends the HttpOnly session cookie same-origin, reconnects on its own, and on
@@ -144,11 +172,6 @@ export function StoreProvider({ children }) {
     }
   }, [status])
 
-  const persistEnvelope = (env) => {
-    localStorage.setItem(ENVELOPE_KEY, JSON.stringify(env))
-    setEnvelope(env)
-  }
-
   const setPrefs = (patch) => {
     setPrefsState((p) => {
       const next = { ...p, ...patch }
@@ -157,55 +180,90 @@ export function StoreProvider({ children }) {
     })
   }
 
-  // ── identity ────────────────────────────────────────────────────────
-  // Create the enclave key and seal it. Registration is NOT complete until the
-  // caller has exported the backup and called registerWithKey: no export, no
-  // account.
-  const prepareId = async (passphrase) => {
-    const key = generateEnclaveKey()
-    const env = await encryptKey(key.priv, passphrase)
-    env.xonly = key.xonly
-    env.aid = computeAID([key.xonly])
-    return { priv: key.priv, envelope: env }
+  // ── signing ─────────────────────────────────────────────────────────
+  // Every application signature in SeqPal is a BIP340 signature over a
+  // DOMAIN-TAGGED message, and this is the one place that decides who produces
+  // it. Nothing below ever sees a private key: an extension wallet is asked, a
+  // linked wallet's holder is asked. Both return the same 128-hex signature,
+  // and seqpald verifies both the same way.
+
+  // Ask the holder of a linked wallet to sign, and wait for them. Rejecting the
+  // prompt rejects the promise, which the calling surface reports as "nothing
+  // was signed" — the same shape as the wallet extension refusing.
+  const askLinked = (req) =>
+    new Promise((resolve, reject) => {
+      const entry = { ...req, resolve, reject }
+      pendingRef.current = entry
+      setPendingSig(entry)
+    })
+
+  const resolvePendingSig = (signature) => {
+    const p = pendingRef.current
+    pendingRef.current = null
+    setPendingSig(null)
+    p?.resolve(String(signature).trim().toLowerCase())
   }
 
-  // Proof of possession of the enclave key: fetch a challenge, sign it TAGGED,
-  // present it. No password ever reaches the server.
-  const handshake = async (privHex, xonly, fn, extra = {}) => {
-    const { challenge } = await api.challenge(xonly)
-    const sig = signChallenge(privHex, challenge)
-    const { account: acct } = await fn({ xonly, challenge, sig, ...extra })
-    setPriv(privHex)
+  const cancelPendingSig = () => {
+    const p = pendingRef.current
+    pendingRef.current = null
+    setPendingSig(null)
+    p?.reject(new Error('You cancelled the signature. Nothing was signed.'))
+  }
+
+  // The single tagged signer. `statement` is UTF-8 text; `hash` is a 32-byte
+  // content address. Exactly one of them, matching the provider protocol and
+  // seqpald's two verification paths.
+  const signTagged = async (tag, { statement, hash, label } = {}) => {
+    if (!signer) return null
+    if (signer.kind === 'extension') return wallet.signTagged(tag, { statement, hash, label })
+    return askLinked({ tag, statement, hash, label, xonly: signer.xonly })
+  }
+
+  // ── identity ────────────────────────────────────────────────────────
+  // Proof of possession of the enclave key: fetch a challenge, have the wallet
+  // sign it TAGGED, present it. No key and no passphrase ever reaches SeqPal.
+  const handshake = async (identity, fn, extra = {}) => {
+    const { challenge } = await api.challenge(identity.xonly)
+    const sig =
+      identity.kind === 'extension'
+        ? await wallet.signTagged(wallet.CHALLENGE_TAG, { statement: challenge })
+        : await askLinked({ tag: wallet.CHALLENGE_TAG, statement: challenge, xonly: identity.xonly })
+    const { account: acct } = await fn({ xonly: identity.xonly, challenge, sig, ...extra })
+    setSigner({ kind: identity.kind, xonly: identity.xonly, aid: identity.aid })
     const data = await api.me()
     applyMe(data)
     return acct
   }
 
-  const registerWithKey = async ({ priv: privHex, envelope: env, displayName, residence, profile }) => {
-    const acct = await handshake(privHex, env.xonly, api.register, {
+  // Attach the browser wallet: connect (which prompts once per origin and
+  // doubles as its unlock screen) and read the enclave identity. This does not
+  // sign in on its own — the caller decides whether that identity is an existing
+  // account to sign into or a new one to register.
+  const connectExtension = async () => {
+    const id = await wallet.connect()
+    return { ...id, kind: 'extension' }
+  }
+
+  // Sign in with an identity already attached. Returns null when seqpald has no
+  // account for that key, which is the caller's cue to collect a profile and
+  // register instead.
+  const signIn = async (identity) => {
+    try {
+      return await handshake(identity, api.login)
+    } catch (e) {
+      if (e?.status === 404) return null
+      throw e
+    }
+  }
+
+  const registerId = async (identity, { displayName, residence, profile }) =>
+    handshake(identity, api.register, {
       kind: 'individual',
       display_name: displayName,
       residence,
       profile,
     })
-    persistEnvelope(env)
-    return acct
-  }
-
-  const unlock = async (passphrase) => {
-    if (!envelope) throw new Error('There is no SeqPal ID in this browser. Import your backup file.')
-    const privHex = await decryptKey(envelope, passphrase)
-    return handshake(privHex, envelope.xonly, api.login)
-  }
-
-  const importId = async (env, passphrase) => {
-    const privHex = await decryptKey(env, passphrase)
-    const xonly = env.xonly
-    const withAid = { ...env, xonly, aid: env.aid || computeAID([xonly]) }
-    const acct = await handshake(privHex, xonly, api.login)
-    persistEnvelope(withAid)
-    return acct
-  }
 
   const signOut = async () => {
     try {
@@ -213,23 +271,13 @@ export function StoreProvider({ children }) {
     } catch {
       // A dead session is already signed out; clear the browser side regardless.
     }
-    setPriv(null)
+    setSigner(null)
     setAccount(null)
     setEntities([])
     setIssuances([])
     setSim({})
     setWatch({})
     setStatus('anon')
-  }
-
-  // Erase the encrypted key from this browser. The caller (Dashboard) is
-  // responsible for the guard: this is the irreversible half of a 2-of-2.
-  const forgetId = async () => {
-    await signOut()
-    localStorage.removeItem(ENVELOPE_KEY)
-    localStorage.removeItem(PREFS_KEY)
-    setEnvelope(null)
-    setPrefsState({})
   }
 
   // ── server-owned records ────────────────────────────────────────────
@@ -259,91 +307,77 @@ export function StoreProvider({ children }) {
     return res
   }
 
-  // Sign an application statement with the session's in-memory enclave key. The
-  // decrypted key never leaves the store, so callers ask the store to sign
-  // rather than handling the key themselves. Returns null when locked.
-  const signWithKey = (tag, statement) => (priv ? signStatement(priv, tag, statement) : null)
+  // Sign an application statement (a UBO declaration, a market-abuse or listing
+  // acknowledgment) under its domain-separation tag.
+  const signWithKey = (tag, statement) => signTagged(tag, { statement })
 
-  // E-sign an offering document with the session's in-memory enclave key. The
-  // key signs the TAGGED document hash (tag openamp-document-v1), never a raw
-  // blind digest. The decrypted key never leaves the store. Returns null when
-  // locked, which the caller surfaces as "unlock to sign".
-  const signDoc = (docHashHex) => (priv ? signDocument(priv, docHashHex) : null)
+  // E-sign an offering document: the wallet signs the TAGGED document hash (tag
+  // openamp-document-v1), never a raw blind digest. `title` only names the
+  // document in the wallet's prompt; the signature commits to the hash.
+  const signDoc = (docHashHex, title) =>
+    signTagged('openamp-document-v1', { hash: docHashHex, label: title })
 
-  // Sign a payout-mandate or closing authorization with the session's in-memory
-  // enclave key (over the canonical `sign_this` statement seqpald returned).
-  // Returns null when locked, which the caller surfaces as "unlock to sign".
-  const signMandateStmt = (statement) => (priv ? signMandate(priv, statement) : null)
-  const signCloseStmt = (statement) => (priv ? signClosing(priv, statement) : null)
+  // Payout-mandate and closing authorizations, over the canonical `sign_this`
+  // statement seqpald returned.
+  const signMandateStmt = (statement) => signTagged(MANDATE_TAG, { statement })
+  const signCloseStmt = (statement) => signTagged(CLOSE_TAG, { statement })
 
-  // Co-sign a policy-server transfer build with the session's in-memory enclave
-  // key: turn openampd's to_sign list ([{input, sighash, pubkey}]) into the
-  // { input: signature } map /api/transfers/{id}/complete expects. It refuses to
-  // sign any input whose pubkey is not this key's own x-only, the same guard
-  // seqpald applies server-side, so the holder never signs a sighash spending a
-  // key they do not hold. Returns null when the key is locked.
-  const signTransferSigs = (toSign) => {
-    if (!priv) return null
-    const mine = envelope?.xonly || account?.xonly
-    const sigs = {}
-    for (const ts of toSign || []) {
-      if (ts.pubkey && ts.pubkey !== mine) {
-        throw new Error('This transfer asks for a signature from a key you do not hold. Nothing was signed.')
-      }
-      sigs[String(ts.input)] = signSighash(priv, ts.sighash)
+  // The bearer attestation and the corporate-action holding proof are signed
+  // over the sha256 of a canonical JSON statement. keys.js owns that
+  // construction so the digest is identical whoever ends up signing it.
+  const signBearerStmt = (fields) =>
+    signTagged(BEARER_ATTESTATION_TAG, { hash: bearerAttestationDigest(fields) })
+  const signHoldingStmt = (fields) =>
+    signTagged(HOLDING_PROOF_TAG, { hash: holdingProofDigest(fields) })
+
+  // Co-sign a policy-server spend build. The wallet is handed the TRANSACTION
+  // seqpald returned, never the sighashes: it decodes it, recomputes every
+  // digest from the enclave leaf itself and refuses on a mismatch, which is what
+  // keeps a signing oracle over the enclave key from existing at all. Returns
+  // the { input: signature } map the completion endpoint expects.
+  //
+  // `built` is the response from the build call ({ tx, to_sign, ... }); `leaf`
+  // says which spend path this is, and for a clawback `fromAid` is the holder
+  // whose enclave output is swept, since the leaf comes from THEIR address.
+  const signSpend = async (built, { asset, recipientAid, leaf = 'transfer', fromAid } = {}) => {
+    if (!signer) return null
+    if (signer.kind !== 'extension') {
+      throw new Error(
+        'This transfer has to be co-signed by a wallet that can verify the transaction it is ' +
+          'signing. Sign in with the browser wallet extension to complete it.'
+      )
     }
-    return sigs
-  }
-
-  // Co-sign a two-phase (external-issuer) clawback build with the session's
-  // in-memory enclave key: turn openampd's to_sign list ([{input, sighash, pubkey}])
-  // into the { input: signature } map /api/issuances/{id}/clawback/{cid}/complete
-  // expects. This is the issuer authorizing a real L_claw seizure the owner
-  // initiated (holder + reason, already logged); the policy server co-signs it. As
-  // with signTransferSigs it refuses to sign any input whose pubkey is not this
-  // key's own x-only, and it uses the distinct clawback-spend signer so the intent
-  // is unambiguous. Returns null when the key is locked.
-  const signClawbackSigs = (toSign) => {
-    if (!priv) return null
-    const mine = envelope?.xonly || account?.xonly
-    const sigs = {}
-    for (const ts of toSign || []) {
-      // Case-insensitive, matching the seqpald/openampd EqualFold cross-checks (both
-      // emit lowercase hex, so this only matters if a caller ever sends mixed case).
+    const mine = signer.xonly
+    for (const ts of built?.to_sign || []) {
       if (ts.pubkey && ts.pubkey.toLowerCase() !== String(mine).toLowerCase()) {
-        throw new Error('This clawback asks for a signature from a key you do not hold. Nothing was signed.')
+        throw new Error('This asks for a signature from a key you do not hold. Nothing was signed.')
       }
-      sigs[String(ts.input)] = signClawbackSighash(priv, ts.sighash)
     }
-    return sigs
+    return wallet.signSpend({
+      asset,
+      tx: built?.tx,
+      toSign: built?.to_sign,
+      recipientAid,
+      leaf,
+      fromAid,
+    })
   }
 
-  // Sign the bearer attestation for a freely-tradable issuance with the
-  // session's in-memory key (tagged, over sha256 of the canonical JSON of the
-  // attestation fields). Returns null when locked.
-  const signBearerStmt = (fields) => (priv ? signBearerAttestation(priv, fields) : null)
+  const signTransferSigs = (built, opts) => signSpend(built, { ...opts, leaf: 'transfer' })
+  const signClawbackSigs = (built, opts) => signSpend(built, { ...opts, leaf: 'claw' })
 
-  // Sign a corporate-action holding proof with the session's in-memory key
-  // (tagged seqpal-holding-proof-v1). Returns null when locked.
-  const signHoldingStmt = (fields) => (priv ? signHoldingProof(priv, fields) : null)
-
-  // Sign one supervision (court-ordered freeze / unfreeze) message with the
-  // session's in-memory ISSUER key. to_sign is the raw 64-hex node-produced
-  // message from the supervision build. On a bearer deploy the operational key
-  // IS this session key by construction (the deploy refuses any other), which
-  // is what preserves the oracle guard here: a message only reaches this signer
-  // from a freeze or lift this issuer initiated on their own issuance, and when
-  // a pubkey does ride along it is still checked. Uses the distinct supervision
-  // signer so the intent is unambiguous at the call site. Returns null when the
-  // key is locked.
-  const signSupervision = (toSign) => {
-    if (!priv) return null
-    const mine = envelope?.xonly || account?.xonly
-    if (toSign?.pubkey && toSign.pubkey.toLowerCase() !== String(mine).toLowerCase()) {
-      throw new Error('This freeze asks for a signature from a key you do not hold. Nothing was signed.')
-    }
-    const msg = typeof toSign === 'string' ? toSign : toSign.message || toSign.sighash
-    return signSupervisionMessage(priv, msg)
+  // A supervision (court-ordered freeze / unfreeze) message is a RAW 32-byte
+  // digest the node produced over the freeze operation. No wallet can recompute
+  // it, so no wallet may sign it: a key that signs a digest it cannot verify is
+  // a signing oracle, and this key is half of the 2-of-2 every restricted asset
+  // the holder owns sits behind. The surface says so rather than offering a
+  // button that cannot work.
+  const signSupervision = () => {
+    throw new Error(
+      'Court-ordered supervision cannot be authorized from a wallet-held SeqPal ID yet: the ' +
+        'message is a node-produced digest a wallet cannot verify, and signing an unverifiable ' +
+        'digest with your enclave key would put every restricted asset you hold at risk.'
+    )
   }
 
   // ── in-memory simulation (portal drafts, subscriptions, servicing) ──
@@ -366,17 +400,13 @@ export function StoreProvider({ children }) {
     account,
     entities,
     issuances,
-    envelope,
-    hasLocalId: !!envelope,
     prefs,
     setPrefs,
     refresh,
-    prepareId,
-    registerWithKey,
-    unlock,
-    importId,
+    connectExtension,
+    signIn,
+    registerId,
     signOut,
-    forgetId,
     createEntity,
     createIssuance,
     patchIssuance,
@@ -390,8 +420,15 @@ export function StoreProvider({ children }) {
     signBearerStmt,
     signHoldingStmt,
     signSupervision,
-    xonly: envelope?.xonly || account?.xonly,
-    hasKey: !!priv,
+    signer,
+    signerKind: signer?.kind || null,
+    xonly: signer?.xonly || account?.xonly,
+    // Whether this session can produce a signature at all. A wallet is attached
+    // or it is not; there is no locked-key state of SeqPal's own any more.
+    hasKey: !!signer,
+    pendingSig,
+    resolvePendingSig,
+    cancelPendingSig,
     watch,
     watchFor,
     simFor,

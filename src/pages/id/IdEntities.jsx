@@ -136,9 +136,9 @@ function EntityCard({ entity, link, onChanged }) {
         statement = seed.ubo_link?.statement
       }
       if (!statement) throw new Error('Could not obtain the UBO declaration for this entity.')
-      const sig = signWithKey(UBO_TAG, statement)
+      const sig = await signWithKey(UBO_TAG, statement)
       if (!sig)
-        throw new Error('Your enclave key is locked. Sign in again to unlock it, then sign the declaration.')
+        throw new Error('No Sequentia wallet is connected. Sign in again with your wallet, then sign the declaration.')
       const res = await verifyEntity(entity.id, { ubo_sig: sig })
       setState({
         treasury_aid: res.treasury_aid,

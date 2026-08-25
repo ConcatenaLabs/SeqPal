@@ -1,16 +1,16 @@
-// A SeqPal identity for the acceptance driver, wrapping the REAL browser signers
-// so the driver signs byte-identically to the SPA. Every signature here comes
-// from src/lib/keys.js (the same code the browser ships), never a reimplementation:
-// that is the whole point of the acceptance driver, to prove the deployed server
-// accepts exactly what the browser produces.
+// A SeqPal identity for the acceptance driver. A SeqPal ID is the enclave key of
+// the holder's own Sequentia wallet, so the driver has to play the wallet's part:
+// wallet-signer.mjs holds the key and produces exactly what a wallet produces,
+// over the message constructions that ship in src/lib/statements.js. That is the
+// whole point of the acceptance driver, to prove the deployed server accepts
+// exactly what a real holder's wallet produces.
 //
 // The signing guards (never sign an input whose pubkey is not this key's own
-// x-only) mirror store.jsx signTransferSigs / signClawbackSigs verbatim, so the
-// driver cannot be turned into a signing oracle any more than the browser can.
+// x-only) mirror store.jsx signSpend verbatim, so the driver cannot be turned
+// into a signing oracle any more than a wallet can.
 import { readFile } from 'node:fs/promises'
 import {
   computeAID,
-  decryptKey,
   generateEnclaveKey,
   signChallenge,
   signClawbackSighash,
@@ -19,7 +19,7 @@ import {
   signSighash,
   signStatement,
   xonlyOf,
-} from '../../../src/lib/keys.js'
+} from './wallet-signer.mjs'
 
 export class SeqPalID {
   constructor(priv, label = 'id') {

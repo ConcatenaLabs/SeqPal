@@ -4,6 +4,7 @@ import Navbar from './components/Navbar'
 import Footer from './components/Footer'
 import IdNav from './components/IdNav'
 import IdFooter from './components/IdFooter'
+import WalletSignPrompt from './components/WalletSignPrompt'
 import Home from './pages/Home'
 import Products from './pages/Products'
 import Structures from './pages/Structures'
@@ -126,6 +127,9 @@ export default function App() {
         </Routes>
       </main>
       {!isFocused && (isIdSite ? <IdFooter /> : <Footer />)}
+      {/* A linked wallet signs out of band, so the prompt has to be reachable
+          from every surface that can ask for a signature. */}
+      <WalletSignPrompt />
     </div>
   )
 }

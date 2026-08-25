@@ -122,7 +122,7 @@ export default function SupervisionConsole({ iss }) {
   const complete = async () => {
     setErr(null)
     if (!hasKey) {
-      setErr('Unlock your SeqPal ID to sign. Nothing takes effect until you sign.')
+      setErr('Connect your Sequentia wallet to sign. Nothing takes effect until you sign.')
       return
     }
     setBusy('sign')
@@ -135,7 +135,7 @@ export default function SupervisionConsole({ iss }) {
         return
       }
       if (!sig) {
-        setErr('Unlock your SeqPal ID to sign.')
+        setErr('Connect your Sequentia wallet to sign.')
         return
       }
       await api.supervisionComplete(iss.id, pending.action, pending.op_id, { sig })
@@ -166,7 +166,7 @@ export default function SupervisionConsole({ iss }) {
         This token trades freely, so the one intervention you keep is freezing a specific
         balance when a court or regulator orders it. Freezing needs a court or regulator
         order. The order document&rsquo;s fingerprint is recorded publicly beside the
-        freeze, and the network itself enforces it. Your signature, made in this browser,
+        freeze, and the network itself enforces it. Your signature, made in your own wallet,
         authorizes each freeze and each lift.
       </p>
 
@@ -283,7 +283,7 @@ export default function SupervisionConsole({ iss }) {
             </div>
             {!hasKey && (
               <p className="mt-2 text-xs font-medium text-amber-700">
-                Unlock your SeqPal ID to sign. Cancelling leaves everything unchanged.
+                Connect your Sequentia wallet to sign. Cancelling leaves everything unchanged.
               </p>
             )}
           </div>

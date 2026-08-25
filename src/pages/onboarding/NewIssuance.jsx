@@ -44,7 +44,7 @@ export default function NewIssuance() {
     policy: null,
     lifted: {},
     clawback: true, // issuer recovery power, an explicit election (off for bearer)
-    recovery: null, // bearer only: { xonly, envelope, exported }
+    recovery: null, // bearer only: { xonly } of the issuer's second wallet
     bearerNoUs: false, // bearer attestation checkboxes, signed at deploy
     bearerRisk: false,
     docsSigned: false,

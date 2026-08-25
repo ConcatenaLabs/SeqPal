@@ -93,7 +93,7 @@ export default function ActionClaim() {
       return
     }
     if (!hasKey) {
-      setErr('Unlock your SeqPal ID to sign the holding proof.')
+      setErr('Connect your Sequentia wallet to sign the holding proof.')
       return
     }
     setBusy(true)
@@ -108,8 +108,8 @@ export default function ActionClaim() {
         aid: account.aid,
         ...(isVote ? { choice } : { payout_address: payout.trim() }),
       }
-      const sig = signHoldingStmt(fields)
-      if (!sig) throw new Error('Unlock your SeqPal ID to sign the holding proof.')
+      const sig = await signHoldingStmt(fields)
+      if (!sig) throw new Error('Connect your Sequentia wallet to sign the holding proof.')
       const res = await api.claimAction(id, {
         pubkey: xonly,
         outpoints: sorted,
@@ -261,9 +261,9 @@ export default function ActionClaim() {
                   : 'Sign the holding proof and claim'}
             </button>
             <p className="text-center text-xs leading-relaxed text-ink-700/60">
-              Your key signs a statement binding these outpoints to your{' '}
-              {isVote ? 'ballot choice' : 'payout address'}. The private key never leaves
-              this browser.
+              Your wallet signs a statement binding these outpoints to your{' '}
+              {isVote ? 'ballot choice' : 'payout address'}. The key never leaves your
+              wallet, and SeqPal never sees it.
             </p>
           </form>
         </>

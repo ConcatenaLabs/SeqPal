@@ -1,5 +1,19 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { join, dirname, relative } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const SRC = join(dirname(fileURLToPath(import.meta.url)), '..', 'src')
+const CODE = new Set(['.js', '.jsx', '.mjs'])
+function walkSrc(dir = SRC, out = []) {
+  for (const entry of readdirSync(dir)) {
+    const p = join(dir, entry)
+    if (statSync(p).isDirectory()) walkSrc(p, out)
+    else if (CODE.has(p.slice(p.lastIndexOf('.')))) out.push(p)
+  }
+  return out
+}
 
 import { computeSetupCost } from '../src/data/pricing.js'
 import { STATUS, OFF_PLATFORM_STEPS, offPlatformSteps } from '../src/lib/lifecycle.js'
@@ -20,10 +34,7 @@ import {
   xonlyOf,
   taggedHash,
   signChallenge,
-  encryptKey,
-  decryptKey,
-  passphraseStrength,
-} from '../src/lib/keys.js'
+} from '../scripts/e2e/lib/wallet-signer.mjs'
 import { schnorr } from '@noble/curves/secp256k1'
 import { bytesToHex, hexToBytes } from '@noble/curves/abstract/utils'
 import { sha256 } from '@noble/hashes/sha256'
@@ -142,31 +153,32 @@ test('vector: terms_hash canonicalization ignores key order and whitespace', asy
 
 // ── Encrypted key envelope ───────────────────────────────────────────────
 
-test('enclave key envelope — AES-GCM under a passphrase, never plaintext', async () => {
-  const env = await encryptKey(VEC.priv, 'correct horse battery staple')
-  assert.equal(env.v, 1)
-  assert.match(env.salt, /^[0-9a-f]{32}$/) // 16-byte salt
-  assert.match(env.iv, /^[0-9a-f]{24}$/) // 12-byte GCM iv
-  assert.ok(!JSON.stringify(env).includes(VEC.priv), 'the envelope must not contain the private key')
-
-  assert.equal(await decryptKey({ ...env, xonly: VEC.xonly }, 'correct horse battery staple'), VEC.priv)
-  await assert.rejects(() => decryptKey(env, 'wrong passphrase'), /Wrong passphrase/)
-  await assert.rejects(() => decryptKey({ v: 1 }, 'x'), /not a SeqPal ID backup/)
-  // A backup whose declared public key does not match its key is refused.
-  await assert.rejects(
-    () => decryptKey({ ...env, xonly: VEC.xonly2 }, 'correct horse battery staple'),
-    /inconsistent/
+// SeqPal is not a wallet: a SeqPal ID is the enclave key of a Sequentia wallet
+// the holder already has, so the shipped application must contain no signer, no
+// key generator and no key-at-rest format. This is the architectural rule that
+// replaced the passphrase-encrypted key envelope, and it is worth a test because
+// it is one convenient import away from being broken by accident.
+test('the shipped app holds no key material and signs nothing itself', () => {
+  const BANNED = [
+    { name: 'schnorr.sign', re: /schnorr\s*\.\s*sign\b/ },
+    { name: 'randomPrivateKey', re: /randomPrivateKey\b/ },
+    { name: 'getPublicKey', re: /schnorr\s*\.\s*getPublicKey\b/ },
+    { name: 'deriveKey / AES envelope', re: /\bderiveKey\b|AES-GCM/ },
+    { name: 'privHex parameter', re: /\bprivHex\b/ },
+  ]
+  const offenders = []
+  for (const file of walkSrc()) {
+    const src = readFileSync(file, 'utf8')
+    for (const b of BANNED) {
+      if (b.re.test(src)) offenders.push(`${relative(SRC, file)}: ${b.name}`)
+    }
+  }
+  assert.deepEqual(
+    offenders,
+    [],
+    'the SPA must never sign or store key material; that belongs to the holder\'s wallet:\n  ' +
+      offenders.join('\n  ')
   )
-
-  // Fresh salt and iv per encryption, so two envelopes of the same key differ.
-  const env2 = await encryptKey(VEC.priv, 'correct horse battery staple')
-  assert.notEqual(env2.salt, env.salt)
-  assert.notEqual(env2.ct, env.ct)
-
-  assert.equal(passphraseStrength('short').level, 'weak')
-  assert.equal(passphraseStrength('alllowercase').level, 'weak') // one character class
-  assert.equal(passphraseStrength('correct horse battery staple').level, 'fair')
-  assert.equal(passphraseStrength('Correct horse battery staple 9').level, 'strong')
 })
 
 // ── Issuance record shape ────────────────────────────────────────────────

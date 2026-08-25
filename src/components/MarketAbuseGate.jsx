@@ -4,7 +4,7 @@ import { Badge } from './ui'
 import * as api from '../lib/api'
 import { usePoll } from '../lib/poll'
 import { useStore } from '../lib/store'
-import { MARKET_ABUSE_TAG } from '../lib/keys'
+import { MARKET_ABUSE_TAG } from '../lib/statements'
 
 // The once-per-investor market-abuse / insider-dealing acknowledgment (contract
 // section 5). It is recorded before the platform's transfer surfaces are enabled,
@@ -28,12 +28,12 @@ export default function MarketAbuseGate({ children }) {
       const body = {}
       if (withSignature) {
         if (!hasKey) {
-          setErr('Unlock your SeqPal ID to sign the acknowledgment.')
+          setErr('Connect your Sequentia wallet to sign the acknowledgment.')
           return
         }
-        const sig = signWithKey(MARKET_ABUSE_TAG, data?.sign_this || '')
+        const sig = await signWithKey(MARKET_ABUSE_TAG, data?.sign_this || '')
         if (!sig) {
-          setErr('Unlock your SeqPal ID to sign the acknowledgment.')
+          setErr('Connect your Sequentia wallet to sign the acknowledgment.')
           return
         }
         body.signature = sig
@@ -84,7 +84,7 @@ export default function MarketAbuseGate({ children }) {
           onClick={() => acknowledge(true)}
           disabled={busy || loading || !hasKey}
           className="btn-outline disabled:opacity-60"
-          title={hasKey ? 'Also record a signature by your SeqPal ID key' : 'Unlock your SeqPal ID to sign'}
+          title={hasKey ? 'Also record a signature by your SeqPal ID key' : 'Connect your Sequentia wallet to sign'}
         >
           <Icon.shield width={15} height={15} /> Acknowledge and sign
         </button>
@@ -92,7 +92,7 @@ export default function MarketAbuseGate({ children }) {
       {!hasKey && (
         <p className="mt-2 text-xs text-amber-700">
           A signed acknowledgment needs your unlocked SeqPal ID key. You can acknowledge without a
-          signature now, or sign in again to unlock it.
+          signature now, or sign in again with your wallet.
         </p>
       )}
     </div>

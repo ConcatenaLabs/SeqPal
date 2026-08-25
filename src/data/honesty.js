@@ -6,7 +6,7 @@
 // chain-verified state, and nothing is labeled final at 0 confirmations.
 
 export const REAL = [
-  'Enclave keys and the SeqPal ID, generated in your browser',
+  'The SeqPal ID: the OpenAMP enclave account of the holder’s own Sequentia wallet, registered with the policy server by its public key alone',
   'Restricted assets minted on the Sequentia testnet',
   'Policy co-signed transfers and their real refusals',
   'The register and cap table, read from the chain in atoms',
@@ -29,11 +29,11 @@ export const REAL = [
   'Transparency-log minimization: a category event logs the hash of the category set, which recomputes from the known set, instead of the raw list',
   'Per-transfer confidential transfers: any holder can move any restricted token confidentially in a given transfer, blinding its amount and asset from outside observers while the issuer and registrar keep full sight',
   'Issuer venue-listing authorization, readable at the public listings endpoint, which a venue reads to list an asset but can never use to grant eligibility',
-  'The issuer key: on every asset the enclave issuer half is the issuing entity’s own browser key, so a clawback is two-phase and cannot be broadcast without the issuer’s signature, which the platform does not hold',
+  'The issuer key: on every asset the enclave issuer half is the issuing entity’s own wallet key, so a clawback is two-phase and cannot be broadcast without the issuer’s signature, which the platform does not hold',
   'The enforcement election: who can hold the token and who enforces the rules is chosen at issuance, committed in the terms, and each model is enforced for real',
   'Freely-tradable (bearer) issuance, where a court-ordered freeze is enforced by the network’s consensus rules and the order document’s fingerprint is recorded publicly beside the freeze',
   'Corporate-action snapshots and claims: the register snapshot is taken from the chain at the first pass at or after the record height, and a claim is a real signed holding proof over named outpoints',
-  'The recovery key for a freely-tradable asset: a second real browser keypair, exported to an encrypted backup before deploy, whose public half is registered on the asset',
+  'The recovery key for a freely-tradable asset: a second Sequentia wallet the issuer names before deploy, whose public half is registered on the asset and whose private half SeqPal never sees',
   'The bearer attestation: a real signature by the issuer’s own key over the two US-exposure statements, recorded before a freely-tradable deploy is accepted',
 ]
 

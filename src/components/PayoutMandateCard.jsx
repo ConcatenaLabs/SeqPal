@@ -34,9 +34,9 @@ export default function PayoutMandateCard({ iss }) {
         refresh()
         return
       }
-      const sig = signMandateStmt(prep.sign_this)
+      const sig = await signMandateStmt(prep.sign_this)
       if (!sig) {
-        setErr('Unlock your SeqPal ID to sign the mandate.')
+        setErr('Connect your Sequentia wallet to sign the mandate.')
         return
       }
       // Step 2: resubmit with the signature.
@@ -127,7 +127,8 @@ export default function PayoutMandateCard({ iss }) {
         </div>
         {!hasKey && (
           <p className="text-xs text-amber-700">
-            Your SeqPal ID key is locked. Sign in again to unlock it before signing the mandate.
+            No Sequentia wallet is connected. Sign in again with your wallet before signing the
+            mandate.
           </p>
         )}
         {err && <p className="text-xs font-medium text-rose-600">{err}</p>}

@@ -4,13 +4,12 @@ import { Icon, StructureIcon } from '../components/icons'
 import { Badge } from '../components/ui'
 import Modal from '../components/Modal'
 import SignInGate from '../components/SignInGate'
-import { useStore, downloadEnvelope } from '../lib/store'
+import { useStore } from '../lib/store'
 import { view } from '../lib/issuance'
 import { getBalance } from '../lib/openamp'
 import { getStructure } from '../data/structures'
 import { STATUS } from '../lib/lifecycle'
 
-const CONFIRM_PHRASE = 'erase my key'
 
 function StatusBadge({ status }) {
   const s = STATUS[status] || STATUS.draft
@@ -22,49 +21,20 @@ function StatusBadge({ status }) {
   )
 }
 
-// The reset guard (M1 contract, section 4). Clearing this browser destroys one
-// half of a 2-of-2 enclave, and the assets stay on chain either way, which is
-// exactly why an unguarded "reset" was a fund-loss button.
-function EraseIdModal({ open, onClose, account, envelope, liveIssuances }) {
-  const { forgetId } = useStore()
-  const [balances, setBalances] = useState(null)
-  const [exported, setExported] = useState(false)
-  const [typed, setTyped] = useState('')
+// Signing out no longer destroys anything: the enclave key belongs to the
+// holder's wallet, not to this browser, so there is no half of a 2-of-2 here to
+// lose and no backup file to check for first. All this clears is the session and
+// the public key of the wallet it was signed in with.
+function SignOutModal({ open, onClose }) {
+  const { signOut, signerKind } = useStore()
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
 
-  useEffect(() => {
-    if (!open || !account) return
-    let cancelled = false
-    Promise.all(
-      liveIssuances
-        .filter((i) => i.assetId)
-        .map((i) =>
-          getBalance(account.aid, i.assetId)
-            .then((b) => ({ iss: i, atoms: Number(b.atoms) || 0 }))
-            .catch(() => ({ iss: i, atoms: null }))
-        )
-    ).then((rows) => {
-      if (!cancelled) setBalances(rows)
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [open, account, liveIssuances])
-
-  const checking = balances === null && liveIssuances.some((i) => i.assetId)
-  // A balance we could not read counts as at risk: we do not resolve doubt in
-  // favour of destroying an irreplaceable key.
-  const holding = (balances || []).filter((r) => r.atoms === null || r.atoms > 0)
-  const atRisk = liveIssuances.length > 0 || holding.length > 0
-  const armed =
-    !checking && (!atRisk || (exported && typed.trim().toLowerCase() === CONFIRM_PHRASE))
-
-  const erase = async () => {
+  const go = async () => {
     setErr(null)
     setBusy(true)
     try {
-      await forgetId()
+      await signOut()
       onClose()
     } catch (e) {
       setErr(e.message)
@@ -73,94 +43,27 @@ function EraseIdModal({ open, onClose, account, envelope, liveIssuances }) {
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Erase this SeqPal ID from this browser" wide>
+    <Modal open={open} onClose={onClose} title="Sign out of SeqPal">
       <div className="space-y-4 text-sm">
-        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3.5 text-rose-800">
-          <div className="flex items-center gap-2 font-semibold">
-            <Icon.lock width={16} height={16} /> This deletes the only key to a 2-of-2 enclave
-          </div>
-          <p className="mt-1.5 leading-relaxed">
-            Clearing this browser removes your encrypted enclave key. It is one half of the
-            2-of-2 that every SeqPal-managed asset you hold sits behind, and SeqPal holds no
-            copy. Assets already minted persist on chain: they do not disappear, they become
-            unmovable without your half. The only way back is the encrypted backup file and
-            its passphrase.
-          </p>
-        </div>
-
-        {checking ? (
-          <p className="text-ink-700/70">Checking this account's on-chain balances.</p>
-        ) : atRisk ? (
-          <div className="rounded-xl border border-ink-900/10 bg-ink-900/[0.02] px-4 py-3">
-            <div className="font-semibold text-ink-900">This identity is not empty</div>
-            <ul className="mt-2 space-y-1 text-ink-700/80">
-              {liveIssuances.map((i) => {
-                const row = (balances || []).find((b) => b.iss.id === i.id)
-                return (
-                  <li key={i.id} className="flex justify-between gap-4">
-                    <span>
-                      {i.name} <span className="font-mono text-xs">{i.ticker}</span> is
-                      deployed on Sequentia
-                    </span>
-                    <span className="font-mono text-xs">
-                      {!row
-                        ? 'no asset id'
-                        : row.atoms === null
-                          ? 'balance unreadable'
-                          : `${row.atoms.toLocaleString()} atoms`}
-                    </span>
-                  </li>
-                )
-              })}
-            </ul>
-          </div>
-        ) : (
-          <p className="text-ink-700/80">
-            This account owns no deployed issuance and holds no balance the policy server can
-            see. Erasing the key is still irreversible.
+        <p className="leading-relaxed text-ink-700/80">
+          Your SeqPal ID is the OpenAMP account in your Sequentia wallet, and it stays exactly
+          where it is. Signing out ends this session and forgets which wallet it belonged to;
+          every asset you hold remains yours, and signing back in with the same wallet returns
+          you to the same account.
+        </p>
+        {signerKind === 'linked' && (
+          <p className="leading-relaxed text-ink-700/70">
+            You linked this wallet by hand, so you will be asked for its account key again next
+            time.
           </p>
         )}
-
-        {atRisk && !checking && (
-          <>
-            <button
-              onClick={() => {
-                downloadEnvelope(envelope)
-                setExported(true)
-              }}
-              className={exported ? 'btn-outline w-full' : 'btn-primary w-full'}
-            >
-              <Icon.upload width={16} height={16} className="rotate-180" />
-              {exported ? 'Backup downloaded, download again' : 'Export my encrypted key first'}
-            </button>
-            <div>
-              <label className="label" htmlFor="erase-confirm">
-                Type <span className="font-mono">{CONFIRM_PHRASE}</span> to confirm
-              </label>
-              <input
-                id="erase-confirm"
-                className="input"
-                value={typed}
-                onChange={(e) => setTyped(e.target.value)}
-                disabled={!exported}
-                autoComplete="off"
-              />
-            </div>
-          </>
-        )}
-
         {err && <p className="rounded-lg bg-rose-50 px-3 py-2 text-rose-700">{err}</p>}
-
         <div className="flex gap-3">
           <button onClick={onClose} className="btn-outline flex-1">
-            Keep my SeqPal ID
+            Stay signed in
           </button>
-          <button
-            onClick={erase}
-            disabled={!armed || busy}
-            className="btn-primary flex-1 bg-rose-600 hover:bg-rose-700 disabled:opacity-40"
-          >
-            {busy ? 'Erasing' : 'Erase from this browser'}
+          <button onClick={go} disabled={busy} className="btn-primary flex-1 disabled:opacity-40">
+            {busy ? 'Signing out' : 'Sign out'}
           </button>
         </div>
       </div>
@@ -169,9 +72,8 @@ function EraseIdModal({ open, onClose, account, envelope, liveIssuances }) {
 }
 
 export default function Dashboard() {
-  const { loading, isSignedIn, account, entities, issuances, envelope, createIssuance } =
-    useStore()
-  const [erasing, setErasing] = useState(false)
+  const { loading, isSignedIn, account, entities, issuances, createIssuance } = useStore()
+  const [signingOut, setSigningOut] = useState(false)
   const [sampleErr, setSampleErr] = useState(null)
   const [sampling, setSampling] = useState(false)
 
@@ -242,8 +144,8 @@ export default function Dashboard() {
           </p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => setErasing(true)} className="btn-ghost text-ink-700/70">
-            Erase SeqPal ID
+          <button onClick={() => setSigningOut(true)} className="btn-ghost text-ink-700/70">
+            Sign out
           </button>
           <button onClick={loadSample} disabled={sampling} className="btn-outline">
             {sampling ? 'Creating' : 'Load sample draft'}
@@ -357,13 +259,7 @@ export default function Dashboard() {
         )}
       </div>
 
-      <EraseIdModal
-        open={erasing}
-        onClose={() => setErasing(false)}
-        account={account}
-        envelope={envelope}
-        liveIssuances={live}
-      />
+      <SignOutModal open={signingOut} onClose={() => setSigningOut(false)} />
     </section>
   )
 }

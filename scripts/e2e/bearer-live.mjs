@@ -6,7 +6,7 @@
 // The shared client, registration, and bearer-deploy flow live in
 // lib/drill.mjs, which scripts/e2e/action-drill.mjs (the corporate-action
 // drill) also uses. This driver keeps the freeze/unfreeze half.
-import { signSupervisionMessage } from '../../src/lib/keys.js'
+import { signSupervisionMessage } from './lib/wallet-signer.mjs'
 import { createHash, randomBytes } from 'node:crypto'
 import {
   Client,
