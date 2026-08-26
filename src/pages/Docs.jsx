@@ -168,10 +168,14 @@ export default function Docs() {
           is one you can see and move in the wallet you already use. In the OpenAMP model the
           holder&rsquo;s key is one half of the 2-of-2 enclave, which makes it negative
           control: it can refuse a transfer but cannot, alone, move a clawback-enabled
-          position. The issuer key on every asset is the issuing entity&rsquo;s own wallet
-          key, so reclaiming tokens is two-phase, the issuer signs first and the policy
-          server co-signs, and the platform holds no key that can move a holder&rsquo;s
-          position. For freely-tradable assets the issuer additionally names a recovery
+          position. An asset deployed with an external issuer key carries the issuing
+          entity&rsquo;s own wallet key, so reclaiming tokens there is two-phase: the issuer
+          signs first, the policy server co-signs, and the platform holds no key that can
+          move a holder&rsquo;s position. Assets deployed before that option existed carry a
+          platform-held issuer key instead, and a clawback on one of those completes in a
+          single call by SeqPal and the policy server together. Which of the two an asset is
+          is not a detail the platform hides: the console that performs a clawback names it
+          before anything is swept. For freely-tradable assets the issuer additionally names a recovery
           key, exported to an encrypted offline backup before deploy, whose public half is
           registered on the asset as the replacement path for a stolen issuer key.
         </p>
