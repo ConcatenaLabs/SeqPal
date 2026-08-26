@@ -90,20 +90,30 @@ func (s *server) decideReview(item *ReviewItem, decision, by, note string) error
 		"review_id": item.ID, "list": item.List, "decision": decision, "by": by,
 	})
 	if decision == "confirm" {
-		// Freeze first (fund-safety), then mark the claims refused and strip any
-		// categories through the write queue.
-		if err := s.callOpenAMP("POST", "/v1/issuer/freeze", s.cfg.issuerToken,
-			map[string]any{"aid": item.AID, "frozen": true}, nil); err != nil {
-			return err
-		}
+		// Refuse the claims FIRST. It is the record every eligibility read on this
+		// platform consults, it can only restrict, and it is the only enforcement a
+		// SeqPal ID with no OpenAMP account has. Doing it after the policy-server
+		// freeze meant a failed freeze -- including one that failed because there
+		// was no account there to freeze -- returned before the identity was
+		// refused at all, and a confirmed sanctions match stayed verified.
 		if claims, _ := s.st.ClaimsByAID(item.AID); claims != nil {
 			claims.Status = "refused"
-			_ = s.st.UpsertClaims(claims)
+			if err := s.st.UpsertClaims(claims); err != nil {
+				return err
+			}
 		}
-		if _, err := s.writeCategories(item.AID); err != nil {
+		// Then freeze the OpenAMP account, if there is one: that is what stops
+		// funds moving, and a failure here is worth retrying.
+		froze, err := s.freezeAtPolicyServer(item.AID)
+		if err != nil {
+			return err
+		}
+		if _, err := s.stampCategories(item.AID); err != nil {
 			log.Printf("review confirm: strip categories for %s: %v", item.AID, err)
 		}
-		s.st.Audit(item.AID, "sanctions.freeze", map[string]any{"review_id": item.ID, "list": item.List})
+		s.st.Audit(item.AID, "sanctions.freeze", map[string]any{
+			"review_id": item.ID, "list": item.List, "enclave_frozen": froze,
+		})
 		return nil
 	}
 	// Cleared: proceed only when nothing else is pending for this AID.
@@ -155,7 +165,7 @@ func (s *server) finalizeAfterClear(aid string) error {
 	if err := s.st.UpsertClaims(claims); err != nil {
 		return err
 	}
-	cats, err := s.writeCategories(aid)
+	cats, err := s.stampCategories(aid)
 	if err != nil {
 		return err
 	}
@@ -249,7 +259,7 @@ func (s *server) rescreenAll() {
 				CreatedAt: time.Now().Unix(),
 			})
 		}
-		if _, err := s.writeCategories(c.AID); err != nil {
+		if _, err := s.stampCategories(c.AID); err != nil {
 			log.Printf("rescreen: strip categories for %s: %v", c.AID, err)
 		}
 		s.st.Audit(c.AID, "id.rescreen.pending_review", map[string]any{"lists": listsOf(newHits)})
@@ -295,7 +305,7 @@ func (s *server) runExpiry() {
 		// Identity-window expiry: the projection now yields no categories at all;
 		// write it through so a real transfer refusal follows for every asset.
 		if c.ValidUntil > 0 && now >= c.ValidUntil {
-			if _, err := s.writeCategories(c.AID); err != nil {
+			if _, err := s.stampCategories(c.AID); err != nil {
 				log.Printf("expiry: strip categories for %s: %v", c.AID, err)
 				continue
 			}
@@ -316,7 +326,7 @@ func (s *server) runExpiry() {
 		// server. The notice-once guard keeps the cron from re-writing every tick.
 		if c.Accredited && c.AccredValidUntil > 0 && now >= c.AccredValidUntil {
 			if seen, _ := s.st.NoticeExists(c.AID, "accred-expired"); !seen {
-				if _, err := s.writeCategories(c.AID); err != nil {
+				if _, err := s.stampCategories(c.AID); err != nil {
 					log.Printf("expiry: strip accreditation categories for %s: %v", c.AID, err)
 				} else {
 					_ = s.st.InsertNotice(c.AID, "accred-expired",

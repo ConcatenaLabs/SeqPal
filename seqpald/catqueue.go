@@ -111,3 +111,53 @@ func sameStringSet(a, b []string) bool {
 	}
 	return true
 }
+
+// stampCategories writes a SeqPal ID's projected categories wherever they are
+// kept. For an ID with an OpenAMP account that is the policy server, as it has
+// always been. For an ID that is only a wallet there is no account there to
+// stamp, and none is needed: what such an ID is verified for is not gated on
+// the policy server, and every read of its eligibility comes from the claims
+// record this platform keeps. It projects the same list, and returns it.
+//
+// The distinction is not cosmetic. Every caller of the old function treated a
+// write failure as a reason to stop, so a compliance action against a
+// wallet-backed ID failed on an account the policy server has never heard of --
+// and the action did not happen.
+func (s *server) stampCategories(aid string) ([]string, error) {
+	acct, err := s.st.AccountByAID(aid)
+	if err != nil {
+		return nil, fmt.Errorf("read account: %w", err)
+	}
+	if acct == nil || !s.hasEnclave(acct) {
+		claims, err := s.st.ClaimsByAID(aid)
+		if err != nil {
+			return nil, fmt.Errorf("read claims: %w", err)
+		}
+		list := projectCategories(claims, time.Now().Unix())
+		if list == nil {
+			list = []string{}
+		}
+		return list, nil
+	}
+	return s.writeCategories(aid)
+}
+
+// freezeAtPolicyServer freezes an OpenAMP account, and reports whether there was
+// one to freeze. An ID that is only a wallet holds nothing the policy server
+// gates, so there is nothing there to freeze -- and treating that as a failed
+// freeze stopped a sanctions confirmation before it refused the claims, which
+// left the identity verified and eligible.
+func (s *server) freezeAtPolicyServer(aid string) (bool, error) {
+	acct, err := s.st.AccountByAID(aid)
+	if err != nil {
+		return false, fmt.Errorf("read account: %w", err)
+	}
+	if acct == nil || !s.hasEnclave(acct) {
+		return false, nil
+	}
+	if err := s.callOpenAMP("POST", "/v1/issuer/freeze", s.cfg.issuerToken,
+		map[string]any{"aid": aid, "frozen": true}, nil); err != nil {
+		return false, err
+	}
+	return true, nil
+}

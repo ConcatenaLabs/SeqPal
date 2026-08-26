@@ -223,7 +223,7 @@ func (s *server) handleGate(w http.ResponseWriter, r *http.Request) {
 			claims.GBSoph = true
 		}
 		_ = s.st.UpsertClaims(claims)
-		_, _ = s.writeCategories(acct.AID)
+		_, _ = s.stampCategories(acct.AID)
 		s.st.Audit(acct.AID, "gate.uk_statement", map[string]any{"basis": basis, "valid_until": valid})
 		writeJSON(w, 200, map[string]any{"kind": "uk_statement", "recorded": true, "valid_until": valid})
 
