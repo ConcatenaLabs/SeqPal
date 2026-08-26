@@ -104,7 +104,7 @@ func TestQuotingTwoRailsAtOnceKeepsBoth(t *testing.T) {
 // offering stays blocked.
 func TestAnIssuanceRaisesOneSetupFee(t *testing.T) {
 	h := newHarness(t)
-	h.s.cfg.setupFeeUSD = 500
+	h.s.cfg.setupFeeOverrideUSD = 500
 
 	var wg sync.WaitGroup
 	ids := make([]string, 8)
@@ -112,7 +112,7 @@ func TestAnIssuanceRaisesOneSetupFee(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			if inv, err := h.s.ensureSetupInvoice("iss-1"); err == nil && inv != nil {
+			if inv, err := h.s.ensureSetupInvoice(&Issuance{ID: "iss-1", StructureID: "native-equity"}); err == nil && inv != nil {
 				ids[i] = inv.ID
 			}
 		}(i)

@@ -267,7 +267,8 @@ export const issuanceSubscriptions = (id) =>
 export const fiatStatus = (id) => req(`/fiat/${encodeURIComponent(id)}`)
 
 // Owner: the platform-fee invoices (auto-creates the setup invoice):
-// { invoices[], setup_fee_usd, escrow_fee_bps }. The setup fee blocks deploy.
+// { invoices[], setup_fee_usd, escrow_fee_bps }. setup_fee_usd is priced for THIS
+// offering from the published schedule and its own terms. The setup fee blocks deploy.
 export const fees = (id) => req(`/issuances/${encodeURIComponent(id)}/fees`)
 
 // Owner: pay a platform fee on the issuer's chosen rail { kind:setup, rail }.

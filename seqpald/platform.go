@@ -19,20 +19,35 @@ import (
 
 const mandateTag = "seqpal-payout-mandate-v1"
 
-// ensureSetupInvoice returns the issuance's setup-fee invoice, creating an unpaid
-// one (priced from cfg.setupFeeUSD) on first call. A zero configured fee yields a
-// pre-paid invoice so a fee-free deployment is never blocked.
-func (s *server) ensureSetupInvoice(issuanceID string) (*FeeInvoice, error) {
-	if inv, err := s.st.SetupFeeForIssuance(issuanceID); err != nil {
+// setupFeeUSDFor is what this issuance costs to set up: the published price for
+// its structure, from its own committed terms, unless the deployment overrides
+// it.
+func (s *server) setupFeeUSDFor(iss *Issuance) (float64, error) {
+	if s.cfg.setupFeeOverrideUSD >= 0 {
+		return s.cfg.setupFeeOverrideUSD, nil
+	}
+	return publishedSetupFeeUSD(iss.StructureID, iss.Terms)
+}
+
+// ensureSetupInvoice returns the issuance's setup-fee invoice, raising an unpaid
+// one at the published price on first call. A fee of zero -- which only a
+// deployment that overrides the price can produce -- is raised already paid, so
+// the deploy gate is a no-op rather than a thing to special-case.
+func (s *server) ensureSetupInvoice(iss *Issuance) (*FeeInvoice, error) {
+	if inv, err := s.st.SetupFeeForIssuance(iss.ID); err != nil {
 		return nil, err
 	} else if inv != nil {
 		return inv, nil
 	}
-	inv := &FeeInvoice{
-		ID: mustID(), IssuanceID: issuanceID, Kind: "setup",
-		AmountUSD: s.cfg.setupFeeUSD, State: "unpaid",
+	amount, err := s.setupFeeUSDFor(iss)
+	if err != nil {
+		return nil, err
 	}
-	if s.cfg.setupFeeUSD <= 0 {
+	inv := &FeeInvoice{
+		ID: mustID(), IssuanceID: iss.ID, Kind: "setup",
+		AmountUSD: amount, State: "unpaid",
+	}
+	if amount <= 0 {
 		inv.State = "paid"
 		inv.PaidAt = time.Now().Unix()
 	}
@@ -40,7 +55,7 @@ func (s *server) ensureSetupInvoice(issuanceID string) (*FeeInvoice, error) {
 		// Lost a race with a concurrent raise: the page that quotes this fee
 		// polls. The unique index is what makes one of them lose rather than
 		// both winning and the deploy gate reading an invoice nobody paid.
-		if existing, qerr := s.st.SetupFeeForIssuance(issuanceID); qerr == nil && existing != nil {
+		if existing, qerr := s.st.SetupFeeForIssuance(iss.ID); qerr == nil && existing != nil {
 			return existing, nil
 		}
 		return nil, err
@@ -50,8 +65,8 @@ func (s *server) ensureSetupInvoice(issuanceID string) (*FeeInvoice, error) {
 
 // setupFeePaid reports whether the issuance's setup fee is paid. It is the deploy
 // gate: an unpaid setup fee blocks the mint.
-func (s *server) setupFeePaid(issuanceID string) (bool, error) {
-	inv, err := s.ensureSetupInvoice(issuanceID)
+func (s *server) setupFeePaid(iss *Issuance) (bool, error) {
+	inv, err := s.ensureSetupInvoice(iss)
 	if err != nil {
 		return false, err
 	}
@@ -66,8 +81,8 @@ func (s *server) handleFees(w http.ResponseWriter, r *http.Request) {
 	if iss == nil {
 		return
 	}
-	if _, err := s.ensureSetupInvoice(iss.ID); err != nil {
-		writeErr(w, 500, "store error")
+	if _, err := s.ensureSetupInvoice(iss); err != nil {
+		writeErr(w, 500, "could not price this offering: %v", err)
 		return
 	}
 	invoices, err := s.st.FeeInvoicesByIssuance(iss.ID)
@@ -75,7 +90,16 @@ func (s *server) handleFees(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, "store error")
 		return
 	}
-	writeJSON(w, 200, map[string]any{"issuance_id": iss.ID, "invoices": invoices, "setup_fee_usd": s.cfg.setupFeeUSD, "escrow_fee_bps": s.cfg.escrowFeeBps})
+	// Priced for THIS offering, which is what the issuer was quoted.
+	setupFee, err := s.setupFeeUSDFor(iss)
+	if err != nil {
+		writeErr(w, 500, "could not price this offering: %v", err)
+		return
+	}
+	writeJSON(w, 200, map[string]any{
+		"issuance_id": iss.ID, "invoices": invoices,
+		"setup_fee_usd": setupFee, "escrow_fee_bps": s.cfg.escrowFeeBps,
+	})
 }
 
 type payFeeReq struct {
@@ -104,7 +128,7 @@ func (s *server) handlePayFee(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "only the setup fee is collectible here (the escrow fee is deducted at release)")
 		return
 	}
-	inv, err := s.ensureSetupInvoice(iss.ID)
+	inv, err := s.ensureSetupInvoice(iss)
 	if err != nil {
 		writeErr(w, 500, "store error")
 		return

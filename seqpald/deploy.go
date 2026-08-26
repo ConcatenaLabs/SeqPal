@@ -418,7 +418,7 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	// M5: an unpaid SeqPal platform setup fee blocks the deploy. The fee is
 	// invoiced lazily here (idempotent) and payable by the issuer's choice of rail
 	// via POST /issuances/{id}/fees/pay; a zero configured fee auto-marks paid.
-	if paid, ferr := s.setupFeePaid(iss.ID); ferr != nil {
+	if paid, ferr := s.setupFeePaid(iss); ferr != nil {
 		writeErr(w, 500, "store error")
 		return
 	} else if !paid {

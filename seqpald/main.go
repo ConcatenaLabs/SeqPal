@@ -71,17 +71,22 @@ type config struct {
 	policyFeeSats        int64  // network fee reference (SEQ-sats) for fee_convert derivation
 
 	// M5 money engine.
-	btcURL       string        // testnet4 (parent-chain) Bitcoin node RPC for the native-BTC escrow
-	btcUser      string        // testnet4 RPC username (mainchainrpcuser)
-	btcPass      string        // testnet4 RPC password (mainchainrpcpassword)
-	usdxAsset    string        // USDX asset id (Sequentia payment asset)
-	escrowConfs  int64         // confirmations before a deposit becomes in_escrow
-	atomicClose  bool          // M6: settle USDX subscriptions as ONE atomic DvP tx (closing v2); v1 fallback otherwise
-	setupFeeUSD  float64       // SeqPal platform setup fee (USD), blocks deploy until paid
-	kycFeeUSD    float64       // identity verification fee (USD), blocks the check until paid
-	kybFeeUSD    float64       // business verification fee (USD), charged per business
-	escrowFeeBps int64         // SeqPal escrow fee in basis points, deducted at release
-	fiatSettle   time.Duration // simulated fiat pending->settled delay
+	btcURL      string // testnet4 (parent-chain) Bitcoin node RPC for the native-BTC escrow
+	btcUser     string // testnet4 RPC username (mainchainrpcuser)
+	btcPass     string // testnet4 RPC password (mainchainrpcpassword)
+	usdxAsset   string // USDX asset id (Sequentia payment asset)
+	escrowConfs int64  // confirmations before a deposit becomes in_escrow
+	atomicClose bool   // M6: settle USDX subscriptions as ONE atomic DvP tx (closing v2); v1 fallback otherwise
+	// An OVERRIDE of the published setup price, not the price itself. Negative
+	// means unset, which is the normal case: the platform then charges what
+	// src/data/pricing.js quotes for that issuance's structure. A deployment that
+	// sets it charges that instead, and zero waives the fee -- which is how this
+	// once came to charge nothing while the page priced setup in the thousands.
+	setupFeeOverrideUSD float64
+	kycFeeUSD           float64       // identity verification fee (USD), blocks the check until paid
+	kybFeeUSD           float64       // business verification fee (USD), charged per business
+	escrowFeeBps        int64         // SeqPal escrow fee in basis points, deducted at release
+	fiatSettle          time.Duration // simulated fiat pending->settled delay
 
 	// Cron cadences (fast defaults so a demo runs unattended).
 	expiryInterval  time.Duration // category expiry sweep
@@ -256,7 +261,7 @@ func main() {
 		}
 	}
 	cfg.damp = env("SEQPALD_DAMP", "") == "1" || strings.EqualFold(env("SEQPALD_DAMP", ""), "true")
-	cfg.setupFeeUSD = envFloat("SEQPALD_SETUP_FEE_USD", 500)
+	cfg.setupFeeOverrideUSD = envFloat("SEQPALD_SETUP_FEE_USD", -1)
 	// The provider bills per check either way, so the fee is what recoups it. A
 	// deployment that sets either to zero simply does not charge for that check.
 	cfg.kycFeeUSD = envFloat("SEQPALD_KYC_FEE_USD", defaultKYCFeeUSD)

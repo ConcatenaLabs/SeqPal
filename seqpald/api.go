@@ -319,13 +319,25 @@ func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"confidential": s.cfg.confidential,
 		"damp":         s.cfg.damp,
 		// The setup fee is a real gate: an unpaid one refuses the deploy with a
-		// 402. What it costs is configuration, and a screen that asserts an amount
-		// (or asserts there is none) is wrong on any deployment configured
-		// differently, which is how the onboarding step came to say the fee was
-		// simulated while the README said it blocked the deploy. Both were reading
-		// their own deployment.
-		"setup_fee_usd":   s.cfg.setupFeeUSD,
-		"openamp_ok":      openampOK,
-		"issuer_token_ok": issuerOK,
+		// 402. What it COSTS is per-offering, priced from the published schedule
+		// and that issuance's own terms, so there is no one number to report
+		// here; the checkout screen computes the same figure from the same
+		// inputs. What a deployment can still say is whether it overrides that
+		// schedule, because a screen that asserts an amount (or asserts there is
+		// none) is wrong on any deployment configured differently.
+		"setup_fee_override_usd": setupFeeOverrideView(s.cfg.setupFeeOverrideUSD),
+		"openamp_ok":             openampOK,
+		"issuer_token_ok":        issuerOK,
 	})
+}
+
+// setupFeeOverrideView reports a deployment's setup-fee override, or nil when it
+// charges the published schedule. Nil and zero mean opposite things -- the
+// published price and no price at all -- so they must not be the same value on
+// the wire.
+func setupFeeOverrideView(v float64) any {
+	if v < 0 {
+		return nil
+	}
+	return v
 }
