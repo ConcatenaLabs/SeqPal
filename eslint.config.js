@@ -21,6 +21,12 @@ export default [
       parserOptions: { ecmaFeatures: { jsx: true } },
       globals: { ...globals.browser, ...globals.node },
     },
+    // The code carries disable directives naming exhaustive-deps. The rule is
+    // off, which makes every one of them "unused" and puts eight warnings on
+    // every run of the gate. A gate that always prints something is a gate
+    // people stop reading, and the directives are worth keeping as a record of
+    // where a dependency list was considered and settled.
+    linterOptions: { reportUnusedDisableDirectives: 'off' },
     rules: {
       'no-undef': 'error',
       'react-hooks/exhaustive-deps': 'off',
