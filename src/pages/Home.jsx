@@ -339,7 +339,8 @@ export default function Home() {
               ))}
             </div>
             <div className="bg-ink-900/[0.02] px-6 py-4 text-center text-xs text-ink-700/70">
-              One SeqPal ID · every asset you qualify for, auto-whitelisted.
+              One SeqPal ID &middot; every serviced asset you qualify for, and the credential
+              you present for the rest.
             </div>
           </div>
         </div>

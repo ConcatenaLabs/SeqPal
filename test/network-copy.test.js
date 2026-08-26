@@ -203,3 +203,16 @@ test('the front page does not promise one enforcement model for all three', () =
     'verification does not whitelist a holder for a network-enforced asset: they ask, and the issuer decides',
   )
 })
+
+test('no surface says a SeqPal ID whitelists its holder by itself', () => {
+  // A published holder list is a list of keys an ISSUER admits, one request at a
+  // time. Verification is what a holder presents when they ask; it admits nobody
+  // on its own, and saying it does describes the admission flow out of existence.
+  for (const f of ['pages/Home.jsx', 'pages/Products.jsx', 'components/IdFooter.jsx']) {
+    const src = read(f)
+    assert.ok(
+      !/auto-whitelisted|it whitelists you|so the holder is whitelisted/.test(src),
+      `${f} says a SeqPal ID whitelists its holder by itself`,
+    )
+  }
+})

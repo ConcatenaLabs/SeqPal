@@ -20,7 +20,7 @@ const products = [
     icon: Icon.id,
     name: 'SeqPal ID',
     tagline: 'One compliance passport for everyone.',
-    body: 'The identity and compliance passport for everyone on Sequentia who holds or issues a SeqPal asset. One role-neutral registration flow: it never asks whether you intend to issue or invest. Once verified, it carries the eligibility categories that are checked on every transfer, so the holder is whitelisted for every SeqPal-managed asset their profile is eligible to hold. A SeqPal ID is required to hold or trade these restricted assets anywhere on Sequentia.',
+    body: 'The identity and compliance passport for everyone on Sequentia who holds or issues a SeqPal asset. One role-neutral registration flow: it never asks whether you intend to issue or invest. Once verified, it carries eligibility categories, which a serviced asset checks on every transfer \u2014 so the holder may hold any of those their profile is eligible for. It is also what a holder presents to be admitted to a network-enforced asset\u2019s published holder list, where the issuer decides. A SeqPal ID is required to hold or trade restricted assets anywhere on Sequentia.',
     points: [
       'One flow for everyone, no user-type question',
       'KYC / KYB and accreditation in one profile',
