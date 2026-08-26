@@ -81,10 +81,22 @@ func TestAVerificationIsNotSubmittedUntilItIsPaidFor(t *testing.T) {
 	}
 
 	// It stays bought for the check it bought, though: the provider asking for a
-	// better photo is the same check continuing, not a second applicant.
+	// better photo is the same check continuing, not a second applicant. The page
+	// has to be told so, or it shows a bill that is not owed and blocks the very
+	// resubmission the provider asked for.
 	h.adjudicate(aid, idvResubmit)
+	asked := h.do("GET", "/api/id/fees", session, nil)
+	if q, _ := asked.body["identity"].(map[string]any); q["due"] != false {
+		t.Fatalf("nothing is due to answer a provider who asked for more, got %v", asked.body["identity"])
+	}
 	if v := h.do("POST", "/api/id/verify", session, body); v.code != 200 {
 		t.Fatalf("resubmitting after a resubmission request = %d, want 200 (%s)", v.code, v.raw)
+	}
+	// And a fresh check after that one is decided IS due again.
+	h.adjudicate(aid, idvClear)
+	settledAgain := h.do("GET", "/api/id/fees", session, nil)
+	if q, _ := settledAgain.body["identity"].(map[string]any); q["due"] != true {
+		t.Fatalf("a fresh check must be quoted again, got %v", settledAgain.body["identity"])
 	}
 
 	// A verification fee belongs to a person and to no offering, so it is not in
