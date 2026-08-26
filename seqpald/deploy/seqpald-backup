@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+"""Back up seqpald's database, and prove the copy is readable.
+
+The database is the platform's only copy of accounts, issuances, deploys and the
+hash-chained audit log. An asset already minted survives losing it -- that is on
+chain -- but the record of who owns it does not.
+
+It uses SQLite's ONLINE BACKUP API, which is the only correct way to copy a
+database a running process has open in WAL mode: copying the file in place gets
+a torn read whenever seqpald writes during the copy. This is a Python script and
+not a shell one-liner because that API is what Python's sqlite3 module exposes,
+and because the box has python3 and no sqlite3 binary.
+
+Usage: seqpald-backup [--db PATH] [--dir PATH] [--keep N]
+"""
+
+import argparse
+import os
+import sqlite3
+import sys
+import time
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--db", default="/var/lib/seqpald/seqpald.db")
+    ap.add_argument("--dir", default="/var/backups/seqpald")
+    ap.add_argument("--keep", type=int, default=14, help="how many backups to retain")
+    args = ap.parse_args()
+
+    os.makedirs(args.dir, mode=0o700, exist_ok=True)
+    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    out = os.path.join(args.dir, "seqpald-%s.db" % stamp)
+
+    src = sqlite3.connect("file:%s?mode=ro" % args.db, uri=True)
+    dst = sqlite3.connect(out)
+    try:
+        with dst:
+            src.backup(dst)
+        # The copy inherits the source's WAL mode, which leaves a -wal and a -shm
+        # beside it: three files that only mean anything together, and a restore
+        # that copies just the .db silently loses whatever was still in the WAL.
+        # Switching the COPY to a rollback journal checkpoints it and removes
+        # them, so a backup is one self-contained file.
+        dst.execute("PRAGMA journal_mode=DELETE")
+    finally:
+        dst.close()
+        src.close()
+    os.chmod(out, 0o600)
+
+    # A backup nobody has opened is a hope, not a backup. Read the copy back and
+    # count the two things that would matter most on a restore.
+    check = sqlite3.connect("file:%s?mode=ro" % out, uri=True)
+    version = check.execute("SELECT version FROM schema_version").fetchone()[0]
+    accounts = check.execute("SELECT count(*) FROM accounts").fetchone()[0]
+    audit = check.execute("SELECT count(*) FROM audit_log").fetchone()[0]
+    check.close()
+
+    size = os.path.getsize(out)
+    print("backed up %s -> %s (%d bytes, schema %d, %d accounts, %d audit rows)"
+          % (args.db, out, size, version, accounts, audit))
+
+    # Retention. Oldest first, so what is deleted is always the oldest.
+    kept = sorted(f for f in os.listdir(args.dir)
+                  if f.startswith("seqpald-") and f.endswith(".db"))
+    for stale in kept[:max(0, len(kept) - args.keep)]:
+        for suffix in ("", "-wal", "-shm"):
+            path = os.path.join(args.dir, stale + suffix)
+            if os.path.exists(path):
+                os.remove(path)
+        print("removed %s" % stale)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

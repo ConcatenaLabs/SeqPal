@@ -222,22 +222,40 @@ cause is `SEQPALD_LISTEN` naming an address the process cannot reach itself on.
 ## 6. Backup and restore (the DB is books and records)
 
 The SQLite DB is the platform's only copy of accounts, issuances, deploys, and the
-hash-chained audit log. Nothing backs it up on a timer, so run this after a
-schema change and on whatever schedule the deployment warrants. Back it up with
-the online backup API, never by copying a WAL-mode file in place:
+hash-chained audit log. `deploy/seqpald-backup` copies it through SQLite's online
+backup API -- never by copying a WAL-mode file in place, which gets a torn read
+whenever seqpald writes during the copy -- then reads the copy back and prints
+its schema version and row counts, because a backup nobody has opened is a hope
+rather than a backup. Each copy is one self-contained file: the destination is
+switched off WAL, so there is no `-wal` beside it holding writes a restore would
+drop.
+
+Install it, and the timer that runs it every six hours:
 
 ```
-install -d -o seqpal -g seqpal -m 0700 /var/backups/seqpald
-sudo -u seqpal sqlite3 /var/lib/seqpald/seqpald.db \
-  ".backup '/var/backups/seqpald/seqpald-$(date -u +%Y%m%dT%H%M%SZ).db'"
+install -m 0755 seqpald/deploy/seqpald-backup /usr/local/bin/seqpald-backup
+install -m 0644 seqpald/deploy/seqpald-backup.service /etc/systemd/system/
+install -m 0644 seqpald/deploy/seqpald-backup.timer /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now seqpald-backup.timer
+systemctl start seqpald-backup.service      # take one now
+systemctl list-timers seqpald-backup.timer  # confirm the next run
+```
+
+It keeps the last 14 copies (`--keep`), in `/var/backups/seqpald` (`--dir`).
+Run it by hand before any schema change too:
+
+```
+/usr/local/bin/seqpald-backup
 ```
 
 Restore:
 
 ```
 systemctl stop seqpald
-sudo -u seqpal cp /var/backups/seqpald/<chosen>.db /var/lib/seqpald/seqpald.db
+cp /var/backups/seqpald/<chosen>.db /var/lib/seqpald/seqpald.db
 systemctl start seqpald
+curl -s localhost:8730/api/health
 ```
 
 An asset already minted survives any DB loss (it is on-chain), but the record of
