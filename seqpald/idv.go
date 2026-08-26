@@ -238,12 +238,18 @@ func (s *server) applyAdjudication(check *VerificationCheck, decision idvDecisio
 		if err := s.st.UpsertClaims(claims); err != nil {
 			return err
 		}
-		froze, ferr := s.freezeAtPolicyServer(check.AID)
-		if ferr != nil {
-			log.Printf("idv: freeze %s after a refusal: %v", check.AID, ferr)
+		// A refusal the policy server never heard is a refusal it does not
+		// enforce: a holder verified before this check still carries live
+		// categories there, and can still receive. Both calls are no-ops for an
+		// ID with no account there, so a failure means the server could not be
+		// reached -- and then this check stays undecided on purpose, for the
+		// callback's 500 and the reconciler to bring back.
+		froze, err := s.freezeAtPolicyServer(check.AID)
+		if err != nil {
+			return fmt.Errorf("freeze after a refusal: %w", err)
 		}
 		if _, err := s.stampCategories(check.AID); err != nil {
-			log.Printf("idv: strip categories for %s: %v", check.AID, err)
+			return fmt.Errorf("strip categories after a refusal: %w", err)
 		}
 		s.st.Audit(check.AID, "id.verify.refused", map[string]any{
 			"check": check.ID, "provider": check.Provider, "reason": reason,

@@ -114,6 +114,12 @@ rule that catches something that actually breaks.
   open, with no check to chase, and a prior verification thrown away. For the same reason no
   SPA surface may treat provisioning as submission: an entity's `submitted` comes from its
   check, never from its treasury key.
+  A REFUSAL is not finished until the policy server has heard it: `applyAdjudication` returns
+  an error if the freeze or the category strip fails, so the check stays open for the
+  callback's 500 and the reconciler to bring back. Both calls are no-ops for an ID with no
+  account there, so a failure always means unreachable, never wallet-backed. Never downgrade
+  either to a log line: a refused holder who was verified before still carries live categories
+  at openampd until that freeze lands.
 - **A SeqPal ID has TWO account ids, and openampd knows only one of them.** `accounts.aid` is
   the id the ID was founded with and never changes; the policy server knows the account the
   enclave key derives. They coincide only for an ID founded ON an enclave. Never pass
