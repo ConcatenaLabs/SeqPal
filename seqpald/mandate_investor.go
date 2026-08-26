@@ -10,7 +10,7 @@ import (
 // ordinary wallet address captured via a BIP340-signed mandate in the portal:
 // {asset_or_chain, address, signature, signer_xonly}. The endpoint validates that
 // the signature is a tagged mandate signature by the investor's OWN registered
-// key (the M5 mandate tag + verifyTaggedByKey), that the address is a valid
+// key (the M5 mandate tag, tagged or as an ordinary signed message), that the address is a valid
 // ordinary Sequentia address, and it REJECTS an enclave key-path / 2-of-2 address
 // (no wallet scans an enclave address; paying one would strand the funds). For
 // M7, USDX distributions are Sequentia-only; the tBTC payout leg is the plan's
@@ -90,7 +90,7 @@ func (s *server) handleInvestorMandate(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	if err := verifyTaggedByKey(signer, mandateTag, statement, req.Signature); err != nil {
+	if err := s.verifyKeyStatement(signer, mandateTag, statement, req.Signature); err != nil {
 		writeErr(w, 400, "the mandate signature does not verify for your key")
 		return
 	}

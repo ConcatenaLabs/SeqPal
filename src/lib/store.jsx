@@ -217,6 +217,13 @@ export function StoreProvider({ children }) {
   const signTagged = async (tag, { statement, hash, label } = {}) => {
     if (!signer) return null
     if (signer.kind === 'extension') return wallet.signTagged(tag, { statement, hash, label })
+    // A wallet with no enclave key cannot sign tagged at all: it signs ordinary
+    // messages, so it is asked for one, over the tag and the statement together.
+    // seqpald accepts either form and checks this one against the addresses of
+    // the wallets this ID has linked.
+    if (signer.kind === 'wallet') {
+      return askLinked({ classic: true, tag, statement, hash, label, xonly: null })
+    }
     return askLinked({ tag, statement, hash, label, xonly: signer.xonly })
   }
 

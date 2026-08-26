@@ -23,15 +23,32 @@ export default function WalletSignPrompt() {
 
   if (!pendingSig) return null
 
-  const { tag, statement, hash, label, xonly } = pendingSig
+  const { tag, statement, hash, label, xonly, classic } = pendingSig
+  // What a wallet with no enclave key actually signs: the tag and the statement
+  // as one ordinary message, with a digest written as hex so it can be pasted.
+  // The tag is inside the signed text, so a signature over one statement still
+  // cannot be presented as another.
+  const classicMessage = classic
+    ? `${tag}\n${hash ? `hex:${hash}` : statement}`
+    : null
   const submit = (e) => {
     e.preventDefault()
-    const v = sig.trim().toLowerCase()
-    if (!/^[0-9a-f]{128}$/.test(v)) {
+    const v = sig.trim()
+    if (classic) {
+      // An ordinary signed message is base64, not hex, so the hex rule would
+      // reject every correct answer.
+      if (v.length < 60 || !/^[A-Za-z0-9+/=]+$/.test(v)) {
+        setErr('A signed message is base64, about 88 characters, as your wallet shows it.')
+        return
+      }
+      resolvePendingSig(v)
+      return
+    }
+    if (!/^[0-9a-f]{128}$/.test(v.toLowerCase())) {
       setErr('A BIP340 signature is 64 bytes, or 128 hex characters.')
       return
     }
-    resolvePendingSig(v)
+    resolvePendingSig(v.toLowerCase())
   }
 
   return (
@@ -42,16 +59,20 @@ export default function WalletSignPrompt() {
           Sign this in your Sequentia wallet
         </div>
         <p className="mt-2 text-sm leading-relaxed text-ink-700/80">
-          {TAG_LABELS[tag] || 'Statement'}. Your wallet signs the tagged message below with the
-          enclave key of the account you linked, and you paste the signature back. SeqPal never
-          sees your key.
+          {TAG_LABELS[tag] || 'Statement'}.{' '}
+          {classic
+            ? 'Sign the message below as an ordinary message, with the same address you sign in with, and paste the signature back.'
+            : 'Your wallet signs the tagged message below with the enclave key of the account you linked, and you paste the signature back.'}{' '}
+          SeqPal never sees your key.
         </p>
 
         <dl className="mt-4 space-y-2 rounded-xl border border-ink-900/10 bg-ink-900/[0.02] p-4 text-xs">
-          <div className="flex justify-between gap-4">
-            <dt className="text-ink-700/70">Signing account</dt>
-            <dd className="truncate font-mono text-ink-900">{xonly}</dd>
-          </div>
+          {xonly && (
+            <div className="flex justify-between gap-4">
+              <dt className="text-ink-700/70">Signing account</dt>
+              <dd className="truncate font-mono text-ink-900">{xonly}</dd>
+            </div>
+          )}
           <div className="flex justify-between gap-4">
             <dt className="text-ink-700/70">Domain tag</dt>
             <dd className="font-mono text-ink-900">{tag}</dd>
@@ -65,9 +86,15 @@ export default function WalletSignPrompt() {
         </dl>
 
         <div className="mt-3">
-          <div className="label">{hash ? 'Message (32-byte hash)' : 'Statement'}</div>
+          <div className="label">
+            {classic
+              ? 'Message to sign, exactly as it appears'
+              : hash
+                ? 'Message (32-byte hash)'
+                : 'Statement'}
+          </div>
           <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-xl border border-ink-900/10 bg-ink-900/[0.02] p-3 font-mono text-xs text-ink-900">
-            {hash || statement}
+            {classic ? classicMessage : hash || statement}
           </pre>
         </div>
 
@@ -81,7 +108,7 @@ export default function WalletSignPrompt() {
               className="input font-mono text-xs"
               rows={3}
               spellCheck={false}
-              placeholder="128 hex characters"
+              placeholder={classic ? 'the base64 signature your wallet shows' : '128 hex characters'}
               value={sig}
               onChange={(e) => setSig(e.target.value)}
             />

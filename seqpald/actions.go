@@ -461,7 +461,7 @@ func (s *server) handleActionClaim(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	if err := verifyTaggedByKey(xonly, holdingProofTag, digest[:], req.Sig); err != nil {
+	if err := s.verifyKeyStatement(xonly, holdingProofTag, digest[:], req.Sig); err != nil {
 		refuse(400, "the holding-proof signature does not verify for the supplied key")
 		return
 	}

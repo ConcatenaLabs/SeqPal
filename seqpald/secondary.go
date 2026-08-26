@@ -71,7 +71,7 @@ func (s *server) handleMarketAbuseAck(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, 403, "the acknowledgment must be signed by your own SeqPal ID key")
 			return
 		}
-		if err := verifyTaggedByKey(signer, marketAbuseTag, statement, sig); err != nil {
+		if err := s.verifyKeyStatement(signer, marketAbuseTag, statement, sig); err != nil {
 			writeErr(w, 400, "the acknowledgment signature does not verify for your key")
 			return
 		}

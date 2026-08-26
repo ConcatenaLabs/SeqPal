@@ -252,7 +252,7 @@ func (s *server) handleMandate(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	if err := verifyTaggedByKey(signer, mandateTag, statement, req.Signature); err != nil {
+	if err := s.verifyKeyStatement(signer, mandateTag, statement, req.Signature); err != nil {
 		writeErr(w, 400, "the mandate signature does not verify for your key")
 		return
 	}

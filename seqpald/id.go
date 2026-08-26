@@ -360,7 +360,7 @@ func (s *server) handleEntityVerify(w http.ResponseWriter, r *http.Request) {
 		Statement: statement, Sig: strings.TrimSpace(req.UBOSig), CreatedAt: time.Now().Unix(),
 	}
 	if link.Sig != "" {
-		if err := verifyTaggedByKey(acct.XOnly, "seqpal-ubo-v1", []byte(statement), link.Sig); err != nil {
+		if err := s.verifyAccountStatement(acct, "seqpal-ubo-v1", []byte(statement), link.Sig); err != nil {
 			writeErr(w, 400, "the UBO signature does not verify for this identity's key")
 			return
 		}
