@@ -37,7 +37,7 @@ const products = [
     points: [
       'Real-time canonical cap-table view',
       'Scheduled distributions and coupon runs',
-      'Corporate actions: redemptions, lockup releases, voting proxies',
+      'Corporate actions: distributions and holder votes, each snapshotted from the chain at a record height',
       'Year-end holder statements and Próspera tax filings',
     ],
     cta: { to: '/structures', label: 'See per-structure servicing' },
