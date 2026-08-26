@@ -68,11 +68,13 @@ func (s *server) handleGrantListing(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		signer := acct.XOnly
-		if err := s.verifyAccountStatement(acct, listingTag, listingStatement(iss.AssetID, req.Authorized, venues), sig); err != nil {
+		verifiedBy, err := s.verifyAccountStatementBy(acct, listingTag,
+			listingStatement(iss.AssetID, req.Authorized, venues), sig)
+		if err != nil {
 			writeErr(w, 400, "the listing signature does not verify for the issuer key")
 			return
 		}
-		l.Signature, l.SignerXOnly = sig, signer
+		l.Signature, l.SignerXOnly, l.SignerAddress = sig, signer, verifiedBy
 	}
 	if err := s.st.UpsertListing(l); err != nil {
 		writeErr(w, 500, "store error")

@@ -68,11 +68,12 @@ func (s *server) handleMarketAbuseAck(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		signer := acct.XOnly
-		if err := s.verifyAccountStatement(acct, marketAbuseTag, statement, sig); err != nil {
+		verifiedBy, err := s.verifyAccountStatementBy(acct, marketAbuseTag, statement, sig)
+		if err != nil {
 			writeErr(w, 400, "the acknowledgment signature does not verify for your key")
 			return
 		}
-		ack.Signature, ack.SignerXOnly = sig, signer
+		ack.Signature, ack.SignerXOnly, ack.SignerAddress = sig, signer, verifiedBy
 	}
 	if err := s.st.UpsertMarketAbuseAck(ack); err != nil {
 		writeErr(w, 500, "store error")

@@ -28,8 +28,12 @@ type InvestorMandate struct {
 	Address     string `json:"address"`
 	Signature   string `json:"signature,omitempty"`
 	SignerXOnly string `json:"signer_xonly,omitempty"`
-	CreatedAt   int64  `json:"created_at"`
-	UpdatedAt   int64  `json:"updated_at"`
+	// What checks this signature: the key for a tagged one, or the address an
+	// ordinary signed message verifies for. A record with neither is a signature
+	// nobody can check.
+	SignerAddress string `json:"signer_address,omitempty"`
+	CreatedAt     int64  `json:"created_at"`
+	UpdatedAt     int64  `json:"updated_at"`
 }
 
 func (s *Store) UpsertInvestorMandate(m *InvestorMandate) error {
@@ -39,21 +43,23 @@ func (s *Store) UpsertInvestorMandate(m *InvestorMandate) error {
 	}
 	m.UpdatedAt = now
 	_, err := s.db.Exec(
-		`INSERT INTO investor_mandates (investor_aid, chain, asset, address, signature, signer_xonly, created_at, updated_at)
-         VALUES (?,?,?,?,?,?,?,?)
+		`INSERT INTO investor_mandates (investor_aid, chain, asset, address, signature, signer_xonly, signer_address, created_at, updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?)
          ON CONFLICT(investor_aid, chain) DO UPDATE SET
             asset=excluded.asset, address=excluded.address, signature=excluded.signature,
-            signer_xonly=excluded.signer_xonly, updated_at=excluded.updated_at`,
-		m.InvestorAID, m.Chain, m.Asset, m.Address, m.Signature, m.SignerXOnly, m.CreatedAt, m.UpdatedAt)
+            signer_xonly=excluded.signer_xonly, signer_address=excluded.signer_address,
+            updated_at=excluded.updated_at`,
+		m.InvestorAID, m.Chain, m.Asset, m.Address, m.Signature, m.SignerXOnly,
+		m.SignerAddress, m.CreatedAt, m.UpdatedAt)
 	return err
 }
 
 func (s *Store) InvestorMandateFor(investorAID, chain string) (*InvestorMandate, error) {
 	var m InvestorMandate
 	err := s.db.QueryRow(
-		`SELECT investor_aid, chain, asset, address, signature, signer_xonly, created_at, updated_at
+		`SELECT investor_aid, chain, asset, address, signature, signer_xonly, signer_address, created_at, updated_at
          FROM investor_mandates WHERE investor_aid = ? AND chain = ?`, investorAID, chain).
-		Scan(&m.InvestorAID, &m.Chain, &m.Asset, &m.Address, &m.Signature, &m.SignerXOnly, &m.CreatedAt, &m.UpdatedAt)
+		Scan(&m.InvestorAID, &m.Chain, &m.Asset, &m.Address, &m.Signature, &m.SignerXOnly, &m.SignerAddress, &m.CreatedAt, &m.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}

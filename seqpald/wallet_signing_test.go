@@ -202,3 +202,44 @@ func TestARecordedSignatureCanBeChecked(t *testing.T) {
 		t.Fatalf("a wallet signature must record the address it verifies for: %+v", sigs[0])
 	}
 }
+
+// Every record that keeps a signature has to keep what checks it. A signature
+// by an OpenAMP key is checked against that key; one by a wallet is checked
+// against an address, and a record with neither is a signature nobody can
+// verify. The listing authorization is the one that matters most: it is public,
+// and a venue relies on it.
+func TestEveryStoredSignatureSaysWhatChecksIt(t *testing.T) {
+	h := newHarness(t)
+	h.s.cfg.nodeURL = newWalletNode(t, true).URL
+	h.s.screen = newScreener("")
+	session, aid := walletSession(t, h, testPKH)
+	const walletSig = "H1uL0Y2ZwOaKf3wRZ5NnwF0oJp0V1sV+Xu3QW6mV2mYbTGYr9k1J2bV0wq1mM4pV"
+
+	// The acknowledgment, signed.
+	if res := h.do("POST", "/api/id/market-abuse-ack", session,
+		map[string]any{"signature": walletSig}); res.code != 200 {
+		t.Fatalf("acknowledge: %d %s", res.code, res.raw)
+	}
+	ack, err := h.s.st.MarketAbuseAckByAID(aid)
+	if err != nil || ack == nil {
+		t.Fatalf("ack: %v %v", ack, err)
+	}
+	if ack.SignerXOnly == "" && ack.SignerAddress == "" {
+		t.Fatal("the acknowledgment keeps a signature and nothing that checks it")
+	}
+
+	// The investor mandate, signed.
+	addr := "tb1qnzten2u3ayqmnqtdul7z00v3uvapet7dv2789z"
+	if res := h.do("POST", "/api/mandates/investor", session, map[string]any{
+		"chain": "sequentia", "address": addr, "signature": walletSig,
+	}); res.code != 200 {
+		t.Fatalf("mandate: %d %s", res.code, res.raw)
+	}
+	m, err := h.s.st.InvestorMandateFor(aid, "sequentia")
+	if err != nil || m == nil {
+		t.Fatalf("mandate: %v %v", m, err)
+	}
+	if m.SignerXOnly == "" && m.SignerAddress == "" {
+		t.Fatal("the mandate keeps a signature and nothing that checks it")
+	}
+}
