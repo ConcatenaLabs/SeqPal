@@ -317,7 +317,7 @@ func TestProjectCategories(t *testing.T) {
 		t.Fatalf("expired -> %v, want nil", got)
 	}
 	// Unverified projects to nothing.
-	c4 := &Claims{Residence: "DE", Status: "pending_review", ValidUntil: now + 1000}
+	c4 := &Claims{Residence: "DE", Status: "submitted", ValidUntil: now + 1000}
 	if got := projectCategories(c4, now); got != nil {
 		t.Fatalf("unverified -> %v, want nil", got)
 	}

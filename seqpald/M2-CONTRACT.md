@@ -5,6 +5,13 @@ sections 3.0 (what a SeqPal ID is), 4.1, 4.2, 4.6. This is where eligibility sto
 browser theater and becomes real: the jurisdiction matrix compiles into policy-server
 rules, and a transfer to an ineligible AID gets a real 403 from openampd.
 
+> Section 5 no longer describes what runs. SeqPal screens nobody: identity
+> verification is an independent provider's, it is asynchronous, and its decision
+> arrives on an authenticated callback. There is no review queue, no reviewer and
+> no `pending_review`. What this milestone contracted for is left as written,
+> because that is what a milestone contract is; for what the platform does now,
+> read the verification rules in `../CLAUDE.md` and `idv.go`.
+
 ## 0. The one-line goal
 
 Categories on an AID, stamped only by the platform, are what gate every transfer; the
