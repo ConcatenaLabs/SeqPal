@@ -161,7 +161,13 @@ rule that catches something that actually breaks.
   that the checkout screen showed the issuer. `SEQPALD_SETUP_FEE_USD` is an OVERRIDE and not
   the price: unset (negative) means charge the schedule, and it is unset in production. A
   structure with no published price is an error, never a free deploy. This is how the box came
-  to charge nothing for a setup the page priced in the thousands.
+  to charge nothing for a setup the page priced in the thousands. The ESCROW fee is the same
+  rule with a harder shape: it is charged for TIME, so its amount is unknowable when the money
+  arrives. The clock starts at deposit confirmation (`escrow_from`), the amount is fixed at
+  RELEASE by `escrowFeeFor`, and every later read returns what was charged -- a retry, a
+  reconcile or a refund must never reprice it. Its minimum and cap belong to the OFFERING, not
+  to one investor's cheque, so they are applied to the funds held together and apportioned.
+  Never take more than the funds held; record the rest as owed.
 - **A DEPLOY mints, so it takes `st.LockIssuance` before it asks whether it already
   happened.** The idempotency key is read before the mint and written after it, so two deploys
   in flight together are both told "no prior deploy" and the chain keeps both assets: five

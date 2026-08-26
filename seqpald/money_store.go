@@ -22,37 +22,40 @@ import (
 // the expected payment in the rail's base unit (USDX atoms, tBTC sats, or fiat
 // minor units); FundsSimulated flags a fiat-funded row on every derived surface.
 type Subscription struct {
-	ID             string  `json:"id"`
-	IssuanceID     string  `json:"issuance_id"`
-	InvestorAID    string  `json:"investor_aid"`
-	Rail           string  `json:"rail"` // usdx | btc | card | bank
-	TokenAtoms     uint64  `json:"token_atoms"`
-	PayAmount      uint64  `json:"pay_amount"`
-	PayCcy         string  `json:"pay_ccy"`
-	DepositAddress string  `json:"deposit_address,omitempty"`
-	RefundAddress  string  `json:"refund_address,omitempty"`
-	State          string  `json:"state"`
-	FundsSimulated bool    `json:"funds_simulated"`
-	DepositTxid    string  `json:"deposit_txid,omitempty"`
-	Confirmations  int64   `json:"confirmations"`
-	DepositedAtoms uint64  `json:"deposited_atoms,omitempty"`
-	USDRate        float64 `json:"usd_rate,omitempty"` // captured USD/BTC at confirmation (btc rail)
-	CreatedAt      int64   `json:"created_at"`
-	UpdatedAt      int64   `json:"updated_at"`
+	ID             string `json:"id"`
+	IssuanceID     string `json:"issuance_id"`
+	InvestorAID    string `json:"investor_aid"`
+	Rail           string `json:"rail"` // usdx | btc | card | bank
+	TokenAtoms     uint64 `json:"token_atoms"`
+	PayAmount      uint64 `json:"pay_amount"`
+	PayCcy         string `json:"pay_ccy"`
+	DepositAddress string `json:"deposit_address,omitempty"`
+	RefundAddress  string `json:"refund_address,omitempty"`
+	State          string `json:"state"`
+	FundsSimulated bool   `json:"funds_simulated"`
+	DepositTxid    string `json:"deposit_txid,omitempty"`
+	Confirmations  int64  `json:"confirmations"`
+	DepositedAtoms uint64 `json:"deposited_atoms,omitempty"`
+	// When the deposit confirmed and the funds started earning the escrow fee.
+	// Zero until they have.
+	EscrowFrom int64   `json:"escrow_from,omitempty"`
+	USDRate    float64 `json:"usd_rate,omitempty"` // captured USD/BTC at confirmation (btc rail)
+	CreatedAt  int64   `json:"created_at"`
+	UpdatedAt  int64   `json:"updated_at"`
 }
 
 const subCols = `id, issuance_id, investor_aid, rail, token_atoms, pay_amount, pay_ccy,
     deposit_address, refund_address, state, funds_simulated, deposit_txid, confirmations,
-    deposited_atoms, usd_rate, created_at, updated_at`
+    deposited_atoms, usd_rate, escrow_from, created_at, updated_at`
 
 func (s *Store) InsertSubscription(sub *Subscription) error {
 	now := time.Now().Unix()
 	sub.CreatedAt, sub.UpdatedAt = now, now
 	_, err := s.db.Exec(
-		`INSERT INTO subscriptions (`+subCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		`INSERT INTO subscriptions (`+subCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		sub.ID, sub.IssuanceID, sub.InvestorAID, sub.Rail, sub.TokenAtoms, sub.PayAmount, sub.PayCcy,
 		sub.DepositAddress, sub.RefundAddress, sub.State, boolInt(sub.FundsSimulated), sub.DepositTxid,
-		sub.Confirmations, sub.DepositedAtoms, sub.USDRate, sub.CreatedAt, sub.UpdatedAt)
+		sub.Confirmations, sub.DepositedAtoms, sub.USDRate, sub.EscrowFrom, sub.CreatedAt, sub.UpdatedAt)
 	return err
 }
 
@@ -113,7 +116,7 @@ func scanSubInto(sc scanner) (*Subscription, error) {
 	var simulated int
 	err := sc.Scan(&sub.ID, &sub.IssuanceID, &sub.InvestorAID, &sub.Rail, &sub.TokenAtoms, &sub.PayAmount,
 		&sub.PayCcy, &sub.DepositAddress, &sub.RefundAddress, &sub.State, &simulated, &sub.DepositTxid,
-		&sub.Confirmations, &sub.DepositedAtoms, &sub.USDRate, &sub.CreatedAt, &sub.UpdatedAt)
+		&sub.Confirmations, &sub.DepositedAtoms, &sub.USDRate, &sub.EscrowFrom, &sub.CreatedAt, &sub.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}

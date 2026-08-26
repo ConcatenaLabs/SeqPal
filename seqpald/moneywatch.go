@@ -75,12 +75,11 @@ func (s *server) creditSubscription(sub *Subscription, dep deposit, btcRate floa
 	// and an audit note; the investor tops up or it is refunded on close abandonment.
 	sufficient := dep.Atoms >= sub.PayAmount
 	if dep.Confirmations >= s.cfg.escrowConfs && sufficient {
-		// W-6: the escrow fee accrues NOW, at deposit confirmation, due
-		// regardless of outcome. Written BEFORE the state flip so a crash
-		// between the two is healed by the next tick (the sub is still
-		// 'created', the accrual insert is idempotent); closing and refund
-		// consume this figure instead of recomputing.
-		s.accrueEscrowFee(sub, dep)
+		// The escrow fee is charged for TIME -- 0.25% a month, accrued daily --
+		// so its AMOUNT is not knowable here; what starts here is the clock.
+		// Recorded before the state flip, so a crash between the two is healed
+		// by the next tick with the same instant rather than a later one.
+		s.startEscrowClock(sub, fields)
 		fields["state"] = "in_escrow"
 		if sub.Rail == "btc" && btcRate > 0 {
 			fields["usd_rate"] = btcRate
@@ -164,35 +163,20 @@ func feeQuotesOf(inv *FeeInvoice) map[string]FeeQuote {
 	return map[string]FeeQuote{inv.Rail: {Address: inv.Address, Amount: inv.Amount, Ccy: inv.Ccy}}
 }
 
-// accrueEscrowFee writes the W-6 deposit-time fee accrual: bps on the deposited
-// amount, one kind='escrow_fee' ledger row per subscription, idempotent (the
-// existing row IS the accrual). A zero-bps or zero-fee deposit accrues nothing;
-// closing then falls back to computing (the same zero).
-func (s *server) accrueEscrowFee(sub *Subscription, dep deposit) {
-	if _, ok, err := s.st.AccruedEscrowFee(sub.ID); err != nil || ok {
+// startEscrowClock records when a subscription's funds entered escrow, which is
+// what the fee is charged for. It is written once: a deposit confirms once, and
+// a later tick must not restart the clock and undercharge for the time already
+// held.
+func (s *server) startEscrowClock(sub *Subscription, fields map[string]any) {
+	if sub.EscrowFrom > 0 {
 		return
 	}
-	fee := mulDiv(dep.Atoms, uint64(clampBps(s.cfg.escrowFeeBps, "escrow fee")), 10000)
-	// The ledger is the books, and a fee larger than the deposit it came out of
-	// is not a fee. The release paths already refuse to pay out less than
-	// nothing; this keeps the record from claiming otherwise.
-	if fee > dep.Atoms {
-		fee = dep.Atoms
-	}
-	if fee == 0 {
-		return
-	}
-	if err := s.st.InsertLedger(&LedgerEntry{
-		SubscriptionID: sub.ID, IssuanceID: sub.IssuanceID, Kind: "escrow_fee", Rail: sub.Rail,
-		Amount: fee, Ccy: sub.PayCcy, FundsSimulated: false,
-	}); err != nil {
-		log.Printf("moneywatch: accrue escrow fee %s: %v", sub.ID, err)
-		return
-	}
-	s.st.Audit(sub.InvestorAID, "escrow.fee_accrued", map[string]any{
-		"issuance_id": sub.IssuanceID, "sub": sub.ID, "fee_atoms": fee,
-		"deposited": dep.Atoms, "bps": s.cfg.escrowFeeBps,
-		"note": "the escrow fee accrues at deposit confirmation and is due regardless of outcome",
+	now := time.Now().Unix()
+	fields["escrow_from"] = now
+	sub.EscrowFrom = now
+	s.st.Audit(sub.InvestorAID, "escrow.clock_started", map[string]any{
+		"issuance_id": sub.IssuanceID, "sub": sub.ID, "from": now,
+		"note": "the escrow fee accrues daily from here and is due regardless of outcome",
 	})
 }
 

@@ -98,7 +98,12 @@ func (s *server) handleFees(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, map[string]any{
 		"issuance_id": iss.ID, "invoices": invoices,
-		"setup_fee_usd": setupFee, "escrow_fee_bps": s.cfg.escrowFeeBps,
+		"setup_fee_usd": setupFee,
+		// The escrow fee is a schedule rather than a rate: 0.25% a month accrued
+		// daily, a $5,000 minimum and a 3% cap, all of which the pricing page
+		// states. A deployment charging a flat rate instead says so.
+		"escrow_fee_published":    escrowFeePublishedView(),
+		"escrow_fee_override_bps": escrowFeeOverrideView(s.cfg.escrowFeeOverrideBps),
 	})
 }
 
@@ -460,4 +465,24 @@ func (s *server) handleMandates(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]any{"issuance_id": iss.ID, "mandates": ms})
+}
+
+// escrowFeePublishedView is the published escrow schedule, as numbers a screen
+// can render without restating them itself.
+func escrowFeePublishedView() map[string]any {
+	return map[string]any{
+		"rate_per_month_bps": escrowRatePerMonthBps,
+		"accrual":            "daily",
+		"minimum_usd":        escrowMinimumUSD,
+		"cap_bps":            escrowCapBps,
+	}
+}
+
+// escrowFeeOverrideView reports a deployment's flat-rate override, or nil when
+// it charges the published schedule. Nil and zero mean opposite things.
+func escrowFeeOverrideView(bps int64) any {
+	if bps < 0 {
+		return nil
+	}
+	return bps
 }

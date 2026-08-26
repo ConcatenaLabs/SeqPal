@@ -1183,6 +1183,23 @@ DROP INDEX IF EXISTS idx_enclave_ref;
 CREATE UNIQUE INDEX idx_enclave_ref ON enclave_keys(kind, ref_id) WHERE ref_id != '';
 CREATE INDEX idx_enclave_ref_any ON enclave_keys(kind, ref_id);
 `,
+	// The escrow fee is charged for TIME: 0.25% a month, accrued daily. So the
+	// moment the funds entered escrow is a fact the fee depends on, and it was
+	// not recorded anywhere -- a subscription knows when it was created and when
+	// it was last touched, neither of which is when its deposit confirmed.
+	//
+	// Backfill from the deposit-time accrual row where there is one, because that
+	// is exactly when the old code observed the deposit confirm; otherwise from
+	// when the row was last touched, which for an escrowed subscription is that
+	// same confirmation.
+	`
+ALTER TABLE subscriptions ADD COLUMN escrow_from INTEGER NOT NULL DEFAULT 0;
+UPDATE subscriptions SET escrow_from = COALESCE((
+  SELECT MIN(l.created_at) FROM escrow_ledger l
+  WHERE l.subscription_id = subscriptions.id AND l.kind = 'escrow_fee'
+), updated_at)
+WHERE deposited_atoms > 0;
+`,
 }
 
 // Store is seqpald's persistent state. Every financial fact the UI shows is

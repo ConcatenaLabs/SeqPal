@@ -83,10 +83,14 @@ type config struct {
 	// sets it charges that instead, and zero waives the fee -- which is how this
 	// once came to charge nothing while the page priced setup in the thousands.
 	setupFeeOverrideUSD float64
-	kycFeeUSD           float64       // identity verification fee (USD), blocks the check until paid
-	kybFeeUSD           float64       // business verification fee (USD), charged per business
-	escrowFeeBps        int64         // SeqPal escrow fee in basis points, deducted at release
-	fiatSettle          time.Duration // simulated fiat pending->settled delay
+	kycFeeUSD           float64 // identity verification fee (USD), blocks the check until paid
+	kybFeeUSD           float64 // business verification fee (USD), charged per business
+	// An OVERRIDE of the published escrow fee, not the fee itself. Negative means
+	// unset, which is the normal case: the platform then charges what the pricing
+	// page quotes -- 0.25% a month accrued daily, $5,000 minimum, 3% cap. Set, it
+	// charges that flat rate on the deposit instead.
+	escrowFeeOverrideBps int64
+	fiatSettle           time.Duration // simulated fiat pending->settled delay
 
 	// Cron cadences (fast defaults so a demo runs unattended).
 	expiryInterval  time.Duration // category expiry sweep
@@ -270,7 +274,11 @@ func main() {
 	// it would charge a fee larger than the deposit it comes out of. The release
 	// paths already refuse to pay out less than nothing, but the LEDGER would
 	// still carry the fee that was never taken, and the ledger is the books.
-	cfg.escrowFeeBps = clampBps(envInt("SEQPALD_ESCROW_FEE_BPS", 50), "SEQPALD_ESCROW_FEE_BPS")
+	if raw := envInt("SEQPALD_ESCROW_FEE_BPS", -1); raw < 0 {
+		cfg.escrowFeeOverrideBps = -1
+	} else {
+		cfg.escrowFeeOverrideBps = clampBps(raw, "SEQPALD_ESCROW_FEE_BPS")
+	}
 
 	cfg.adminAIDs = adminSet(adminAIDs)
 	cfg.expiryInterval = time.Hour

@@ -267,7 +267,10 @@ export const issuanceSubscriptions = (id) =>
 export const fiatStatus = (id) => req(`/fiat/${encodeURIComponent(id)}`)
 
 // Owner: the platform-fee invoices (auto-creates the setup invoice):
-// { invoices[], setup_fee_usd, escrow_fee_bps }. setup_fee_usd is priced for THIS
+// { invoices[], setup_fee_usd, escrow_fee_published, escrow_fee_override_bps }.
+// escrow_fee_published is the schedule (rate a month, minimum, cap); the
+// override is non-null only where a deployment charges a flat rate instead.
+// setup_fee_usd is priced for THIS
 // offering from the published schedule and its own terms. The setup fee blocks deploy.
 export const fees = (id) => req(`/issuances/${encodeURIComponent(id)}/fees`)
 
