@@ -14,13 +14,13 @@ export const REAL = [
   'Sanctions screening against the public OFAC, EU, and UN lists',
   'terms_hash committed on chain, and the content-addressed document set',
   'Document e-signatures over the real document hash, recorded with what checks them: a BIP340 signature under the tag by an OpenAMP key, or an ordinary signed message and the wallet address it verifies for',
-  'The RFSA filing number, its public lookup, the deploy gate, and the anchored filing hash',
+  'The RFSA filing number, its public lookup, the deploy gate, and the filing hash: recorded in SeqPal\u2019s append-only hash-chained audit log and timestamped against Bitcoin by the log-head anchor made at the same moment. The hash itself is not written on chain',
   'USDX and native testnet BTC as settlement assets',
   'Atomic delivery versus payment for USDX: the token and the USDX payment settle in one transaction',
   'Pro-rata USDX distributions: gross, withholding, and net are computed in atoms from the on-chain register and the net is paid on chain to each holder’s registered mandate address, one payment per holder',
   'The distribution reconciliation invariant: sum of gross equals sum of net plus sum of withheld, with the pro-rata flooring dust disclosed, never dropped',
   'Clawback full-sweep seizures, with the reason recorded in the public transparency log alongside the sweep txid',
-  'The rules-amendment chain: the live on-chain rules always equal the anchored chain head, which is the genesis terms_hash plus N anchored amendments',
+  'The rules-amendment chain: the live on-chain rules always equal the chain head, which is the genesis terms_hash plus N amendments, and you can check that equality against the policy server yourself. Each amendment is recorded in SeqPal\u2019s hash-chained audit log and timestamped by a log-head anchor; the amendment hash itself is not written on chain',
   'Category expiry: an expired accreditation stops being an eligibility anywhere it is read, and for an ID with an OpenAMP account it is stripped at the policy server, where it becomes a real transfer refusal',
   'Holder-to-holder secondary transfers, policy co-signed, with the browser signing the enclave sighash and both travel-rule counterparties captured',
   'Secondary-transfer refusals surfaced explicitly: an ineligible recipient, a lockup-window resale, or a Reg S window returns a real policy-server refusal with the reason in the public log',
@@ -50,17 +50,17 @@ export const SIMULATED = [
   },
   {
     element: 'E-signature provider',
-    real: 'A real BIP340 signature by your enclave key over the real document hash, stored and anchored.',
+    real: 'A real signature over the real document hash, checkable by anyone from what is stored beside it, and timestamped by a log-head anchor. The signature is cryptographically real; the document hash is not written on chain.',
     label: 'Cryptographically real signature; provider-grade e-signature simulated',
   },
   {
     element: 'Próspera incorporation and e-registry',
-    real: 'A watermarked certificate artifact and entity number, hash anchored, with server-driven timers.',
+    real: 'A watermarked certificate artifact and entity number, its hash in the audit log and timestamped by a log-head anchor, with server-driven timers.',
     label: 'Watermark: no e-registry sandbox exists',
   },
   {
     element: 'RFSA regulator approval',
-    real: 'Filing numbers, public lookup, the deploy gate, and anchored filing hashes.',
+    real: 'Filing numbers, public lookup, the deploy gate, and filing hashes in the hash-chained audit log, each timestamped by a log-head anchor.',
     label: 'Simulated regulator, real registry mechanics',
   },
   {
@@ -70,8 +70,8 @@ export const SIMULATED = [
   },
   {
     element: 'Depository-receipt custodian',
-    real: 'The reissue (mint) and burn (redeem) are real supply changes on chain, and circulating supply is chain-derived. Each operation produces a content-addressed reserve attestation whose hash is anchored. Only the custodian and its underlying holding are simulated.',
-    label: 'Simulated custody, real supply changes and anchored attestations',
+    real: 'The reissue (mint) and burn (redeem) are real supply changes on chain, and circulating supply is chain-derived. Each operation produces a content-addressed reserve attestation, recorded in the audit log and timestamped by a log-head anchor. Only the custodian and its underlying holding are simulated.',
+    label: 'Simulated custody, real supply changes, timestamped attestations',
   },
   {
     element: 'Market-abuse / insider-dealing acknowledgment',
@@ -80,13 +80,13 @@ export const SIMULATED = [
   },
   {
     element: 'Tax forms and remittance',
-    real: 'The withholding math is real and nets are paid on chain in USDX. The per-holder 1042-S-style statement, the issuer withholding summary, and the annual CRS/FATCA artifact are content-addressed and anchored, so their hashes are real. The forms themselves and any remittance to a tax authority are simulated.',
+    real: 'The withholding math is real and nets are paid on chain in USDX. The per-holder 1042-S-style statement, the issuer withholding summary, and the annual CRS/FATCA artifact are content-addressed, so their hashes are real and each is timestamped by a log-head anchor. The forms themselves and any remittance to a tax authority are simulated.',
     label: 'Forms simulated, math and artifact hashes real; remittance out of scope',
   },
   {
     element: 'Annual holder report and ownership-register filing',
     real: 'The register snapshot, its content address, and the on-chain anchor are real, and a notice is delivered to each current holder. The report is a labeled-simulated regulatory filing: nothing is transmitted to any authority.',
-    label: 'Real anchored artifact, simulated regulatory filing',
+    label: 'Real timestamped artifact, simulated regulatory filing',
   },
   {
     element: 'Licenses and registrations',

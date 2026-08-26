@@ -494,3 +494,33 @@ test('the honesty list describes both kinds of SeqPal ID', () => {
     'and it says so plainly',
   )
 })
+
+// What a log-head anchor commits to, said the same way everywhere.
+//
+// SeqPal's artifact hashes -- a filing, an amendment, a document signature, an
+// ownership report -- go into SeqPal's own hash-chained audit log. What goes on
+// chain is the head of the POLICY SERVER's transparency log, whose entries are
+// registrations, category writes, issues, transfers and snapshots. It does not
+// carry SeqPal's artifacts, so no artifact hash is committed on chain, and
+// saying "anchored" without saying that claims more than the mechanism does.
+//
+// Checked against the live log while this was written: its actions are
+// register, anchor, categories, issue, transfer, damp-issue, snapshot,
+// consolidate and rotate-blinding. No rules updates, no filings, no signatures.
+test('nothing claims an artifact hash is written on chain', () => {
+  const real = REAL.join('\n')
+  assert.ok(
+    !/anchored filing hash|N anchored amendments/.test(real),
+    'the honesty list does not call an artifact hash anchored',
+  )
+  assert.match(
+    real,
+    /not written on chain/,
+    'and it says plainly what is not on chain',
+  )
+  const amendCard = readFileSync(join(SRC, 'components', 'AmendmentChainCard.jsx'), 'utf8')
+  assert.ok(
+    !/anchored through the transparency log/.test(amendCard),
+    'an amendment is not in the transparency log: it is not one of its actions',
+  )
+})

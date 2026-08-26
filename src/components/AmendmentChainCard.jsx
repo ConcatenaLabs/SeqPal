@@ -108,9 +108,11 @@ export default function AmendmentChainCard({ iss }) {
       )}
 
       <p className="mt-3 text-[11px] leading-relaxed text-ink-700/55">
-        Each amendment is a content-addressed artifact anchored through the transparency log, so the
-        current rules are the genesis terms plus every amendment, and each link is checkable. You
-        can reproduce the same head check yourself against the policy server.
+        Each amendment is a content-addressed artifact in SeqPal&rsquo;s hash-chained audit log,
+        timestamped against Bitcoin by the log-head anchor made at the same moment; the amendment
+        hash itself is not written on chain. What is on chain is the rules the policy server holds,
+        and the head check below is that they equal the genesis terms plus every amendment &mdash;
+        which you can reproduce yourself against the policy server.
       </p>
     </div>
   )
