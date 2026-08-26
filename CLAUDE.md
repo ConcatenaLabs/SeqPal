@@ -108,6 +108,12 @@ rule that catches something that actually breaks.
   interface. `CompleteVerificationCheck` records the FIRST decision only, so a late callback
   cannot overwrite a chased one; everything `applyAdjudication` does before it must stay
   idempotent, because a callback and a poll can both apply it.
+  A submission that never REACHED the provider must leave nothing behind: `handleIDVerify`
+  writes the claims before it calls out, so on failure it restores exactly what was there
+  (deleting them if there was nothing), or the account is stuck for good -- refused as already
+  open, with no check to chase, and a prior verification thrown away. For the same reason no
+  SPA surface may treat provisioning as submission: an entity's `submitted` comes from its
+  check, never from its treasury key.
 - **A SeqPal ID has TWO account ids, and openampd knows only one of them.** `accounts.aid` is
   the id the ID was founded with and never changes; the policy server knows the account the
   enclave key derives. They coincide only for an ID founded ON an enclave. Never pass

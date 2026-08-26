@@ -52,6 +52,13 @@ func (s *Store) UpsertClaims(c *Claims) error {
 	return err
 }
 
+// DeleteClaims removes an account's claims entirely. It undoes a submission
+// that never reached the provider, for an account that had no claims before it.
+func (s *Store) DeleteClaims(aid string) error {
+	_, err := s.db.Exec(`DELETE FROM claims WHERE aid = ?`, aid)
+	return err
+}
+
 func (s *Store) ClaimsByAID(aid string) (*Claims, error) {
 	var c Claims
 	var accredited, usPerson, gbHNW, gbSoph int

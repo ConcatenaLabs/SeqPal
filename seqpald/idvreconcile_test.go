@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"testing"
 	"time"
 )
@@ -86,4 +87,59 @@ func (p *silentIDV) CreateCheck(c *VerificationCheck) (string, error) {
 func (p *silentIDV) PollCheck(c *VerificationCheck) (idvDecision, string, bool, error) {
 	decision, reason := simulatedDecision(c.SubjectName)
 	return decision, reason, true, nil
+}
+
+// A submission that never reached the provider must leave nothing behind. Left
+// recorded as "submitted" the account is stuck for good: submitting again is
+// refused as already open, and there is no check for the reconciler to chase.
+func TestASubmissionThatNeverReachedTheProviderCanBeRetried(t *testing.T) {
+	h := newHarness(t)
+	h.s.cfg.nodeURL = newWalletNode(t, true).URL
+	down := &unreachableIDV{}
+	h.s.idv = down
+	session, aid := walletSession(t, h, testPKH)
+
+	body := map[string]any{"residence": "AE", "screening_name": "Ordinary Person", "base_eligibility": "ret"}
+	if v := h.do("POST", "/api/id/verify", session, body); v.code != 502 {
+		t.Fatalf("verify with the provider down = %d, want 502 (%s)", v.code, v.raw)
+	}
+	if c, _ := h.s.st.ClaimsByAID(aid); c != nil {
+		t.Fatalf("a submission that never happened must record nothing, got %+v", c)
+	}
+
+	// And the holder can simply try again once the provider is back.
+	down.up = true
+	if v := h.do("POST", "/api/id/verify", session, body); v.code != 200 {
+		t.Fatalf("verify after the provider came back = %d, want 200 (%s)", v.code, v.raw)
+	}
+	h.adjudicate(aid, idvClear)
+	if c, _ := h.s.st.ClaimsByAID(aid); c.Status != "verified" {
+		t.Fatalf("the retry must verify, got %v", c.Status)
+	}
+
+	// A holder who is ALREADY verified must not lose that to a failed attempt.
+	down.up = false
+	if v := h.do("POST", "/api/id/verify", session, body); v.code != 502 {
+		t.Fatalf("re-verify with the provider down = %d, want 502", v.code)
+	}
+	if c, _ := h.s.st.ClaimsByAID(aid); c.Status != "verified" {
+		t.Fatalf("a failed attempt must not throw away a verification, got %v", c.Status)
+	}
+}
+
+var errProviderDown = errors.New("provider unreachable")
+
+type unreachableIDV struct{ up bool }
+
+func (p *unreachableIDV) Name() string { return "unreachable" }
+
+func (p *unreachableIDV) CreateCheck(c *VerificationCheck) (string, error) {
+	if !p.up {
+		return "", errProviderDown
+	}
+	return "back-" + c.ID, nil
+}
+
+func (p *unreachableIDV) PollCheck(*VerificationCheck) (idvDecision, string, bool, error) {
+	return "", "", false, nil
 }
