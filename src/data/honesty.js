@@ -42,7 +42,7 @@ export const REAL = [
 export const SIMULATED = [
   {
     element: 'The identity-verification provider itself',
-    real: 'The whole seam a real provider plugs into: a check is submitted, nothing is granted while it is open, and the decision arrives on a signed callback that is authenticated, idempotent, and the single place a verification outcome takes effect. The simulated provider decides deterministically and delivers over that same callback, so what runs in the demo is the path a real provider will run.',
+    real: 'The whole seam a real provider plugs into: a check is submitted, nothing is granted while it is open, and the decision arrives on a signed callback that is authenticated, idempotent, and the single place a verification outcome takes effect. A decision that never arrives is chased by asking the provider directly, the way an integration handles a missed webhook, so a check can never leave its holder stuck. The simulated provider decides deterministically and delivers over that same callback, so what runs in the demo is the path a real provider will run.',
     label: 'Simulated provider, real seam',
   },
   {

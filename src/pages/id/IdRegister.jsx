@@ -94,7 +94,10 @@ function VerifyStep({ account, onVerified }) {
       } catch {
         // transient; keep polling
       }
-      if (tries >= 20) clearInterval(pollRef.current)
+      // Long enough to outlast a decision that had to be chased rather than
+      // delivered: the provider is asked again on a cadence, and giving up
+      // before that would leave a decided identity looking undecided.
+      if (tries >= 45) clearInterval(pollRef.current)
     }, 4000)
   }
 

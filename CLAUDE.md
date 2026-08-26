@@ -99,6 +99,15 @@ rule that catches something that actually breaks.
   address it already has: overwriting a single address column stranded whatever had been sent
   to the one it replaced. An account fee is raised at most once (unique index on
   `aid, kind, subject`), because the page that quotes it polls from several cards at a time.
+- **A decision that never arrives is CHASED, never waited on forever.** A callback crosses a
+  network once, and the process can restart between the submission and the delivery, so
+  `runIDVReconcileCron` asks the provider directly about any check outstanding past
+  `SEQPALD_IDV_GRACE_SECS` (`idvProvider.PollCheck`). Without it a holder sits at `submitted`
+  forever: they cannot submit again, and they have already paid for the check. Polling for
+  missed webhooks is what a real integration does, which is why the poll is ON the provider
+  interface. `CompleteVerificationCheck` records the FIRST decision only, so a late callback
+  cannot overwrite a chased one; everything `applyAdjudication` does before it must stay
+  idempotent, because a callback and a poll can both apply it.
 - **A SeqPal ID has TWO account ids, and openampd knows only one of them.** `accounts.aid` is
   the id the ID was founded with and never changes; the policy server knows the account the
   enclave key derives. They coincide only for an ID founded ON an enclave. Never pass

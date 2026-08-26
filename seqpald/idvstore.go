@@ -78,20 +78,54 @@ func (s *Store) LatestVerificationCheckForEntity(entityID string) (*Verification
          WHERE entity_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`, entityID))
 }
 
-func (s *Store) CompleteVerificationCheck(id, result, reason string, decidedAt int64) error {
-	_, err := s.db.Exec(
+// CompleteVerificationCheck records the provider's decision, and only the FIRST
+// one: a callback and a reconciliation poll can arrive at once, and whichever
+// gets there first is the decision. It reports whether this call was the one
+// that decided.
+func (s *Store) CompleteVerificationCheck(id, result, reason string, decidedAt int64) (bool, error) {
+	res, err := s.db.Exec(
 		`UPDATE verification_checks SET status = 'complete', result = ?, reason = ?, decided_at = ?
-         WHERE id = ?`, result, reason, decidedAt, id)
-	return err
+         WHERE id = ? AND status = 'submitted'`, result, reason, decidedAt, id)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
+// OutstandingVerificationChecks is every check still with the provider that was
+// submitted at or before the cutoff.
+func (s *Store) OutstandingVerificationChecks(before int64) ([]*VerificationCheck, error) {
+	rows, err := s.db.Query(
+		`SELECT `+verificationCheckCols+` FROM verification_checks
+         WHERE status = 'submitted' AND created_at <= ? ORDER BY created_at ASC`, before)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []*VerificationCheck{}
+	for rows.Next() {
+		c, err := scanVerificationCheckInto(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
 }
 
 func scanVerificationCheck(row *sql.Row) (*VerificationCheck, error) {
-	var c VerificationCheck
-	err := row.Scan(&c.ID, &c.AID, &c.Kind, &c.SubjectName, &c.EntityID, &c.Provider,
-		&c.ProviderRef, &c.Status, &c.Result, &c.Reason, &c.CreatedAt, &c.DecidedAt)
+	c, err := scanVerificationCheckInto(row)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
+	return c, err
+}
+
+func scanVerificationCheckInto(sc scanner) (*VerificationCheck, error) {
+	var c VerificationCheck
+	err := sc.Scan(&c.ID, &c.AID, &c.Kind, &c.SubjectName, &c.EntityID, &c.Provider,
+		&c.ProviderRef, &c.Status, &c.Result, &c.Reason, &c.CreatedAt, &c.DecidedAt)
 	if err != nil {
 		return nil, err
 	}
