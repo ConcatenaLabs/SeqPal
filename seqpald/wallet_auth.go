@@ -229,8 +229,36 @@ func (s *server) handleAttachEnclave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.st.Audit(acct.AID, "auth.attach_enclave", map[string]any{"xonly": req.XOnly, "enclave_aid": enclaveAID})
+
+	// Catch the policy server up. A wallet-backed ID that was already verified
+	// has eligibility recorded here and nowhere else, because there was no
+	// enclave account to stamp it on; now there is one. Neither step is fatal:
+	// the enclave IS attached either way, and a policy server that is briefly
+	// unreachable must not leave the account half-attached. Re-verifying stamps
+	// it again.
+	var stamped []string
+	var catchupErr string
+	if registered, err := s.registerUser(req.XOnly); err != nil {
+		catchupErr = "register with the policy server: " + err.Error()
+	} else if registered != enclaveAID {
+		catchupErr = "the policy server returned an unexpected account id for this key"
+	} else if cats, err := s.writeCategoriesFor(acct.AID, enclaveAID); err != nil {
+		catchupErr = "categories could not be stamped: " + err.Error()
+	} else {
+		stamped = cats
+	}
+	if catchupErr != "" {
+		s.st.Audit(acct.AID, "auth.attach_enclave.catchup_failed", map[string]any{"error": catchupErr})
+	}
+
 	updated, _ := s.st.AccountByAID(acct.AID)
-	writeJSON(w, 200, map[string]any{"account": updated, "enclave_aid": enclaveAID})
+	resp := map[string]any{"account": updated, "enclave_aid": enclaveAID, "categories": stamped}
+	if catchupErr != "" {
+		resp["warning"] = "The OpenAMP account is attached, but your eligibility could not be " +
+			"stamped on the policy server yet (" + catchupErr + "). Verifying your identity again " +
+			"will stamp it."
+	}
+	writeJSON(w, 200, resp)
 }
 
 // requireEnclave guards the paths that only an OpenAMP enclave account can

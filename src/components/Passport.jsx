@@ -6,6 +6,9 @@ import { Badge } from './ui'
 export default function Passport({ account, entity }) {
   const isCorp = !!entity
   const rec = entity || account
+  // Whether this ID has an OpenAMP enclave account at all. A wallet-backed one
+  // does not, and every label below has to stop implying otherwise.
+  const hasEnclave = (account?.identity ?? 'aid') !== 'xpub'
   const p = rec?.profile && typeof rec.profile === 'object' ? rec.profile : {}
   const accreditation = p.accredited
     ? p.accreditation_method === 'document'
@@ -45,19 +48,31 @@ export default function Passport({ account, entity }) {
           </div>
         </div>
         <div>
+          {/* A wallet-backed ID has no enclave account: this id is SeqPal's own,
+              and calling it an AID would be describing something that does not
+              exist. The label follows what the account actually is. */}
           <div className="text-xs text-white/40">
-            {isCorp ? 'Entity record id' : 'Sequentia enclave account (AID)'}
+            {isCorp ? 'Entity record id' : hasEnclave ? 'Sequentia enclave account (AID)' : 'SeqPal account id'}
           </div>
           <div className="break-all font-mono text-sm text-seq-400">
             {isCorp ? rec.id : rec.aid}
           </div>
         </div>
-        {!isCorp && (
-          <div>
-            <div className="text-xs text-white/40">Enclave key (x-only)</div>
-            <div className="break-all font-mono text-xs text-white/70">{rec.xonly}</div>
-          </div>
-        )}
+        {!isCorp &&
+          (hasEnclave ? (
+            <div>
+              <div className="text-xs text-white/40">Enclave key (x-only)</div>
+              <div className="break-all font-mono text-xs text-white/70">{rec.xonly}</div>
+            </div>
+          ) : (
+            <div>
+              <div className="text-xs text-white/40">OpenAMP account</div>
+              <div className="text-xs leading-relaxed text-white/70">
+                None attached. This ID is a wallet: freely-tradable stocks, network-enforced
+                assets and their distributions work without one.
+              </div>
+            </div>
+          ))}
         <div className="flex flex-wrap items-center gap-2 border-t border-white/10 pt-3 text-xs text-white/60">
           <span className="inline-flex items-center gap-1.5">
             <Icon.shield width={14} height={14} className="text-seq-400" /> Screening
