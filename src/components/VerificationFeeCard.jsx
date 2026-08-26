@@ -25,18 +25,22 @@ export default function VerificationFeeCard({ kind = 'identity', entityId, onPai
   const free = Number(invoice?.amount_usd ?? 0) <= 0
   const what = kind === 'business' ? 'business verification' : 'identity verification'
 
-  // Whether the caller may submit. An invoice we could not read at all counts as
-  // settled: the server is the gate, and a page that hides the button because a
-  // poll failed is a page that locks a paying holder out of a check they own.
-  const settled = !invoice || free || paid
+  // Whether the caller may submit. The server answers the question this card
+  // exists to ask -- is anything owed before the next submission -- because only
+  // it knows that answering a provider who asked for more costs nothing. An
+  // invoice we could not read at all counts as settled: the server is the gate,
+  // and a page that hides the button because a poll failed is a page that locks
+  // a paying holder out of a check they own.
+  const settled = !invoice || free || paid || invoice.due === false
   useEffect(() => {
     if (settled) onPaid?.()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settled])
 
-  // A deployment that charges nothing for this check has nothing to show: the
-  // invoice exists already paid, and a "$0 fee, paid" row is noise.
+  // Nothing to show when nothing is owed and nothing was paid for this check:
+  // a deployment that charges nothing, or a resubmission the provider asked for.
   if (!invoice || free) return null
+  if (!paid && invoice.due === false) return null
 
   const settle = () => {
     refresh()

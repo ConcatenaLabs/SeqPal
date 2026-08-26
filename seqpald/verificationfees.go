@@ -122,15 +122,19 @@ func continuesAnOpenCheck(prior *VerificationCheck) bool {
 // It RAISES NOTHING: quoting a price is not billing for it, and an invoice
 // created just because a page was loaded would quote a holder who has already
 // verified a fee they do not owe.
-func (s *server) verificationFeeView(aid, feeKind, subject string) (map[string]any, error) {
+func (s *server) verificationFeeView(aid, feeKind, subject string, free bool) (map[string]any, error) {
 	inv, err := s.st.AccountFee(aid, feeKind, subject)
 	if err != nil {
 		return nil, err
 	}
+	// due is the question the page is actually asking: must anything be paid
+	// before the next submission? Nothing is due when the provider asked for this
+	// one, and nothing is due when an unspent payment is already sitting there.
 	if inv != nil {
 		return map[string]any{
 			"id": inv.ID, "amount_usd": inv.AmountUSD, "state": inv.State,
 			"rail": inv.Rail, "funds_simulated": inv.FundsSimulated,
+			"due": !free && inv.State != "paid",
 		}, nil
 	}
 	// Nothing raised yet. A deployment that charges nothing for this check has
@@ -140,7 +144,10 @@ func (s *server) verificationFeeView(aid, feeKind, subject string) (map[string]a
 	if price <= 0 {
 		state = "paid"
 	}
-	return map[string]any{"amount_usd": price, "state": state}, nil
+	return map[string]any{
+		"amount_usd": price, "state": state,
+		"due": !free && state != "paid",
+	}, nil
 }
 
 // handleVerificationFees is GET /api/id/fees (session): what the holder would pay
@@ -148,7 +155,12 @@ func (s *server) verificationFeeView(aid, feeKind, subject string) (map[string]a
 // already have.
 func (s *server) handleVerificationFees(w http.ResponseWriter, r *http.Request) {
 	acct := principal(r)
-	identity, err := s.verificationFeeView(acct.AID, "kyc", "")
+	priorID, err := s.st.LatestVerificationCheck(acct.AID)
+	if err != nil {
+		writeErr(w, 500, "store error")
+		return
+	}
+	identity, err := s.verificationFeeView(acct.AID, "kyc", "", continuesAnOpenCheck(priorID))
 	if err != nil {
 		writeErr(w, 500, "store error")
 		return
@@ -160,7 +172,15 @@ func (s *server) handleVerificationFees(w http.ResponseWriter, r *http.Request) 
 	}
 	businesses := []map[string]any{}
 	for _, e := range ents {
-		view, err := s.verificationFeeView(acct.AID, "kyb", e.ID)
+		prior, err := s.st.LatestVerificationCheckForEntity(e.ID)
+		if err != nil {
+			writeErr(w, 500, "store error")
+			return
+		}
+		// A check already with the provider is not re-sent by another call to
+		// that endpoint, so nothing is due for it either.
+		free := continuesAnOpenCheck(prior) || (prior != nil && prior.Status == "submitted")
+		view, err := s.verificationFeeView(acct.AID, "kyb", e.ID, free)
 		if err != nil {
 			writeErr(w, 500, "store error")
 			return
