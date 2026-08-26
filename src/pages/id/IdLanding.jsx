@@ -29,7 +29,7 @@ const unlocks = [
 const holds = [
   ['Verified identity', 'Passport or national ID, plus liveness'],
   ['Residence and tax residency', 'Verified address and self-certified tax residencies'],
-  ['Sanctions, PEP and adverse media', 'Screened on a schedule, not once'],
+  ['Sanctions, PEP and adverse media', 'Checked by the verification provider as part of their check'],
   ['Eligibility categories', 'Jurisdiction and investor-class tokens the policy server enforces on every transfer'],
   [
     'Sequentia enclave key',
@@ -120,8 +120,8 @@ export default function IdLanding() {
                 ))}
               </div>
               <p className="mt-6 text-sm leading-relaxed text-ink-700/70">
-                SeqPal is the data controller for your SeqPal ID record; screening vendors act
-                only as processors. Personal data is handled under the applicable
+                SeqPal is the data controller for your SeqPal ID record; the
+                identity-verification provider acts only as a processor. Personal data is handled under the applicable
                 data-protection regime (GDPR, UK GDPR, and equivalents).
               </p>
             </div>
@@ -144,7 +144,8 @@ export default function IdLanding() {
                   </div>
                   <p className="mt-4 text-sm leading-relaxed text-ink-700/75">
                     Your identity is signed in. The passport shows your eligibility categories,
-                    screening status, linked companies, and where the ID is accepted.
+                    where your verification stands, linked companies, and where the ID is
+                    accepted.
                   </p>
                   <div className="mt-5 grid gap-2">
                     <Link to="/id/passport" className="btn-primary w-full">
@@ -155,7 +156,7 @@ export default function IdLanding() {
                       Manage companies (KYB)
                     </Link>
                     <Link to="/id/register" className="btn-ghost w-full text-ink-700">
-                      Run or re-run verification
+                      Run verification
                     </Link>
                     {isIssuer && (
                       <Link to="/dashboard" className="btn-ghost w-full text-ink-700">

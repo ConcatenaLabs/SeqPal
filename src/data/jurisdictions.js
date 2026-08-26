@@ -4,24 +4,14 @@
 // is the enforcement agent operating the configuration the issuer signs off on. The
 // issuer may make any restriction STRICTER, or use upload-to-lift to loosen a default
 // with documented authority, EXCEPT the mandatory floor. The floor (OFAC- and
-// FATF-aligned sanctions blocks, plus SeqPal ID verification and sanctions screening)
-// is non-negotiable and cannot be overridden. The matrix covers the full country set
+// FATF-aligned sanctions blocks, plus a verified SeqPal ID, whose watchlist checks
+// belong to the verification provider) is non-negotiable and cannot be overridden. The matrix covers the full country set
 // and is maintained as regulators publish guidance.
 //
 // Tiers (the SUGGESTED default per jurisdiction; the issuer overrides all but blocked):
 //   standard   – admitted, with local-law screening at investment time
 //   restricted – admitted only for a qualified / accredited / professional investor
 //   blocked    – mandatory floor, non-overridable (sanctions)
-
-export const TIERS = {
-  standard: { label: 'Standard', color: 'emerald' },
-  restricted: { label: 'Qualified only', color: 'amber' },
-  blocked: { label: 'Blocked (floor)', color: 'rose' },
-}
-
-// The mandatory sanctions floor: these codes are blocked and the issuer cannot admit
-// them. A screening fact, not a securities-law judgment.
-export const SANCTIONS_FLOOR = ["KP","IR","CU","SY","RU","BY","VE","MM","AF"]
 
 export const JURISDICTIONS = [
   { code: 'AD', name: "Andorra", tier: 'restricted', overridable: true, basis: "Qualified or professional investors under local law; the issuer confirms the local basis" },
@@ -280,12 +270,6 @@ export const ELIG_CATEGORIES = [
 
 // What each access level admits, mirroring the seqpald compiler. A jurisdiction the
 // issuer has not admitted admits nothing.
-export const ACCESS_ADMITS = {
-  standard: ['ret', 'acc', 'pro'],
-  restricted: ['acc', 'pro'],
-  excluded: [],
-}
-
 // EU / EEA member states, for the per-member-state offeree caps (the sub-150
 // prospectus-exemption count under Prospectus Regulation Art. 1(4)(b)). Compiled into
 // holder_caps_by_category as j:<state>:ret.

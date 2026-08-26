@@ -44,7 +44,7 @@ function VerifyStep({ account, onVerified }) {
   const [err, setErr] = useState(null)
   // The provider bills per check, so the check is bought before it is submitted.
   const [feePaid, setFeePaid] = useState(false)
-  const [result, setResult] = useState(null) // { status, categories, valid_until, screening, message }
+  const [result, setResult] = useState(null) // { status, categories, valid_until, verification, message }
   const pollRef = useRef(null)
 
   const isGB = form.residence === 'GB'
