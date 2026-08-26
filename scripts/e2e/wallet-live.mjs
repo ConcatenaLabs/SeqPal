@@ -179,5 +179,50 @@ if (login.account?.aid !== aid) {
 }
 console.log('second wallet  ', 'linked, and signs in as the same identity')
 
+// 9. One wallet, two descriptor forms. A wallet shows its holder the wpkh
+//    addresses it hands out; the node checks a signed message against the pkh
+//    address of the same key. Both name the same wallet, and both have to reach
+//    the same identity -- otherwise registering under one form and signing in
+//    under the other quietly makes a second person out of one.
+const twoForms = walletFromSeed(randomBytes(32).toString('hex'))
+const asWpkh = twoForms.descriptor.replace(/^pkh\(/, 'wpkh(')
+const formClient = new Client()
+const formChallenge = must(
+  await formClient.call('POST', '/auth/wallet/challenge', { descriptor: asWpkh }),
+  'challenge in the wpkh form',
+)
+// What the holder is asked to sign with must be an address their wallet shows
+// them. A wpkh wallet shows tb1 addresses and has never displayed a legacy one.
+if (!/^(tb1|ert1)/.test(formChallenge.address)) {
+  throw new Error(`a wpkh wallet was asked to sign with ${formChallenge.address}`)
+}
+const formAccount = must(
+  await formClient.call('POST', '/auth/wallet/register', {
+    descriptor: asWpkh,
+    challenge: formChallenge.challenge,
+    sig: signWalletMessage(twoForms.receiveKey(0), formChallenge.challenge),
+    display_name: 'Two Forms',
+    residence: 'AE',
+  }),
+  'register in the wpkh form',
+)
+const backAsPkh = new Client()
+const pkhChallenge = must(
+  await backAsPkh.call('POST', '/auth/wallet/challenge', { descriptor: twoForms.descriptor }),
+  'challenge in the pkh form',
+)
+const pkhLogin = must(
+  await backAsPkh.call('POST', '/auth/wallet/login', {
+    descriptor: twoForms.descriptor,
+    challenge: pkhChallenge.challenge,
+    sig: signWalletMessage(twoForms.receiveKey(0), pkhChallenge.challenge),
+  }),
+  'sign in in the pkh form',
+)
+if (pkhLogin.account?.aid !== formAccount.account.aid) {
+  throw new Error('the same wallet in its other form reached a different identity')
+}
+console.log('both forms     ', 'one wallet, one identity, and the address shown is one it displays')
+
 console.log('\nPASS: a SeqPal ID that is only a wallet can finish everything it is offered,')
 console.log('      and is refused everything it is not, in words that name what is missing.')
