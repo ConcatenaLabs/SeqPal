@@ -415,6 +415,19 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Everything an issuer can get WRONG is checked before they are asked to pay
+	// for it. A network-enforced mint lands at a holding key, and resolving it is
+	// pure -- deployNetwork does it again below and gets the same answer -- so
+	// doing it here means a misconfigured deploy is refused for the reason the
+	// issuer can act on rather than for an invoice they would have paid first
+	// and then found the deploy still refused.
+	if enforcement == "network" {
+		if _, code, herr := s.initialHolderKey(acct, req.HolderKey); herr != nil {
+			refuse(code, herr.Error())
+			return
+		}
+	}
+
 	// M5: an unpaid SeqPal platform setup fee blocks the deploy. The fee is
 	// invoiced lazily here (idempotent) and payable by the issuer's choice of rail
 	// via POST /issuances/{id}/fees/pay; a zero configured fee auto-marks paid.
