@@ -400,7 +400,7 @@ function VerifyStep({ account, onVerified }) {
         />
       </Field>
 
-      <VerificationFeeCard onPaid={() => setFeePaid(true)} />
+      <VerificationFeeCard onSettled={setFeePaid} />
 
       <DemoNote>
         Verification is run by an independent provider. On this demo that provider is SIMULATED,

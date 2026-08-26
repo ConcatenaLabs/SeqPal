@@ -215,11 +215,7 @@ function EntityCard({ entity, link, onChanged }) {
 
       {!submitted && (
         <div className="mt-4">
-          <VerificationFeeCard
-            kind="business"
-            entityId={entity.id}
-            onPaid={() => setFeePaid(true)}
-          />
+          <VerificationFeeCard kind="business" entityId={entity.id} onSettled={setFeePaid} />
         </div>
       )}
 

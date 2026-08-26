@@ -11,8 +11,8 @@ import FeePay from './money/FeePay'
 //
 // It polls, because an on-chain payment settles when the chain says so: paying in
 // USDX or tBTC flips this card on its own once the deposit confirms.
-export default function VerificationFeeCard({ kind = 'identity', entityId, onPaid }) {
-  const { data, refresh } = usePoll(() => api.verificationFees(), {
+export default function VerificationFeeCard({ kind = 'identity', entityId, onSettled }) {
+  const { data, error, loading, refresh } = usePoll(() => api.verificationFees(), {
     intervalMs: 5000,
     deps: [kind, entityId || ''],
   })
@@ -27,13 +27,17 @@ export default function VerificationFeeCard({ kind = 'identity', entityId, onPai
 
   // Whether the caller may submit. The server answers the question this card
   // exists to ask -- is anything owed before the next submission -- because only
-  // it knows that answering a provider who asked for more costs nothing. An
-  // invoice we could not read at all counts as settled: the server is the gate,
-  // and a page that hides the button because a poll failed is a page that locks
-  // a paying holder out of a check they own.
-  const settled = !invoice || free || paid || invoice.due === false
+  // it knows that answering a provider who asked for more costs nothing.
+  //
+  // A poll that FAILED counts as settled: the server is the gate, and a page
+  // that hides the button because a poll failed is a page that locks a paying
+  // holder out of a check they own. A poll that has not answered YET is a
+  // different thing and counts as nothing known, or this reports "nothing owed"
+  // on the first render of every page and the answer arrives too late to matter.
+  const answered = !loading || data
+  const settled = error ? true : !!answered && (!invoice || free || paid || invoice.due === false)
   useEffect(() => {
-    if (settled) onPaid?.()
+    onSettled?.(settled)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settled])
 
@@ -42,10 +46,7 @@ export default function VerificationFeeCard({ kind = 'identity', entityId, onPai
   if (!invoice || free) return null
   if (!paid && invoice.due === false) return null
 
-  const settle = () => {
-    refresh()
-    onPaid?.()
-  }
+  const settle = () => refresh()
 
   if (paid)
     return (
