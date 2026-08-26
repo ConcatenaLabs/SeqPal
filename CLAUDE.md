@@ -88,9 +88,24 @@ rule that catches something that actually breaks.
   submit paths on an account-scoped invoice (`kyc`, or `kyb` per business, in `fee_invoices`
   keyed by `aid` and `subject`), and an unpaid caller is refused with a 402 having written
   nothing. Never move that gate after the submit -- the cost is incurred the moment the check
-  is created, and a fee asked for afterwards is one the platform can be refused. Submitted is
+  is created, and a fee asked for afterwards is one the platform can be refused. One paid fee
+  buys ONE check: the invoice records the check it bought (`check_id`) and the gate looks only
+  for an unspent one, or a holder re-verifies forever on a single payment and runs up a bill
+  this fee exists to recoup. The one free submission is the one the PROVIDER asked for
+  (`continuesAnOpenCheck`), which is the same check continuing. `GET /api/id/fees` raises
+  nothing -- quoting a price is not billing for it. Submitted is
   not verified anywhere, including in the passport: an entity's treasury key and UBO link exist
   from submission, and `verified` comes from the entity's own check.
+- **A decision about a BUSINESS is about that business, never about its owner.** A business
+  check travels on the controller's account id, because they are who asked for it, so
+  `applyAdjudication` branches on `check.Kind` FIRST: applying a company's refusal to the
+  controller's claims refuses the person, strips their eligibility and freezes them for a
+  decision that was never about them. `applyBusinessAdjudication` records the result on the
+  check -- which is where the passport reads a company's verified state -- and on a refusal
+  freezes the ENTITY TREASURY at the policy server, which is the account that would otherwise
+  hold assets for a business the provider would not pass. A business refusal is as final as a
+  person's; `POST /api/id/entities/{id}/verify` also records the UBO signature, so it must
+  never re-submit a check that is already open.
 - **A fee is credited only when what was owed has ARRIVED, on any rail it was quoted on.** A
   fee is a gate, so `watchFeeDeposits` credits an invoice when the confirmed total at a quoted
   address reaches that quote's amount (`FeeQuote.covers`) and not before -- crediting on any

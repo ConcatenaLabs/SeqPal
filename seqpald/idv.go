@@ -211,6 +211,14 @@ func (s *server) handleIDVCallback(w http.ResponseWriter, r *http.Request) {
 // about it. It is the single place a verification outcome takes effect, so a
 // real provider's webhook lands exactly where the simulator's does.
 func (s *server) applyAdjudication(check *VerificationCheck, decision idvDecision, reason string) error {
+	// A decision about a BUSINESS is about that business. It travels on the
+	// controller's account id, because they are who asked for it, and applying it
+	// to their claims would refuse the person when the provider refused their
+	// company -- stripping their eligibility and freezing them for a decision
+	// that was never about them.
+	if check.Kind == "business" {
+		return s.applyBusinessAdjudication(check, decision, reason)
+	}
 	claims, err := s.st.ClaimsByAID(check.AID)
 	if err != nil {
 		return fmt.Errorf("read claims: %w", err)
@@ -288,6 +296,42 @@ func (s *server) applyAdjudication(check *VerificationCheck, decision idvDecisio
 		s.st.Audit(check.AID, "id.verify.already_decided", map[string]any{
 			"check": check.ID, "decision": string(decision),
 		})
+	}
+	return nil
+}
+
+// applyBusinessAdjudication is what a provider's decision about a company does.
+// The company's verified state IS the check's result -- the passport reads it
+// from there -- so a clear records itself and nothing more. A refusal freezes the
+// entity's treasury at the policy server, which is the account that would
+// otherwise hold assets for a business the provider would not pass.
+func (s *server) applyBusinessAdjudication(check *VerificationCheck, decision idvDecision, reason string) error {
+	detail := map[string]any{
+		"check": check.ID, "entity_id": check.EntityID, "provider": check.Provider,
+		"decision": string(decision),
+	}
+	if decision == idvReject {
+		link, err := s.st.UBOLinkByEntity(check.EntityID)
+		if err != nil {
+			return fmt.Errorf("read the ownership link: %w", err)
+		}
+		if link != nil && link.TreasuryAID != "" {
+			// As for a person: a refusal the policy server never heard is one it
+			// does not enforce, so this check stays open until it has.
+			if err := s.freezeOpenAMPAccount(link.TreasuryAID); err != nil {
+				return fmt.Errorf("freeze the entity treasury after a refusal: %w", err)
+			}
+			detail["treasury_frozen"] = link.TreasuryAID
+		}
+	}
+	s.st.Audit(check.AID, "entity.verify."+string(decision), detail)
+
+	decided, err := s.st.CompleteVerificationCheck(check.ID, string(decision), reason, time.Now().Unix())
+	if err != nil {
+		return err
+	}
+	if !decided {
+		s.st.Audit(check.AID, "entity.verify.already_decided", detail)
 	}
 	return nil
 }

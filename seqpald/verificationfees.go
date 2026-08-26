@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -72,29 +73,82 @@ func (s *server) ensureVerificationFee(aid, feeKind, subject string) (*FeeInvoic
 	return inv, nil
 }
 
-// requireVerificationFee is the submit gate. It writes the 402 itself and reports
-// whether the caller may proceed, so a handler reads as one line.
-func (s *server) requireVerificationFee(w http.ResponseWriter, aid, checkKind, subject string) bool {
+// requireVerificationFee is the submit gate. It writes the 402 itself and returns
+// the invoice the caller may spend, or nil if they may not proceed, so a handler
+// reads as one line.
+//
+// continuing says the provider asked for this submission -- they wanted a
+// clearer document, and this is the same applicant answering. That costs nothing
+// more, because it is the same check they already billed for.
+func (s *server) requireVerificationFee(w http.ResponseWriter, aid, checkKind, subject string,
+	continuing bool) (*FeeInvoice, bool) {
+	if continuing {
+		return nil, true
+	}
 	inv, err := s.ensureVerificationFee(aid, verificationFeeKind(checkKind), subject)
 	if err != nil {
 		writeErr(w, 500, "store error")
-		return false
+		return nil, false
 	}
 	if inv.State != "paid" {
 		writeJSON(w, 402, map[string]any{
 			"error":   "this verification is not paid for yet",
 			"invoice": inv,
 		})
-		return false
+		return nil, false
 	}
-	return true
+	return inv, true
 }
 
-// handleVerificationFees is GET /api/id/fees (session): what the holder owes for
-// their own identity check, and for each business they are having verified.
+// spendVerificationFee ties the invoice to the check it bought. A submission
+// that continues one the provider asked to redo has no invoice to spend and
+// spends nothing.
+func (s *server) spendVerificationFee(inv *FeeInvoice, check *VerificationCheck) {
+	if inv == nil || check == nil {
+		return
+	}
+	if err := s.st.SpendFeeInvoice(inv.ID, check.ID); err != nil {
+		log.Printf("fees: mark invoice %s spent on check %s: %v", inv.ID, check.ID, err)
+	}
+}
+
+// continuesAnOpenCheck reports whether a submission answers a provider who asked
+// for more. Only that is free; a fresh check is a fresh bill.
+func continuesAnOpenCheck(prior *VerificationCheck) bool {
+	return prior != nil && prior.Status == "complete" && prior.Result == string(idvResubmit)
+}
+
+// verificationFeeView is what one check costs and whether it has been paid for.
+// It RAISES NOTHING: quoting a price is not billing for it, and an invoice
+// created just because a page was loaded would quote a holder who has already
+// verified a fee they do not owe.
+func (s *server) verificationFeeView(aid, feeKind, subject string) (map[string]any, error) {
+	inv, err := s.st.AccountFee(aid, feeKind, subject)
+	if err != nil {
+		return nil, err
+	}
+	if inv != nil {
+		return map[string]any{
+			"id": inv.ID, "amount_usd": inv.AmountUSD, "state": inv.State,
+			"rail": inv.Rail, "funds_simulated": inv.FundsSimulated,
+		}, nil
+	}
+	// Nothing raised yet. A deployment that charges nothing for this check has
+	// nothing to raise at all, so it reads as paid.
+	price := s.verificationFeeUSD(feeKind)
+	state := "unpaid"
+	if price <= 0 {
+		state = "paid"
+	}
+	return map[string]any{"amount_usd": price, "state": state}, nil
+}
+
+// handleVerificationFees is GET /api/id/fees (session): what the holder would pay
+// for their own identity check, and for each business they own, and whether they
+// already have.
 func (s *server) handleVerificationFees(w http.ResponseWriter, r *http.Request) {
 	acct := principal(r)
-	identity, err := s.ensureVerificationFee(acct.AID, "kyc", "")
+	identity, err := s.verificationFeeView(acct.AID, "kyc", "")
 	if err != nil {
 		writeErr(w, 500, "store error")
 		return
@@ -106,13 +160,13 @@ func (s *server) handleVerificationFees(w http.ResponseWriter, r *http.Request) 
 	}
 	businesses := []map[string]any{}
 	for _, e := range ents {
-		inv, err := s.ensureVerificationFee(acct.AID, "kyb", e.ID)
+		view, err := s.verificationFeeView(acct.AID, "kyb", e.ID)
 		if err != nil {
 			writeErr(w, 500, "store error")
 			return
 		}
 		businesses = append(businesses, map[string]any{
-			"entity_id": e.ID, "name": e.Name, "invoice": inv,
+			"entity_id": e.ID, "name": e.Name, "invoice": view,
 		})
 	}
 	writeJSON(w, 200, map[string]any{

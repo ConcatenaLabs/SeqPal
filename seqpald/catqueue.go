@@ -165,9 +165,16 @@ func (s *server) freezeAtPolicyServer(aid string) (bool, error) {
 	}
 	// The freeze names the account the POLICY SERVER holds, which is the one the
 	// enclave key derives rather than the SeqPal id the claims are filed under.
-	if err := s.callOpenAMP("POST", "/v1/issuer/freeze", s.cfg.issuerToken,
-		map[string]any{"aid": oaid, "frozen": true}, nil); err != nil {
+	if err := s.freezeOpenAMPAccount(oaid); err != nil {
 		return false, err
 	}
 	return true, nil
+}
+
+// freezeOpenAMPAccount freezes one account at the policy server by the id that
+// server holds. An entity treasury is such an account and is not a SeqPal
+// account at all, so it can only be named this way.
+func (s *server) freezeOpenAMPAccount(oaid string) error {
+	return s.callOpenAMP("POST", "/v1/issuer/freeze", s.cfg.issuerToken,
+		map[string]any{"aid": oaid, "frozen": true}, nil)
 }

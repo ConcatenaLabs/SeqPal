@@ -76,8 +76,16 @@ func (s *server) handleIDVerify(w http.ResponseWriter, r *http.Request) {
 
 	// Paid before submitted, because the provider bills for the check the moment
 	// it is created. Nothing has been written yet at this point, so an unpaid
-	// caller leaves exactly as they arrived.
-	if !s.requireVerificationFee(w, acct.AID, "identity", "") {
+	// caller leaves exactly as they arrived. Answering a provider who asked for
+	// more is the same check continuing, and costs nothing further.
+	priorCheck, err := s.st.LatestVerificationCheck(acct.AID)
+	if err != nil {
+		writeErr(w, 500, "store error")
+		return
+	}
+	invoice, ok := s.requireVerificationFee(w, acct.AID, "identity", "",
+		continuesAnOpenCheck(priorCheck))
+	if !ok {
 		return
 	}
 
@@ -158,6 +166,7 @@ func (s *server) handleIDVerify(w http.ResponseWriter, r *http.Request) {
 			"submitted. Try again: %v", err)
 		return
 	}
+	s.spendVerificationFee(invoice, check)
 	s.st.Audit(aid, "id.verify.submitted", map[string]any{
 		"check": check.ID, "provider": check.Provider,
 	})
@@ -388,9 +397,29 @@ func (s *server) handleEntityVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Where this entity's own check stands decides what this call is. A refusal
+	// is the provider's and it is final, exactly as for a person. A check still
+	// open is not re-sent: this endpoint doubles as where the UBO signature is
+	// recorded, and signing it must not buy a second check.
+	priorCheck, err := s.st.LatestVerificationCheckForEntity(e.ID)
+	if err != nil {
+		writeErr(w, 500, "store error")
+		return
+	}
+	if priorCheck != nil && priorCheck.Status == "complete" && priorCheck.Result == string(idvReject) {
+		s.st.Audit(acct.AID, "entity.verify.blocked", map[string]any{
+			"entity_id": id, "reason": "refused by the provider",
+		})
+		writeErr(w, 409, "verification of this business was refused by the verification "+
+			"provider, and submitting again does not change that")
+		return
+	}
+
 	// Paid before anything is provisioned, for the same reason as an identity
 	// check: the provider bills per business.
-	if !s.requireVerificationFee(w, acct.AID, "business", e.ID) {
+	invoice, ok := s.requireVerificationFee(w, acct.AID, "business", e.ID,
+		priorCheck != nil && (priorCheck.Status == "submitted" || continuesAnOpenCheck(priorCheck)))
+	if !ok {
 		return
 	}
 
@@ -427,6 +456,21 @@ func (s *server) handleEntityVerify(w http.ResponseWriter, r *http.Request) {
 	// Business verification is the provider's too, and asynchronous for the same
 	// reason: they run the checks and tell us. Nothing about this entity counts
 	// as verified until they do.
+	// A check already with the provider is left with them: this call is here to
+	// record the UBO signature, not to buy another check.
+	if priorCheck != nil && priorCheck.Status == "submitted" {
+		s.st.Audit(acct.AID, "entity.ubo.recorded", map[string]any{
+			"entity_id": e.ID, "check": priorCheck.ID, "ubo_signed": link.Sig != "",
+		})
+		writeJSON(w, 200, map[string]any{
+			"entity": e, "treasury_aid": treasury.AID, "ubo_link": link,
+			"status": "submitted", "check_id": priorCheck.ID, "provider": priorCheck.Provider,
+			"message": "this entity is already with the verification provider; nothing was " +
+				"submitted again and nothing further was charged",
+		})
+		return
+	}
+
 	check, err := s.submitVerification(acct.AID, "business", e.Name, e.ID)
 	if err != nil {
 		s.st.Audit(acct.AID, "entity.verify.submit_failed", map[string]any{
@@ -435,6 +479,7 @@ func (s *server) handleEntityVerify(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 502, "the verification provider could not be reached: %v", err)
 		return
 	}
+	s.spendVerificationFee(invoice, check)
 	s.st.Audit(acct.AID, "entity.verify.submitted", map[string]any{
 		"entity_id": e.ID, "check": check.ID, "provider": check.Provider,
 		"treasury_aid": treasury.AID, "ubo_signed": link.Sig != "",
