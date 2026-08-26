@@ -54,10 +54,12 @@ func (s *server) handleIDVerify(w http.ResponseWriter, r *http.Request) {
 	// there is no reviewer here to appeal it to; a check already with the
 	// provider is simply not finished. Only needs_info invites another
 	// submission, which is what a provider asking for one means.
-	if prior, err := s.st.ClaimsByAID(acct.AID); err != nil {
+	prior, err := s.st.ClaimsByAID(acct.AID)
+	if err != nil {
 		writeErr(w, 500, "store error")
 		return
-	} else if prior != nil {
+	}
+	if prior != nil {
 		switch prior.Status {
 		case "submitted":
 			s.st.Audit(acct.AID, "id.verify.blocked", map[string]any{"status": prior.Status})
@@ -141,8 +143,19 @@ func (s *server) handleIDVerify(w http.ResponseWriter, r *http.Request) {
 
 	check, err := s.submitVerification(aid, "identity", name, "")
 	if err != nil {
+		// Nothing reached the provider, so nothing is with them. Left as
+		// "submitted" this account would be stuck for good: submitting again is
+		// refused as already open, and there is no check for the reconciler to
+		// chase. Put back exactly what was there -- including a verification
+		// this attempt would otherwise have thrown away.
+		if prior != nil {
+			_ = s.st.UpsertClaims(prior)
+		} else {
+			_ = s.st.DeleteClaims(aid)
+		}
 		s.st.Audit(aid, "id.verify.submit_failed", map[string]any{"error": err.Error()})
-		writeErr(w, 502, "the verification provider could not be reached: %v", err)
+		writeErr(w, 502, "the verification provider could not be reached, and nothing was "+
+			"submitted. Try again: %v", err)
 		return
 	}
 	s.st.Audit(aid, "id.verify.submitted", map[string]any{

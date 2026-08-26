@@ -104,10 +104,13 @@ function EntityCard({ entity, link, onChanged }) {
   const [local, setLocal] = useState({})
   const state = { ...local, ...(link || {}) }
 
-  // Submitted is not verified. The treasury key and the UBO link exist from the
-  // moment the check goes to the provider -- the statement names the treasury --
-  // and the provider decides afterwards, in their own time.
-  const submitted = !!state.treasury_aid
+  // Submitted is not verified, and neither is provisioned. The treasury key and
+  // the UBO link exist from the moment the check goes to the provider -- the
+  // statement names the treasury -- and the provider decides afterwards, in
+  // their own time. What says a check was actually sent is the check: if the
+  // provider could not be reached, the key exists and this must offer to try
+  // again rather than wait for a decision nobody is making.
+  const submitted = !!state.verification
   const verified = !!state.verified
   const result = state.verification?.result
   const uboSigned = !!state.ubo_signed
@@ -190,7 +193,7 @@ function EntityCard({ entity, link, onChanged }) {
         )}
       </div>
 
-      {submitted && (
+      {!!state.treasury_aid && (
         <div className="mt-4 space-y-1.5 rounded-xl border border-ink-900/10 bg-ink-900/[0.02] px-4 py-3 text-xs">
           <div className="flex justify-between gap-4">
             <span className="text-ink-700/70">Treasury enclave (AID)</span>
@@ -284,9 +287,7 @@ export default function IdEntities() {
   // A business with the provider is decided on their schedule, not on a reload:
   // poll while any check is outstanding, and stop once they have all been
   // decided.
-  const waiting = Object.values(links).some(
-    (e) => e.verification?.status === 'submitted' || (e.treasury_aid && !e.verification)
-  )
+  const waiting = Object.values(links).some((e) => e.verification?.status === 'submitted')
   useEffect(() => {
     if (!isSignedIn || !waiting) return
     const t = setInterval(loadLinks, 5000)

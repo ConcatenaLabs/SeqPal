@@ -221,7 +221,15 @@ function VerifyStep({ account, onVerified }) {
             {result.message ||
               'The verification provider refused this identity. No eligibility was granted.'}
           </p>
+          <p className="mt-2 leading-relaxed">
+            The decision is the provider's, and submitting the same identity again does not
+            change it. Your SeqPal ID still exists and still holds whatever it held; what it
+            does not have is eligibility.
+          </p>
         </div>
+        <Link to="/id/passport" className="btn-outline w-full">
+          Back to my SeqPal ID
+        </Link>
       </div>
     )
   }
