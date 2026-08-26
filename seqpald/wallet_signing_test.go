@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 // Every surface that asks for a signature has to be answerable by every kind of
@@ -109,6 +110,39 @@ func TestAWalletBackedIDCanNameAPayoutAddress(t *testing.T) {
 	})
 	if res.code != 200 {
 		t.Fatalf("registering a payout address must not depend on an OpenAMP account: %d %s",
+			res.code, res.raw)
+	}
+}
+
+// The two payout-address checks -- one for an investor, one for an issuer --
+// have the same job and the same consequence when they get it wrong: money sent
+// to a 2-of-2 script no wallet scans. One failed closed on an address it could
+// not resolve and one failed open, which meant the same outage answered "no,
+// carry on" on the issuer's side and "we cannot be sure, stop" on the
+// investor's.
+func TestBothPayoutChecksFailClosed(t *testing.T) {
+	h := newHarness(t)
+	h.s.cfg.nodeURL = newWalletNode(t, true).URL
+	h.s.screen = newScreener("")
+	session, aid := walletSession(t, h, testPKH)
+	iss := seedIssuanceOfKind(t, h.s, aid, "serviced")
+
+	// An escrow enclave the policy server cannot resolve: registered here, never
+	// registered there, which is what an outage looks like from this side.
+	if err := h.s.st.InsertEnclaveKey(&EnclaveKey{
+		AID: strings.Repeat("f", 40), Kind: enclaveOfferingEscrow, RefID: iss.ID,
+		XOnly: strings.Repeat("ab", 32), Priv: strings.Repeat("cd", 32),
+		CreatedAt: time.Now().Unix(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	res := h.do("POST", "/api/issuances/"+iss.ID+"/mandate", session, map[string]any{
+		"chain": "sequentia", "asset": strings.Repeat("c", 64),
+		"address": "tb1qnzten2u3ayqmnqtdul7z00v3uvapet7dv2789z",
+	})
+	if res.code != 503 {
+		t.Fatalf("an address that cannot be confirmed safe must stop the mandate, got %d %s",
 			res.code, res.raw)
 	}
 }
