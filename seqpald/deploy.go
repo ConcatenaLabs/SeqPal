@@ -186,6 +186,15 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		refuse(400, err.Error())
 		return
 	}
+	// The sanctions floor. Refused rather than quietly dropped: the terms hash
+	// commits to the matrix as submitted, so compiling something narrower would
+	// leave the published terms saying one thing and the live rules another.
+	if blocked := admittedFloorJurisdictions(rawOrEmpty(iss.Terms)); len(blocked) > 0 {
+		refuse(422, "this offering admits "+strings.Join(blocked, ", ")+", which the "+
+			"OFAC- and FATF-aligned sanctions floor does not allow any offering to admit. "+
+			"Remove them from the jurisdiction matrix and deploy again; nothing was minted")
+		return
+	}
 	// atoms = supply * 10^precision, guarded against uint64 overflow.
 	atoms, ok := atomsFor(req.Supply, precision)
 	if !ok {

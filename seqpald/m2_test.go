@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -724,5 +725,50 @@ func TestVerifyingACompanyIsAComplianceDecision(t *testing.T) {
 	// Nothing was provisioned for it.
 	if k, _ := h.s.st.EnclaveKeyByRef(enclaveEntityTreasury, entityID); k != nil {
 		t.Fatal("a refused KYB must not leave a treasury enclave behind")
+	}
+}
+
+// The OFAC- and FATF-aligned sanctions floor is a compliance control the Legal
+// and Licensing page states absolutely: "it can never be admitted". It was drawn
+// in the browser's jurisdiction data and enforced by the wizard that renders it,
+// so a matrix posted to the API directly compiled j:IR:ret into an asset's
+// allowed categories and a resident of Iran carried it.
+func TestTheSanctionsFloorIsEnforcedWhereTheRulesAreMade(t *testing.T) {
+	// The compiler admits nothing on the floor, whatever the matrix says.
+	terms := json.RawMessage(`{"jurisdictions":{
+		"IR":{"access":"standard"},
+		"KP":{"access":"restricted"},
+		"DE":{"access":"standard"}
+	}}`)
+	rules, err := compileRules(terms, compileEnv{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range rules.AllowedCategories {
+		if strings.HasPrefix(c, "j:IR:") || strings.HasPrefix(c, "j:KP:") {
+			t.Fatalf("the compiler admitted a floor jurisdiction: %v", rules.AllowedCategories)
+		}
+	}
+	var sawDE bool
+	for _, c := range rules.AllowedCategories {
+		if strings.HasPrefix(c, "j:DE:") {
+			sawDE = true
+		}
+	}
+	if !sawDE {
+		t.Fatalf("an ordinary jurisdiction was dropped with the floor: %v", rules.AllowedCategories)
+	}
+
+	// And the matrix is named back to the issuer rather than quietly narrowed.
+	blocked := admittedFloorJurisdictions(terms)
+	if len(blocked) != 2 || blocked[0] != "IR" || blocked[1] != "KP" {
+		t.Fatalf("the floor jurisdictions this matrix admits are %v, want [IR KP]", blocked)
+	}
+	if len(admittedFloorJurisdictions(json.RawMessage(`{"jurisdictions":{"DE":{"access":"standard"}}}`))) != 0 {
+		t.Fatal("an ordinary matrix was reported as admitting a floor jurisdiction")
+	}
+	// Naming one without admitting it is not admitting it.
+	if len(admittedFloorJurisdictions(json.RawMessage(`{"jurisdictions":{"IR":{"access":"excluded"}}}`))) != 0 {
+		t.Fatal("excluding a floor jurisdiction was read as admitting it")
 	}
 }

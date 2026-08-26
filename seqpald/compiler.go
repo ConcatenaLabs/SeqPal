@@ -107,6 +107,12 @@ func compileRules(terms json.RawMessage, env compileEnv) (CompiledRules, error) 
 		if code == "" {
 			continue
 		}
+		// The floor holds here too, whatever the terms say. The deploy refuses a
+		// matrix that names one of these, so reaching this is a matrix compiled
+		// by some other path; it admits nothing either way.
+		if sanctionsFloor[code] {
+			continue
+		}
 		admits := accessAdmits[strings.ToLower(strings.TrimSpace(jt.Access))]
 		if admits == nil {
 			// Unknown access value is treated as excluded (fail closed).
@@ -236,6 +242,56 @@ func sortedKeysBool(m map[string]bool) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
 		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// The OFAC- and FATF-aligned sanctions floor: jurisdictions no issuer may admit,
+// whatever their matrix says.
+//
+// It was drawn in the browser -- src/data/jurisdictions.js, tier "blocked",
+// overridable false -- and enforced only by the wizard that renders it. The
+// compiler admitted whatever the terms named, so a matrix posted to the API
+// directly, rather than clicked through the wizard, put j:IR:ret and its
+// neighbours into an asset's allowed categories. The Legal and Licensing page
+// says of this floor that "it can never be admitted", which was true of the
+// screen and not of the platform.
+//
+// Kept here, where the rules are actually made. The list is the same one the
+// wizard draws; both sides must move together, and a test asserts they have.
+var sanctionsFloor = map[string]bool{
+	"AF": true, // Afghanistan
+	"BY": true, // Belarus
+	"CU": true, // Cuba
+	"IR": true, // Iran
+	"KP": true, // North Korea
+	"MM": true, // Myanmar
+	"RU": true, // Russia
+	"SY": true, // Syria
+	"VE": true, // Venezuela
+}
+
+// admittedFloorJurisdictions returns the floor jurisdictions a terms matrix
+// tries to admit, so a deploy can refuse and say which rather than quietly
+// compiling something other than what the issuer submitted.
+func admittedFloorJurisdictions(terms json.RawMessage) []string {
+	var mt matrixTerms
+	if err := json.Unmarshal(rawOrEmpty(terms), &mt); err != nil {
+		return nil
+	}
+	var out []string
+	for iso2, jt := range mt.Jurisdictions {
+		code := normalizeResidence(iso2)
+		if code == "" || !sanctionsFloor[code] {
+			continue
+		}
+		// "excluded" is a known access level that admits nothing, which is not the
+		// same as admitting: naming a floor jurisdiction in order to exclude it is
+		// exactly what a careful matrix does.
+		if len(accessAdmits[strings.ToLower(strings.TrimSpace(jt.Access))]) > 0 {
+			out = append(out, code)
+		}
 	}
 	sort.Strings(out)
 	return out

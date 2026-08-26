@@ -16,6 +16,7 @@ function walkSrc(dir = SRC, out = []) {
 }
 
 import { REAL } from '../src/data/honesty.js'
+import { JURISDICTIONS } from '../src/data/jurisdictions.js'
 import { computeSetupCost } from '../src/data/pricing.js'
 import { STATUS, OFF_PLATFORM_STEPS, offPlatformSteps } from '../src/lib/lifecycle.js'
 import { isEligible, tierFor } from '../src/lib/policy.js'
@@ -522,5 +523,30 @@ test('nothing claims an artifact hash is written on chain', () => {
   assert.ok(
     !/anchored through the transparency log/.test(amendCard),
     'an amendment is not in the transparency log: it is not one of its actions',
+  )
+})
+
+// The sanctions floor is drawn in this file and enforced in seqpald. Two lists,
+// and a jurisdiction that leaves one of them is a jurisdiction the platform
+// admits or refuses inconsistently -- so they have to move together.
+test('the sanctions floor is the same list in the browser and in seqpald', () => {
+  const drawn = JURISDICTIONS.filter((j) => j.tier === 'blocked')
+    .map((j) => j.code)
+    .sort()
+  assert.ok(drawn.length > 0, 'there is a floor to compare')
+  assert.ok(
+    drawn.every((c) => JURISDICTIONS.find((j) => j.code === c).overridable === false),
+    'nothing on the floor is overridable',
+  )
+
+  const go = readFileSync(join(SRC, '..', 'seqpald', 'compiler.go'), 'utf8')
+  const block = go.slice(go.indexOf('var sanctionsFloor = map[string]bool{'))
+  const enforced = [...block.slice(0, block.indexOf('}')).matchAll(/"([A-Z]{2})":\s*true/g)]
+    .map((m) => m[1])
+    .sort()
+  assert.deepEqual(
+    enforced,
+    drawn,
+    'seqpald enforces a different floor than this file draws; change both',
   )
 })
