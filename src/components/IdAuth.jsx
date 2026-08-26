@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Icon } from './icons'
 import { useStore } from '../lib/store'
-import { computeAID, isAid, isXonly } from '../lib/statements'
+import { computeAID, isAid, isXonly, looksLikeDescriptor } from '../lib/statements'
 import * as oamp from '../lib/openamp'
 import * as wallet from '../lib/wallet'
 import { RESIDENCE_OPTIONS } from '../data/jurisdictions'
@@ -160,134 +160,40 @@ function NewAccount({ identity, onDone }) {
 
 /* ───────────────────────── linking a wallet by hand ──────────────────────── */
 
-function LinkWallet({ onIdentity, onBack, busy }) {
-  const [entry, setEntry] = useState('')
-  const [err, setErr] = useState(null)
-  const [resolving, setResolving] = useState(false)
-  const value = entry.trim().toLowerCase()
-  const known = isAid(value) || isXonly(value)
-
-  // Wallets show the account id far more prominently than the key it is derived
-  // from, so both are accepted. An account id is resolved to its key through the
-  // policy server, and then CHECKED: the id is re-derived from the key returned
-  // and must match what was pasted, so a wrong or substituted key is caught here
-  // rather than at a signature that mysteriously fails to verify.
-  const submit = async () => {
-    setErr(null)
-    if (isXonly(value)) {
-      onIdentity({ kind: 'linked', xonly: value, aid: computeAID([value]) })
-      return
-    }
-    setResolving(true)
-    try {
-      const user = await oamp.getUser(value)
-      const xonly = (user?.pubkeys || [])[0]
-      if (!isXonly(xonly)) {
-        throw new Error('The policy server has no account key registered for that account id.')
-      }
-      if (computeAID([xonly]) !== value) {
-        throw new Error('That account id does not match the key the policy server returned for it. Nothing was linked.')
-      }
-      onIdentity({ kind: 'linked', xonly, aid: value })
-    } catch (e) {
-      setErr(
-        e?.status === 404
-          ? 'No account with that id is registered with the policy server yet. Receive a restricted asset in that wallet first, or paste the account key instead.'
-          : e.message
-      )
-    } finally {
-      setResolving(false)
-    }
-  }
-
-  // Say what is wrong with what is actually in the box. A disabled button that
-  // explains nothing is the reason someone pastes the right thing from the wrong
-  // screen and has no way to find out.
-  const hint = () => {
-    if (!value) return null
-    if (known) return null
-    if (!/^[0-9a-f]+$/.test(value)) return 'That does not look like hex. Paste the value your wallet shows, with nothing around it.'
-    return `That is ${value.length} hex characters. An account id is 40, and an account key is 64.`
-  }
-  const problem = hint()
-
-  return (
-    <div className="space-y-4">
-      <p className="text-sm leading-relaxed text-ink-700/80">
-        Any Sequentia wallet works. Paste the <strong>account id</strong> your wallet shows for
-        your restricted-asset account. SeqPal looks up the account key that belongs to it, then
-        asks that wallet to sign a challenge to prove you hold it, and asks it again for every
-        statement you sign afterwards.
-      </p>
-      <Field
-        id="link-aid"
-        label="Your restricted-asset account id"
-        hint="40 hex characters, and public: it is the same id you give a sender to receive a restricted asset. If your wallet shows you the 64-hex account key instead, that works too."
-      >
-        <input
-          id="link-aid"
-          className="input font-mono text-xs"
-          spellCheck={false}
-          placeholder="account id"
-          value={entry}
-          onChange={(e) => setEntry(e.target.value)}
-        />
-      </Field>
-      {problem && <p className="text-xs leading-relaxed text-amber-700">{problem}</p>}
-      <ErrorNote>{err}</ErrorNote>
-      <div className="flex gap-3">
-        <button
-          onClick={submit}
-          disabled={busy || resolving || !known}
-          className="btn-primary flex-1 disabled:opacity-50"
-        >
-          {busy || resolving ? (
-            <>
-              <Spinner />
-              {resolving ? 'Looking up that account' : 'Verifying'}
-            </>
-          ) : (
-            'Link this wallet'
-          )}
-        </button>
-        <button onClick={onBack} className="btn-outline">
-          Back
-        </button>
-      </div>
-    </div>
-  )
-}
-
-/* ────────────── a wallet with no OpenAMP account (descriptor) ────────────── */
-
-// Not every wallet has an OpenAMP account. A hardware wallet, a node wallet, a
-// plain Bitcoin-style wallet: none of them can hold restricted assets, and
-// requiring one shut them out of everything else SeqPal does. So a wallet can
-// identify itself by a descriptor it controls instead, and prove it the way
-// wallets have proved things for fifteen years: sign a message with an address.
-function WalletDescriptorId({ onDone }) {
+// Proving a DESCRIPTOR, which is the branch for a wallet that has no OpenAMP
+// account at all: a hardware wallet, a node wallet, an ordinary Bitcoin-style
+// one. It proves itself the way wallets have proved things for fifteen years,
+// by signing a message with an address, so there is nothing to install and
+// nothing new to learn.
+function DescriptorProof({ descriptor, onDone, onBack }) {
   const { walletChallenge, walletSignIn, walletRegisterId } = useStore()
-  const [desc, setDesc] = useState('')
-  const [step, setStep] = useState('descriptor') // descriptor | sign | profile
   const [chal, setChal] = useState(null)
   const [sig, setSig] = useState('')
   const [form, setForm] = useState({ name: '', residence: 'AE' })
+  const [step, setStep] = useState('loading') // loading | sign | profile
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
 
-  const ask = async (e) => {
-    e.preventDefault()
-    setErr(null)
-    setBusy(true)
-    try {
-      setChal(await walletChallenge(desc.trim()))
-      setStep('sign')
-    } catch (e2) {
-      setErr(e2.message)
-    } finally {
-      setBusy(false)
+  useEffect(() => {
+    let cancelled = false
+    walletChallenge(descriptor)
+      .then((c) => {
+        if (!cancelled) {
+          setChal(c)
+          setStep('sign')
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setErr(e.message)
+          setStep('sign')
+        }
+      })
+    return () => {
+      cancelled = true
     }
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [descriptor])
 
   const submit = async () => {
     setErr(null)
@@ -299,8 +205,8 @@ function WalletDescriptorId({ onDone }) {
         return
       }
       setStep('profile')
-    } catch (e2) {
-      setErr(e2.message)
+    } catch (e) {
+      setErr(e.message)
     } finally {
       setBusy(false)
     }
@@ -332,6 +238,15 @@ function WalletDescriptorId({ onDone }) {
     } finally {
       setBusy(false)
     }
+  }
+
+  if (step === 'loading') {
+    return (
+      <div className="flex items-center gap-3 py-8 text-sm text-ink-700/70">
+        <span className="h-4 w-4 animate-spin rounded-full border-2 border-btc/30 border-t-btc" />
+        Reading that wallet
+      </div>
+    )
   }
 
   if (step === 'profile') {
@@ -376,86 +291,174 @@ function WalletDescriptorId({ onDone }) {
     )
   }
 
-  if (step === 'sign') {
-    return (
-      <div className="space-y-4">
-        <p className="text-sm leading-relaxed text-ink-700/80">
-          Sign this challenge with the address below, in your own wallet, and paste the signature
-          back. In a Sequentia node that is{' '}
-          <span className="font-mono text-xs">signmessage</span>; in most wallets it is a
-          &ldquo;sign message&rdquo; button. SeqPal never sees a key.
-        </p>
-        <dl className="space-y-2 rounded-xl border border-ink-900/10 bg-ink-900/[0.02] p-4 text-xs">
-          <div>
-            <dt className="text-ink-700/70">Address to sign with</dt>
-            <dd className="mt-1 break-all font-mono text-ink-900">{chal.address}</dd>
-          </div>
-          <div>
-            <dt className="text-ink-700/70">Message to sign</dt>
-            <dd className="mt-1 break-all font-mono text-ink-900">{chal.challenge}</dd>
-          </div>
-        </dl>
-        <Field id="wd-sig" label="Signature from your wallet">
-          <textarea
-            id="wd-sig"
-            className="input font-mono text-xs"
-            rows={3}
-            spellCheck={false}
-            value={sig}
-            onChange={(e) => setSig(e.target.value)}
-          />
-        </Field>
-        <ErrorNote>{err}</ErrorNote>
-        <div className="flex gap-3">
-          <button
-            onClick={submit}
-            disabled={busy || sig.trim().length < 20}
-            className="btn-primary flex-1 disabled:opacity-50"
-          >
-            {busy ? <Spinner /> : null}
-            {chal.registered ? 'Sign in' : 'Continue'}
-          </button>
-          <button onClick={() => setStep('descriptor')} className="btn-outline">
-            Back
-          </button>
-        </div>
+  return (
+    <div className="space-y-4">
+      {chal && (
+        <>
+          <p className="text-sm leading-relaxed text-ink-700/80">
+            Sign this challenge with the address below, in that wallet, and paste the signature
+            back. In a Sequentia node that is{' '}
+            <span className="font-mono text-xs">signmessage</span>; in most wallets it is a
+            &ldquo;sign message&rdquo; button. SeqPal never sees a key.
+          </p>
+          <dl className="space-y-2 rounded-xl border border-ink-900/10 bg-ink-900/[0.02] p-4 text-xs">
+            <div>
+              <dt className="text-ink-700/70">Address to sign with</dt>
+              <dd className="mt-1 break-all font-mono text-ink-900">{chal.address}</dd>
+            </div>
+            <div>
+              <dt className="text-ink-700/70">Message to sign</dt>
+              <dd className="mt-1 break-all font-mono text-ink-900">{chal.challenge}</dd>
+            </div>
+          </dl>
+          <Field id="wd-sig" label="Signature from that wallet">
+            <textarea
+              id="wd-sig"
+              className="input font-mono text-xs"
+              rows={3}
+              spellCheck={false}
+              value={sig}
+              onChange={(e) => setSig(e.target.value)}
+            />
+          </Field>
+        </>
+      )}
+      <ErrorNote>{err}</ErrorNote>
+      <div className="flex gap-3">
+        <button
+          onClick={submit}
+          disabled={!chal || busy || sig.trim().length < 20}
+          className="btn-primary flex-1 disabled:opacity-50"
+        >
+          {busy ? <Spinner /> : null}
+          {chal?.registered ? 'Sign in' : 'Continue'}
+        </button>
+        <button onClick={onBack} className="btn-outline">
+          Back
+        </button>
       </div>
-    )
+    </div>
+  )
+}
+
+// Linking a wallet SeqPal cannot ask directly. One field, because a holder
+// should not have to know which of these things they are holding: an account id,
+// an account key and a wallet descriptor are all just "what my wallet shows me",
+// and which one it is decides how the wallet proves itself, not whether it can.
+function LinkWallet({ onIdentity, onBack, onDone, busy }) {
+  const [entry, setEntry] = useState('')
+  const [err, setErr] = useState(null)
+  const [resolving, setResolving] = useState(false)
+  const [proving, setProving] = useState(null) // a descriptor being proved
+  const raw = entry.trim()
+  const value = raw.toLowerCase()
+  const isDesc = looksLikeDescriptor(raw)
+  const known = isAid(value) || isXonly(value) || isDesc
+
+  // An account id is resolved to its key through the policy server, and then
+  // CHECKED: the id is re-derived from the key returned and must match what was
+  // pasted, so a wrong or substituted key is caught here rather than at a
+  // signature that mysteriously fails to verify.
+  const submit = async () => {
+    setErr(null)
+    if (isDesc) {
+      setProving(raw)
+      return
+    }
+    if (isXonly(value)) {
+      onIdentity({ kind: 'linked', xonly: value, aid: computeAID([value]) })
+      return
+    }
+    setResolving(true)
+    try {
+      const user = await oamp.getUser(value)
+      const xonly = (user?.pubkeys || [])[0]
+      if (!isXonly(xonly)) {
+        throw new Error('The policy server has no account key registered for that account id.')
+      }
+      if (computeAID([xonly]) !== value) {
+        throw new Error('That account id does not match the key the policy server returned for it. Nothing was linked.')
+      }
+      onIdentity({ kind: 'linked', xonly, aid: value })
+    } catch (e) {
+      setErr(
+        e?.status === 404
+          ? 'No account with that id is registered with the policy server yet. Receive a restricted asset in that wallet first, or paste its wallet descriptor instead.'
+          : e.message
+      )
+    } finally {
+      setResolving(false)
+    }
+  }
+
+  // Say what is wrong with what is actually in the box. A disabled button that
+  // explains nothing is the reason someone pastes the right thing from the wrong
+  // screen and has no way to find out.
+  const hint = () => {
+    if (!value || known) return null
+    if (!/^[0-9a-f]+$/.test(value)) {
+      return 'That is neither hex nor a wallet descriptor. Paste the value your wallet shows, with nothing around it.'
+    }
+    return `That is ${value.length} hex characters. An account id is 40, and an account key is 64.`
+  }
+  const problem = hint()
+
+  if (proving) {
+    return <DescriptorProof descriptor={proving} onDone={onDone} onBack={() => setProving(null)} />
   }
 
   return (
-    <form onSubmit={ask} className="space-y-4">
+    <div className="space-y-4">
       <p className="text-sm leading-relaxed text-ink-700/80">
-        For a wallet that has no OpenAMP account. Paste the public{' '}
-        <span className="font-mono text-xs">pkh(...)</span> descriptor your wallet exports, the
-        legacy one. SeqPal derives its first address and asks you to sign a challenge with it.
+        Any Sequentia wallet works. Paste whatever it shows you for your account: its{' '}
+        <strong>account id</strong>, its account key, or its public{' '}
+        <strong>wallet descriptor</strong>. SeqPal works out which and asks that wallet to prove
+        it is yours.
       </p>
       <Field
-        id="wd-desc"
-        label="Your wallet descriptor"
-        hint="The PUBLIC descriptor, with an extended public key. Never paste one containing a private key."
+        id="link-account"
+        label="Your account, as your wallet shows it"
+        hint="An account id (40 hex), an account key (64 hex), or a public descriptor like pkh([…]tpub…/0/*). All three are public. Never paste a descriptor containing a private key."
       >
         <textarea
-          id="wd-desc"
+          id="link-account"
           className="input font-mono text-xs"
-          rows={3}
+          rows={2}
           spellCheck={false}
-          placeholder="pkh([fingerprint/44h/1h/0h]tpub.../0/*)"
-          value={desc}
-          onChange={(e) => setDesc(e.target.value)}
+          placeholder="account id, account key, or wallet descriptor"
+          value={entry}
+          onChange={(e) => setEntry(e.target.value)}
         />
       </Field>
-      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-900">
-        An ID like this cannot hold OpenAMP restricted assets until you attach an OpenAMP account
-        to it. Freely-tradable stocks, network-enforced assets and the distributions attached to
-        them all work without one.
-      </div>
+      {isDesc && (
+        <p className="rounded-xl border border-ink-900/10 bg-ink-900/[0.02] px-4 py-3 text-xs leading-relaxed text-ink-700/80">
+          A wallet linked by descriptor can hold freely-tradable stocks, network-enforced assets
+          and the distributions attached to them. Restricted assets need an OpenAMP account,
+          which you can attach to this ID at any time.
+        </p>
+      )}
+      {problem && <p className="text-xs leading-relaxed text-amber-700">{problem}</p>}
       <ErrorNote>{err}</ErrorNote>
-      <button type="submit" disabled={busy || desc.trim().length < 20} className="btn-primary w-full disabled:opacity-50">
-        {busy ? <Spinner /> : null}
-        Continue
-      </button>
-    </form>
+      <div className="flex gap-3">
+        <button
+          onClick={submit}
+          disabled={busy || resolving || !known}
+          className="btn-primary flex-1 disabled:opacity-50"
+        >
+          {busy || resolving ? (
+            <>
+              <Spinner />
+              {resolving ? 'Looking up that account' : 'Verifying'}
+            </>
+          ) : (
+            'Link this wallet'
+          )}
+        </button>
+        <button onClick={onBack} className="btn-outline">
+          Back
+        </button>
+      </div>
+    </div>
   )
 }
 
@@ -497,20 +500,6 @@ export function AuthPanel({ onDone }) {
     }
   }
 
-  if (phase === 'descriptor') {
-    return (
-      <div className="card p-7">
-        <h2 className="text-lg font-bold text-ink-900">Use a wallet with no OpenAMP account</h2>
-        <div className="mt-5">
-          <WalletDescriptorId onDone={onDone} />
-        </div>
-        <button onClick={() => setPhase('choose')} className="btn-ghost mt-4 w-full text-sm">
-          Back
-        </button>
-      </div>
-    )
-  }
-
   if (phase === 'profile' && identity) {
     return (
       <div className="card p-7">
@@ -528,6 +517,7 @@ export function AuthPanel({ onDone }) {
             <LinkWallet
               busy={busy}
               onBack={() => setPhase('choose')}
+              onDone={onDone}
               onIdentity={(id) => attach(async () => id)}
             />
           </div>
@@ -567,9 +557,6 @@ export function AuthPanel({ onDone }) {
             )}
             <button onClick={() => setPhase('link')} className="btn-outline w-full">
               Link another Sequentia wallet
-            </button>
-            <button onClick={() => setPhase('descriptor')} className="btn-ghost w-full text-sm">
-              My wallet has no OpenAMP account
             </button>
           </div>
           <div className="mt-4">

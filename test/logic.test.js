@@ -34,7 +34,7 @@ import {
   taggedHash,
   signChallenge,
 } from '../scripts/e2e/lib/wallet-signer.mjs'
-import { computeAID, isAid, isXonly } from '../src/lib/statements.js'
+import { computeAID, isAid, isXonly, looksLikeDescriptor } from '../src/lib/statements.js'
 import { schnorr } from '@noble/curves/secp256k1'
 import { bytesToHex, hexToBytes } from '@noble/curves/abstract/utils'
 import { sha256 } from '@noble/hashes/sha256'
@@ -360,4 +360,28 @@ test('a linked wallet is named by its account id or its account key', () => {
   // server returns must re-derive to the id that was pasted.
   const impostor = generateEnclaveKey()
   assert.notEqual(computeAID([impostor.xonly]), aid)
+})
+
+// One box takes all three, because a holder should not have to know which of
+// them they are holding. Which it is decides how the wallet proves itself, not
+// whether it can.
+test('the link field tells an account id, an account key and a descriptor apart', () => {
+  const k = generateEnclaveKey()
+  const aid = computeAID([k.xonly])
+  const desc =
+    "pkh([78a58319/44'/1'/0']tpubDCTudosJmS58rksmdnazbWxbQyCAcxncXqT9cQy5rpg94dyseRE5oNF99AhMxgn1bLxU94UeSxfUj6M2WwPRnxHjHkPaqoTXWkfigM2vcd1/0/*)"
+
+  assert.ok(looksLikeDescriptor(desc))
+  assert.ok(looksLikeDescriptor('  wpkh([aa/84h]tpub.../0/*)  '), 'leading space is what a paste delivers')
+  assert.ok(looksLikeDescriptor('tr([aa]tpub.../0/*)'), 'the kind is the server\'s call, not the field\'s')
+
+  // The two hex forms are never mistaken for a descriptor, nor it for them.
+  assert.ok(!looksLikeDescriptor(aid))
+  assert.ok(!looksLikeDescriptor(k.xonly))
+  assert.ok(!isAid(desc) && !isXonly(desc))
+
+  // Neither is anything else.
+  for (const junk of ['', '   ', 'hello world', '(nope)', '0x1234']) {
+    assert.ok(!looksLikeDescriptor(junk) && !isAid(junk) && !isXonly(junk), `refused: ${junk}`)
+  }
 })
