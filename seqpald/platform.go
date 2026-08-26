@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"math"
 	"net/http"
 	"strings"
@@ -227,7 +228,15 @@ func (s *server) handleMandate(w http.ResponseWriter, r *http.Request) {
 
 	// Reject an enclave key-path address: escrow release must pay an ordinary
 	// wallet-scanned address, never a 2-of-2 enclave script no wallet monitors.
-	if s.isEnclaveAddress(iss, addr) {
+	isEnclave, err := s.isEnclaveAddress(iss, addr)
+	if err != nil {
+		// Fail closed, exactly as the investor-side check does: an address we
+		// cannot confirm is NOT an enclave address might be one, and paying one
+		// strands the money at a script no wallet scans.
+		writeErr(w, 503, "cannot verify the payout address right now; please retry")
+		return
+	}
+	if isEnclave {
 		writeErr(w, 400, "the payout address is an enclave key-path address; provide an ordinary wallet address")
 		return
 	}
@@ -267,26 +276,33 @@ func (s *server) handleMandate(w http.ResponseWriter, r *http.Request) {
 // isEnclaveAddress reports whether addr is one of the offering's enclave key-path
 // addresses (the minted-asset enclave receive address, or a provisioned escrow /
 // treasury enclave address), which a mandate must never target.
-func (s *server) isEnclaveAddress(iss *Issuance, addr string) bool {
+func (s *server) isEnclaveAddress(iss *Issuance, addr string) (bool, error) {
 	if addr == "" {
-		return false
+		return false, nil
 	}
 	if iss.EnclaveAddress != "" && iss.EnclaveAddress == addr {
-		return true
+		return true, nil
 	}
 	// The per-offering escrow enclave and (if entity-backed) treasury enclave
-	// receive addresses for the asset.
+	// receive addresses for the asset. An address that cannot be resolved is not
+	// an address that differs: the caller fails closed on it, the same way the
+	// investor-side check always has. These enclaves are accounts this platform
+	// registered itself, so an unresolvable one is an outage rather than an
+	// account the policy server was never told about.
+	var probeErr error
 	for _, k := range s.offeringEnclaves(iss) {
 		var out struct {
 			Address string `json:"address"`
 		}
-		if err := s.callOpenAMP("GET", "/v1/users/"+k.AID+"/address?asset="+iss.AssetID, "", nil, &out); err == nil {
-			if out.Address != "" && out.Address == addr {
-				return true
-			}
+		if err := s.callOpenAMP("GET", "/v1/users/"+k.AID+"/address?asset="+iss.AssetID, "", nil, &out); err != nil {
+			probeErr = fmt.Errorf("resolve enclave %s: %w", k.AID, err)
+			continue
+		}
+		if out.Address != "" && out.Address == addr {
+			return true, nil
 		}
 	}
-	return false
+	return false, probeErr
 }
 
 // offeringEnclaves returns the escrow and (if any) treasury enclave keys for an
