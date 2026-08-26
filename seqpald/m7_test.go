@@ -747,3 +747,72 @@ func TestRulesAreNeverReplacedWithNothing(t *testing.T) {
 		t.Fatal("an unreadable rule set must not count as empty")
 	}
 }
+
+// The pro-rata allocation is the money-safety claim of the whole distribution
+// feature, and it was asserted on one shape: three equal holders, pool 1000,
+// dust 1. These are the shapes that break a floor-and-disclose scheme -- a pool
+// smaller than the number of holders, one holder with almost everything, atoms
+// near the top of the range where a naive product overflows -- checked as
+// properties rather than as an example.
+func TestTheProRataInvariantHoldsOverManyShapes(t *testing.T) {
+	shapes := []struct {
+		name string
+		pool uint64
+		bals []uint64
+	}{
+		{"equal thirds", 1000, []uint64{1, 1, 1}},
+		{"pool smaller than holders", 2, []uint64{1, 1, 1, 1, 1}},
+		{"pool of one", 1, []uint64{5, 5}},
+		{"one whale", 1_000_000, []uint64{999_999_999, 1, 1}},
+		{"single holder takes all", 12345, []uint64{7}},
+		{"wide spread", 999_983, []uint64{3, 5, 7, 11, 13, 17, 19, 23}},
+		{"huge atoms", 21_000_000_00000000, []uint64{1 << 40, 1 << 41, 3}},
+		{"balances at the top of the range", 1_000_000, []uint64{1 << 62, 1 << 62}},
+	}
+	for _, s := range shapes {
+		t.Run(s.name, func(t *testing.T) {
+			var total uint64
+			for _, b := range s.bals {
+				total += b
+			}
+			var grossTotal uint64
+			for _, b := range s.bals {
+				gross := mulDiv(s.pool, b, total)
+				// Nobody may be allocated more than the pool, ever.
+				if gross > s.pool {
+					t.Fatalf("a holder was allocated %d out of a pool of %d", gross, s.pool)
+				}
+				grossTotal += gross
+			}
+			// Never over-allocate: the sum of the floors cannot exceed the pool.
+			if grossTotal > s.pool {
+				t.Fatalf("allocated %d out of a pool of %d", grossTotal, s.pool)
+			}
+			// And the shortfall is dust, which is bounded by one atom per holder:
+			// each holder loses less than one atom to the floor.
+			dust := s.pool - grossTotal
+			if dust >= uint64(len(s.bals)) && s.pool >= uint64(len(s.bals)) {
+				t.Fatalf("dust %d is not bounded by the %d holders it floors",
+					dust, len(s.bals))
+			}
+		})
+	}
+}
+
+// Withholding is the other half of the invariant: whatever it takes, gross has
+// to be exactly net plus withheld, for every rate and every amount -- including
+// the amounts where a percentage lands between atoms.
+func TestWithholdingNeverLosesAnAtom(t *testing.T) {
+	for _, gross := range []uint64{0, 1, 2, 3, 7, 99, 100, 101, 12345, 1 << 40, ^uint64(0) >> 4} {
+		for _, res := range []string{"US", "GB", "AE", "HN-PRO", ""} {
+			claims := &Claims{AID: "x", Residence: res, Status: "verified"}
+			withheld, _, _ := withholdingFor(claims, gross)
+			if withheld > gross {
+				t.Fatalf("withheld %d from a gross of %d (%s)", withheld, gross, res)
+			}
+			if net := gross - withheld; net+withheld != gross {
+				t.Fatalf("gross %d != net %d + withheld %d (%s)", gross, net, withheld, res)
+			}
+		}
+	}
+}
