@@ -4,6 +4,7 @@ import * as wallet from './wallet'
 import {
   BEARER_ATTESTATION_TAG,
   CLOSE_TAG,
+  DOCUMENT_TAG,
   HOLDING_PROOF_TAG,
   MANDATE_TAG,
   bearerAttestationDigest,
@@ -369,7 +370,7 @@ export function StoreProvider({ children }) {
   // openamp-document-v1), never a raw blind digest. `title` only names the
   // document in the wallet's prompt; the signature commits to the hash.
   const signDoc = (docHashHex, title) =>
-    signTagged('openamp-document-v1', { hash: docHashHex, label: title })
+    signTagged(DOCUMENT_TAG, { hash: docHashHex, label: title })
 
   // Payout-mandate and closing authorizations, over the canonical `sign_this`
   // statement seqpald returned.
