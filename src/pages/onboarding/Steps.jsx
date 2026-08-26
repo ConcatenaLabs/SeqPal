@@ -2044,7 +2044,7 @@ export function Step7Checkout({ data, update, onDeployed }) {
           aid: account?.aid,
         }
         const sig = await signBearerStmt(fields)
-        if (!sig) throw new Error('Connect your Sequentia wallet to sign the attestation before deploying.')
+        if (!sig) throw new Error('Your wallet did not return a signature for the attestation, so nothing was deployed.')
         await bearerAttestation(issuanceId, { ...fields, pubkey: xonly, sig })
       }
       const dep = await deployIssuance({

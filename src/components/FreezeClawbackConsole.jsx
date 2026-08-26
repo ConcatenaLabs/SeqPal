@@ -155,7 +155,7 @@ export default function FreezeClawbackConsole({ iss }) {
   const completeClawback = async () => {
     setErr(null)
     if (!hasKey) {
-      setErr('Connect your Sequentia wallet to sign the clawback. The issuer key authorizes the seizure; nothing is swept until you sign.')
+      setErr('A clawback is co-signed by a wallet that verifies the transaction it signs, which is the browser extension. The issuer key authorizes the seizure; nothing is swept until you sign.')
       return
     }
     setBusy('sign')
@@ -175,7 +175,7 @@ export default function FreezeClawbackConsole({ iss }) {
         return
       }
       if (!sigs) {
-        setErr('Connect your Sequentia wallet to sign the clawback.')
+        setErr('Your wallet did not return a signature, so nothing was swept.')
         return
       }
       const res = await api.consoleClawbackComplete(iss.id, pending.clawback_id, { sigs })
@@ -343,7 +343,7 @@ export default function FreezeClawbackConsole({ iss }) {
             </div>
             {!hasKey && (
               <p className="mt-2 text-xs font-medium text-amber-700">
-                Connect your Sequentia wallet to sign. Cancelling leaves nothing swept; the reason stays in
+                This is signed in the browser extension, which verifies the transaction it signs. Cancelling leaves nothing swept; the reason stays in
                 the log.
               </p>
             )}

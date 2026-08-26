@@ -141,3 +141,37 @@ test('the election says a network-enforced token needs its own software to move'
     'the election states that no ordinary wallet sends this token',
   )
 })
+
+test('a surface says WHICH wallet it needs, or that one declined', () => {
+  // "Connect your Sequentia wallet" is wrong twice over: on a surface a holder
+  // reached by proving a wallet, and on a path where a wallet IS connected and
+  // simply returned nothing. Where an extension is genuinely required -- an
+  // enclave spend, whose signer must verify the transaction it signs -- the copy
+  // names it; everywhere else the holder is told their wallet declined.
+  for (const f of [
+    'components/TransferConsole.jsx',
+    'components/FreezeClawbackConsole.jsx',
+    'components/SupervisionConsole.jsx',
+    'components/PayoutMandateCard.jsx',
+    'components/ClosingCard.jsx',
+    'components/ListingCard.jsx',
+    'components/MarketAbuseGate.jsx',
+    'components/PolicyConsole.jsx',
+    'components/DataRoom.jsx',
+    'pages/ActionClaim.jsx',
+    'components/InvestorMandateCard.jsx',
+    'pages/onboarding/Steps.jsx',
+  ]) {
+    const src = read(f)
+    assert.ok(
+      !/Connect your Sequentia wallet to sign/.test(src),
+      `${f} still tells a holder who has a wallet to connect a wallet`,
+    )
+  }
+})
+
+test('the listing authorization can be signed by a wallet that is not in the browser', () => {
+  const src = read('components/ListingCard.jsx')
+  assert.match(src, /setPrep\(\{ sign_this_message/, 'no wallet here means showing what to sign')
+  assert.match(src, /OfflineSignature/, 'and taking the signature back as a paste')
+})

@@ -38,7 +38,7 @@ export default function MarketAbuseGate({ children }) {
         }
         const signature = await signWithKey(MARKET_ABUSE_TAG, data?.sign_this || '')
         if (!signature) {
-          setErr('Connect your Sequentia wallet to sign the acknowledgment.')
+          setErr('Your wallet did not return a signature. You can acknowledge without one.')
           return
         }
         body.signature = signature

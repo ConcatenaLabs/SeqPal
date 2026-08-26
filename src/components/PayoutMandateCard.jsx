@@ -43,7 +43,7 @@ export default function PayoutMandateCard({ iss }) {
       }
       const signature = await signMandateStmt(got.sign_this)
       if (!signature) {
-        setErr('Connect your Sequentia wallet to sign the mandate.')
+        setErr('Your wallet did not return a signature, so nothing was registered.')
         return
       }
       // Step 2: resubmit with the signature.

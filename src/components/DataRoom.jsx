@@ -108,7 +108,7 @@ function DocRow({ doc, offerOpen, canSign }) {
         setState({
           busy: false,
           ok: false,
-          err: 'Connect your Sequentia wallet to sign. SeqPal never holds the key that signs this.',
+          err: 'Your wallet did not return a signature, so nothing was signed. SeqPal never holds the key that signs this.',
         })
         return
       }

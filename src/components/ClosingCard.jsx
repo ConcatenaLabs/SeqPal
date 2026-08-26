@@ -77,7 +77,7 @@ export default function ClosingCard({ iss }) {
       }
       const signature = await signCloseStmt(got.sign_this)
       if (!signature) {
-        setErr('Connect your Sequentia wallet to sign the closing authorization.')
+        setErr('Your wallet did not return a signature, so nothing was closed.')
         return
       }
       const res = await api.close(iss.id, { signature, signer_xonly: xonly })

@@ -191,7 +191,7 @@ export default function PolicyConsole({ iss }) {
           return
         }
         if (!sig) {
-          setErr('Connect your Sequentia wallet to sign.')
+          setErr('Your wallet did not return a signature, so nothing was published.')
           return
         }
       }
