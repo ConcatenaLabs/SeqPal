@@ -374,6 +374,7 @@ const ENFORCEMENT_MODELS = [
       'Rule changes and newly verified investors take effect when the updated list is published, not instantly.',
       'A holder can combine at most two of their coins of this token in a single transfer, so a holder with more makes more than one transfer. One transfer also moves the coins of a single holder, so two holders cannot pay from the same transfer. Both are fixed when the token is created and cannot be raised later.',
       'Who holds what is public.',
+      'This token does not sit in an ordinary wallet balance, and no wallet sends it: you and your holders each need software that understands these rules to move a coin, and you sign every rule change with the key the token was issued at.',
     ],
     regulatory:
       'Investor vetting is identical to the standard option. SeqPal never touches a transfer: it verifies investors, publishes your rules, and services your register.',

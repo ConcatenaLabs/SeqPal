@@ -90,6 +90,10 @@ export default function PolicyConsole({ iss }) {
   const [busy, setBusy] = useState(null)
   const [err, setErr] = useState(null)
   const [done, setDone] = useState(null)
+  // When no wallet here can make the signature, the issuer makes it with the
+  // tooling that holds the key and pastes it in.
+  const [paste, setPaste] = useState(false)
+  const [sigPaste, setSigPaste] = useState('')
   // A built change awaiting the issuer's signature: { op_id, to_sign, action }.
   const [pending, setPending] = useState(null)
   // The registrar handoff, when the change is signed but not yet published.
@@ -168,24 +172,28 @@ export default function PolicyConsole({ iss }) {
   // Sign, then try to publish. The first attempt is expected to come back asking
   // for the registrar's two values, which is a step in the flow: it hands over
   // the document to compile against.
-  const complete = async (extra) => {
+  const complete = async (extra, pasted) => {
     setErr(null)
-    if (!hasKey) {
-      setErr('Connect your Sequentia wallet to sign. Nothing is published until you sign.')
-      return
-    }
     setBusy('sign')
     try {
-      let sig
-      try {
-        sig = await signPolicySnapshot(pending)
-      } catch (e) {
-        setErr(e.message)
-        return
-      }
+      let sig = (pasted || '').trim().toLowerCase()
       if (!sig) {
-        setErr('Connect your Sequentia wallet to sign.')
-        return
+        if (!hasKey) {
+          // The key that authorises this change is the holding key the token
+          // was issued at, which is not necessarily a key any browser holds.
+          setPaste(true)
+          return
+        }
+        try {
+          sig = await signPolicySnapshot(pending)
+        } catch (e) {
+          setErr(e.message)
+          return
+        }
+        if (!sig) {
+          setErr('Connect your Sequentia wallet to sign.')
+          return
+        }
       }
       const res = await api.policyComplete(iss.id, pending.op_id, { sig, ...(extra || {}) })
       setDone(
@@ -202,6 +210,8 @@ export default function PolicyConsole({ iss }) {
       setOrderName('')
       setProgram('')
       setRulesTx('')
+      setPaste(false)
+      setSigPaste('')
       load()
       return res
     } catch (e) {
@@ -382,17 +392,45 @@ export default function PolicyConsole({ iss }) {
                 {busy === 'sign' ? 'Signing…' : 'Sign and publish'}
               </button>
               <button
-                onClick={() => setPending(null)}
+                onClick={() => {
+                  setPending(null)
+                  setPaste(false)
+                  setSigPaste('')
+                }}
                 disabled={!!busy}
                 className="btn-outline disabled:opacity-60"
               >
                 Cancel
               </button>
             </div>
-            {!hasKey && (
-              <p className="mt-2 text-xs font-medium text-amber-700">
-                Connect your Sequentia wallet to sign. Cancelling leaves everything unchanged.
-              </p>
+            {paste && (
+              <div className="mt-3 rounded-lg border border-ink-900/10 bg-white/70 p-3">
+                <p className="text-xs leading-relaxed text-ink-700/75">
+                  Nothing here can make this signature: it has to come from the holding key this
+                  token was issued at, which is the same key its coins move with. Sign the
+                  fingerprint below with that key, under the tag{' '}
+                  <span className="font-mono">{pending.snapshotTag}</span>, in the tool you use
+                  for this token, and paste the 64-byte result back.
+                </p>
+                <div className="mt-2 break-all font-mono text-[11px] text-ink-900">
+                  {pending.snapshotHash}
+                </div>
+                <textarea
+                  className="input mt-2 font-mono text-xs"
+                  rows={2}
+                  spellCheck={false}
+                  placeholder="signature, 128 hex"
+                  value={sigPaste}
+                  onChange={(e) => setSigPaste(e.target.value)}
+                />
+                <button
+                  onClick={() => complete(undefined, sigPaste)}
+                  disabled={!!busy || sigPaste.trim().length !== 128}
+                  className="btn-primary mt-2 disabled:opacity-50"
+                >
+                  {busy === 'sign' ? 'Publishing…' : 'Publish the change'}
+                </button>
+              </div>
             )}
           </div>
         )}
