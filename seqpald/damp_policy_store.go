@@ -32,15 +32,15 @@ type DampPolicyOp struct {
 	PrevPi   string `json:"prev_pi,omitempty"`
 	PiNext   string `json:"pi_next,omitempty"`
 
-	Targets         json.RawMessage `json:"targets,omitempty"`
-	Holders         json.RawMessage `json:"holders,omitempty"`
-	HoldersAdded    json.RawMessage `json:"holders_added,omitempty"`
-	HoldersRemoved  json.RawMessage `json:"holders_removed,omitempty"`
-	CoinsFrozen     json.RawMessage `json:"coins_frozen,omitempty"`
-	CoinsUnfrozen   json.RawMessage `json:"coins_unfrozen,omitempty"`
-	Reason          string          `json:"reason,omitempty"`
-	OrderHash       string          `json:"order_hash,omitempty"`
-	ToSign          string          `json:"to_sign,omitempty"`
+	Targets        json.RawMessage `json:"targets,omitempty"`
+	Holders        json.RawMessage `json:"holders,omitempty"`
+	HoldersAdded   json.RawMessage `json:"holders_added,omitempty"`
+	HoldersRemoved json.RawMessage `json:"holders_removed,omitempty"`
+	CoinsFrozen    json.RawMessage `json:"coins_frozen,omitempty"`
+	CoinsUnfrozen  json.RawMessage `json:"coins_unfrozen,omitempty"`
+	Reason         string          `json:"reason,omitempty"`
+	OrderHash      string          `json:"order_hash,omitempty"`
+	ToSign         string          `json:"to_sign,omitempty"`
 	// SnapshotHash is what ToSign is the TAGGED hash of, under the policy
 	// server's OpenDAMP/snapshot/v1 tag. The issuer's wallet is given this rather
 	// than ToSign, so it applies the tag itself and never signs a digest it was

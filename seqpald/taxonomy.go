@@ -30,6 +30,24 @@ var eligTiers = map[string]bool{"ret": true, "acc": true, "pro": true, "hnw": tr
 // write queue calls it, the expiry cron calls it, and both get the same answer
 // for the same record. An unverified, refused, or expired record projects to no
 // categories, which is a real loss of eligibility once the list is written.
+// eligibilityLive reports whether an identity is verified AND still inside its
+// validity window.
+//
+// "verified" is a status a verification set and nothing later clears: the
+// identity window passing does not change it, because what expiry does is empty
+// the categories, which projectCategories has always done correctly. Every gate
+// that asked only for the status therefore kept letting a lapsed identity
+// through -- subscribing, claiming a corporate action, passing an offering gate
+// -- while the categories those same gates rely on had already gone to nothing.
+//
+// Anything deciding what a holder may do asks this, not the status.
+func eligibilityLive(c *Claims, now int64) bool {
+	if c == nil || c.Status != "verified" {
+		return false
+	}
+	return c.ValidUntil == 0 || now < c.ValidUntil
+}
+
 func projectCategories(c *Claims, now int64) []string {
 	if c == nil || c.Status != "verified" {
 		return nil

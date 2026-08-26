@@ -123,3 +123,37 @@ func printableStatementText(s string) bool {
 	}
 	return true
 }
+
+// "verified" is a status a verification sets and nothing later clears. The
+// identity window passing empties the categories instead, so a gate that asks
+// only for the status keeps letting a lapsed identity through while the
+// categories it relies on have already gone to nothing.
+func TestLapsedEligibilityIsNotLive(t *testing.T) {
+	now := int64(1_700_000_000)
+
+	live := &Claims{Status: "verified", ValidUntil: now + 60, Residence: "AE"}
+	if !eligibilityLive(live, now) {
+		t.Fatal("a verified identity inside its window is live")
+	}
+	lapsed := &Claims{Status: "verified", ValidUntil: now - 1, Residence: "AE"}
+	if eligibilityLive(lapsed, now) {
+		t.Fatal("a lapsed identity must not be live, whatever its status still says")
+	}
+	// And the two agree: what is not live carries nothing.
+	if cats := projectCategories(lapsed, now); len(cats) != 0 {
+		t.Fatalf("a lapsed identity carries no categories, got %v", cats)
+	}
+	if cats := projectCategories(live, now); len(cats) == 0 {
+		t.Fatal("a live identity carries categories")
+	}
+
+	// No window at all means no expiry, not instant expiry.
+	if !eligibilityLive(&Claims{Status: "verified", Residence: "AE"}, now) {
+		t.Fatal("an identity with no window set has not lapsed")
+	}
+	for _, c := range []*Claims{nil, {Status: "needs_info"}, {Status: "refused"}} {
+		if eligibilityLive(c, now) {
+			t.Fatalf("not verified is not live: %+v", c)
+		}
+	}
+}

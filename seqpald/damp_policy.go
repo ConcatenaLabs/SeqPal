@@ -501,8 +501,8 @@ func policyBuildResponse(op *DampPolicyOp) map[string]any {
 		// tag itself, so it never signs bytes it cannot check.
 		"snapshot_hash": op.SnapshotHash,
 		"snapshot_tag":  "OpenDAMP/snapshot/v1",
-		"state":     op.State,
-		"seq":       op.Seq,
+		"state":         op.State,
+		"seq":           op.Seq,
 		"note": "sign the 32-byte message with your own key, then POST it to /policy/" + op.ID +
 			"/complete; the change takes effect when the updated list is published and the on-chain rules output has moved onto it, not the moment you sign",
 	}
