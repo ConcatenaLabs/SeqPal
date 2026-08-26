@@ -14,6 +14,17 @@ request without broadcasting, so the driver validates offline.
 ## Files
 
 - `run.mjs` the driver: config, the health probe, and the M6/M7/M8/M9 proof steps.
+- `wallet-live.mjs` the same question asked of the OTHER kind of holder: a
+  SeqPal ID that is only a wallet, with no OpenAMP account and no browser
+  extension, which signs ordinary messages and pastes them. It walks
+  registration, the passport, verification, the refusals, a payout mandate, the
+  market-abuse acknowledgment and all three deploy elections, and needs no
+  funding: nothing it does moves a coin.
+- `lib/hd.mjs` just enough BIP32 to BE a wallet -- an account xpub, its ranged
+  receive descriptor, and the private key behind any receive index. A wallet is
+  identified by a ranged descriptor, so a driver playing one has to derive.
+  `signWalletMessage` in `lib/wallet-signer.mjs` then signs the way every wallet
+  has always been able to, in the format `verifymessage` checks.
 - `lib/http.mjs` a same-origin client with a cookie jar (the `seqpal_session`
   cookie seqpald sets, scoped to `/seqpal`). No third-party dependency.
 - `lib/id.mjs` a `SeqPalID` wrapping `wallet-signer.mjs`, with the

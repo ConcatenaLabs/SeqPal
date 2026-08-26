@@ -59,7 +59,10 @@ const after = must(await call('GET', '/id/passport'), 'passport after verify')
 if (!after.categories || after.categories.length === 0) {
   throw new Error('verification recorded no eligibility for a wallet-backed ID')
 }
-console.log('categories     ', after.categories.join(', '))
+console.log(
+  'categories     ',
+  after.categories.map((c) => (typeof c === 'string' ? c : c.token || c.code || JSON.stringify(c))).join(', '),
+)
 
 // 4. What such an ID cannot do must be refused in words that name the missing
 //    piece, not fail somewhere downstream.
