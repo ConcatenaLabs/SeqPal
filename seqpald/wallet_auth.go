@@ -44,6 +44,10 @@ func (s *server) handleWalletChallenge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := walletIDFor(verifyDesc)
+	if ok, why := s.chalRL.allow(id); !ok {
+		writeErr(w, 429, "%s", why)
+		return
+	}
 	// The challenge is keyed by the account id, not by a key: a wallet account
 	// has no enclave key to key it on.
 	challenge, exp, err := s.st.CreateChallenge(id, walletChallengeTTL)

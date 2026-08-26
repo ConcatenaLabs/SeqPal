@@ -1260,6 +1260,7 @@ func newM5Harness(t *testing.T, opts m5opts) *m5h {
 		st:      st,
 		http:    &http.Client{Timeout: 5 * time.Second},
 		rl:      newRateLimiter(),
+		chalRL:  newWindowLimiter(challengesPerKeyPerHour, challengesGlobalPerHour, time.Hour),
 		catMu:   newKeyedMutex(),
 		closeMu: newKeyedMutex(),
 		escrow:  newEscrowState(),

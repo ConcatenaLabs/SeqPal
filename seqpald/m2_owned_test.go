@@ -47,10 +47,10 @@ type owStub struct {
 	nAsset int
 
 	// per-AID concurrency instrumentation for the category-write door.
-	catSleep   time.Duration
-	inflight   map[string]int
-	maxConc    map[string]int
-	catWrites  map[string]int // per-AID successful category writes seen upstream
+	catSleep  time.Duration
+	inflight  map[string]int
+	maxConc   map[string]int
+	catWrites map[string]int // per-AID successful category writes seen upstream
 }
 
 func newOWStub(t *testing.T) *owStub {
@@ -271,6 +271,7 @@ func newOWHarness(t *testing.T) *owHarness {
 		st:     st,
 		http:   &http.Client{Timeout: 5 * time.Second},
 		rl:     newRateLimiter(),
+		chalRL: newWindowLimiter(challengesPerKeyPerHour, challengesGlobalPerHour, time.Hour),
 		catMu:  newKeyedMutex(),
 		screen: newScreener(""),
 	}

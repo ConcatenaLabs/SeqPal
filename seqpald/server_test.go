@@ -126,9 +126,10 @@ func newHarness(t *testing.T) *harness {
 			issuerToken: "test-issuer-token",
 			network:     "sequentia-testnet",
 		},
-		st:   st,
-		http: &http.Client{Timeout: 5 * time.Second},
-		rl:   newRateLimiter(),
+		st:     st,
+		http:   &http.Client{Timeout: 5 * time.Second},
+		rl:     newRateLimiter(),
+		chalRL: newWindowLimiter(challengesPerKeyPerHour, challengesGlobalPerHour, time.Hour),
 	}
 	return &harness{t: t, s: s, h: s.handler(), oa: oa}
 }
