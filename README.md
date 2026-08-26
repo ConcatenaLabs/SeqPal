@@ -16,13 +16,21 @@ registrar steps are simulated so the flow can be walked end to end.
 
 **Real (on the Sequentia testnet):**
 
-- A SeqPal ID is the OpenAMP enclave account of a Sequentia wallet the holder
-  already has — the secp256k1 key that wallet derives at `m/5/0`. SeqPal makes no
+- A SeqPal ID is a Sequentia wallet the holder already has. Usually that is the
+  wallet's OpenAMP enclave account — the secp256k1 key that wallet derives at `m/5/0`. SeqPal makes no
   key and holds none: only the x-only public key is registered with OpenAMP, from
   which the policy server derives the account id (AID) and the 2-of-2 enclave
   address restricted assets live in. A wallet that injects `window.sequentia` is
   asked directly; any other Sequentia wallet is linked by that public key and
   signs each statement out of band.
+- A wallet with **no** OpenAMP account gets a SeqPal ID too, identified by a
+  public `pkh(...)` descriptor it controls and proved with an ordinary signed
+  message, which is a button a hardware or node wallet has always had. Such an
+  ID cannot hold OpenAMP restricted assets until an OpenAMP account is attached
+  to it, and every path that needs one says so. Everything else is open to it:
+  freely-tradable (supervised) stocks, network-enforced (OpenDAMP) assets, and
+  the KYC-gated distributions attached to them, none of which involve an enclave.
+  Attaching an OpenAMP account later keeps the same SeqPal ID.
 - Deploying an issuance mints a real OpenAMP restricted asset: the SeqPal backend
   (`seqpald`) registers the issuer's enclave key and calls OpenAMP's issuer API,
   which builds and broadcasts the issuance transaction on Sequentia. The returned

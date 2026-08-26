@@ -41,10 +41,17 @@ There is no CI. Those commands are the whole gate.
   format. Only the x-only public key reaches the backend. `src/lib/statements.js` defines the
   bytes that get signed; `src/lib/wallet.js` asks a wallet to sign them. There is a test
   (`test/logic.test.js`) that fails if a signer or key generator ever reappears in `src/`.
-- Two ways a wallet attaches: a browser extension injecting `window.sequentia` (asked directly
-  through `openampGetIdentity` / `openampSignTagged` / `openampSignSpend`), or any other
-  Sequentia wallet linked by its public key, signing each statement out of band. Never add a
-  third that makes a key here.
+- Three ways a wallet attaches: a browser extension injecting `window.sequentia` (asked directly
+  through `openampGetIdentity` / `openampSignTagged` / `openampSignSpend`); any other Sequentia
+  wallet linked by its public key, signing each statement out of band; or a wallet with NO
+  OpenAMP account, identified by a public `pkh(...)` descriptor and proved with an ordinary
+  signed message (`seqpald/wallet_identity.go`). Never add a fourth that makes a key here.
+- `accounts.identity` is `aid` (an OpenAMP enclave account) or `xpub` (a descriptor-backed
+  wallet). An `xpub` account is refused every OpenAMP path by `requireEnclave`, and a serviced
+  deploy by `handleDeploy`; supervised, OpenDAMP, corporate actions and claims are deliberately
+  NOT behind that gate. `POST /api/auth/attach-enclave` upgrades one in place, keeping its id.
+  The node does the descriptor work (`getdescriptorinfo`, `deriveaddresses`, `verifymessage`
+  are pure functions needing no wallet), so there is no bespoke key handling in seqpald.
 - **A wallet is never handed a digest to sign.** Application statements are domain-TAGGED, and
   an enclave spend is sent as the TRANSACTION so the wallet recomputes each sighash itself. The
   enclave key is half of the 2-of-2 every restricted asset sits behind, so a digest signer over

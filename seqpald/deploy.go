@@ -207,6 +207,16 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	// generation below selects the bearer charter set even when the supplied
 	// terms object does not name the election itself.
 	iss.Enforcement = enforcement
+	// A serviced issuance mints into an OpenAMP enclave, which a wallet-backed
+	// account does not have. The other two elections do not need one: a bearer
+	// asset is an ordinary on-chain holding and a network-enforced one is
+	// governed by the chain's own rules, so both stay open to a plain wallet.
+	if enforcement == "serviced" && !acct.HasEnclave() {
+		refuse(403, "a policy-co-signed (serviced) issuance mints into an OpenAMP enclave, and this "+
+			"SeqPal ID is a wallet with no OpenAMP account attached. Attach one, or issue this as "+
+			"freely-tradable or network-enforced, neither of which needs an enclave")
+		return
+	}
 	if enforcement == "network" && !s.cfg.damp {
 		refuse(501, "network enforcement is not available on this deployment")
 		return
