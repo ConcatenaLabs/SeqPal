@@ -24,7 +24,7 @@ type Claims struct {
 	GBSoph           bool            `json:"gb_soph,omitempty"`
 	TaxResidencies   json.RawMessage `json:"tax_residencies"` // CRS/FATCA self-certification (array of {country, tin})
 	ValidUntil       int64           `json:"valid_until,omitempty"`
-	Status           string          `json:"status"` // unverified | pending_review | needs_info | refused | verified
+	Status           string          `json:"status"` // unverified | submitted | needs_info | refused | verified
 	VocabVersion     int             `json:"vocab_version"`
 	ClaimsSig        string          `json:"claims_sig,omitempty"`
 	VerifiedAt       int64           `json:"verified_at,omitempty"`
