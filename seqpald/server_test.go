@@ -208,7 +208,8 @@ func newHarness(t *testing.T) *harness {
 		chalRL: newWindowLimiter(challengesPerKeyPerHour, challengesGlobalPerHour, time.Hour),
 		// As production builds it. Without this a category write panics on a nil
 		// mutex, which is a way for a test suite to never reach the write at all.
-		catMu: newKeyedMutex(),
+		catMu:    newKeyedMutex(),
+		verifyMu: newKeyedMutex(),
 		// A provider that records the check and waits to be told. Tests drive the
 		// adjudication through applyAdjudication, which is where a real callback
 		// lands, so they exercise the decision path without depending on a

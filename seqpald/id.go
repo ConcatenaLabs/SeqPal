@@ -74,6 +74,12 @@ func (s *server) handleIDVerify(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// One submission at a time for this account: everything from here to the
+	// submission reads where the check and the fee stand and then acts on it, and
+	// two requests arriving together would both read "nothing open, one payment
+	// available" and both be billed by the provider.
+	defer s.verifyMu.lock(acct.AID)()
+
 	// Paid before submitted, because the provider bills for the check the moment
 	// it is created. Nothing has been written yet at this point, so an unpaid
 	// caller leaves exactly as they arrived. Answering a provider who asked for
@@ -381,6 +387,11 @@ func (s *server) handleEntityVerify(w http.ResponseWriter, r *http.Request) {
 			"is not verified. Verify your own identity first")
 		return
 	}
+
+	// One submission at a time for this account, for the same reason as an
+	// identity check: what follows reads where this entity's check stands and
+	// then acts on it.
+	defer s.verifyMu.lock(acct.AID)()
 
 	// Where this entity's own check stands decides what this call is. A refusal
 	// is the provider's and it is final, exactly as for a person. A check still

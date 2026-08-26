@@ -268,12 +268,13 @@ func newOWHarness(t *testing.T) *owHarness {
 			assumedTip:   100000,
 			adminAIDs:    map[string]bool{},
 		},
-		st:     st,
-		http:   &http.Client{Timeout: 5 * time.Second},
-		rl:     newRateLimiter(),
-		chalRL: newWindowLimiter(challengesPerKeyPerHour, challengesGlobalPerHour, time.Hour),
-		catMu:  newKeyedMutex(),
-		idv:    &testIDV{},
+		st:       st,
+		http:     &http.Client{Timeout: 5 * time.Second},
+		rl:       newRateLimiter(),
+		chalRL:   newWindowLimiter(challengesPerKeyPerHour, challengesGlobalPerHour, time.Hour),
+		catMu:    newKeyedMutex(),
+		verifyMu: newKeyedMutex(),
+		idv:      &testIDV{},
 	}
 	return &owHarness{t: t, s: s, h: s.handler(), oa: oa}
 }
