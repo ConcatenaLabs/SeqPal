@@ -120,7 +120,7 @@ native-BTC escrow rail is off unless `SEQPALD_BTC_RPC_URL` is set.
 | `SEQPALD_REPORT_SECS` | `31536000` | annual report cadence. A value below 1 second falls back to the default: a ticker cannot run a non-positive cadence |
 | `SEQPALD_WALLET_POLL_SECS` | `15` | escrow wallet poll cadence. A value below 1 second falls back to the default: a ticker cannot run a non-positive cadence |
 
-## 1b. Checks before a deploy
+## 2. Checks before a deploy
 
     cd seqpald && go vet ./... && go test ./...
     go run honnef.co/go/tools/cmd/staticcheck@latest ./...
@@ -130,7 +130,7 @@ introduced. It is what found a signing tag left behind by a removed feature,
 which is the kind of dead code that reads as security-relevant to the next
 person.
 
-## 2. Pre-deploy probe
+## 3. Pre-deploy probe
 
 Always, from the laptop or the box:
 
@@ -141,7 +141,7 @@ scripts/live-probe.sh          # /seqpal/api/health, /prices, /openamp/v1/assets
 A failure here is a pre-existing outage: fix it before deploying, so a post-deploy
 failure is unambiguously yours.
 
-## 3. Build and install (on the box)
+## 4. Build and install (on the box)
 
 Source comes from git only; nothing is scp'd.
 
@@ -166,7 +166,7 @@ systemctl status seqpald
 seqpald applies its schema migrations on start; a fresh box creates the DB on the
 first run.
 
-## 4. Caddy (unchanged)
+## 5. Caddy (unchanged)
 
 One block: strip the `/seqpal` prefix and proxy everything to seqpald, which
 serves the SPA and `/api/*`.
@@ -181,7 +181,7 @@ handle /seqpal/* {
 `systemctl reload caddy`. seqpald sets the CSP and the security headers itself, so
 Caddy adds none.
 
-## 5. Post-deploy probe and check
+## 6. Post-deploy probe and check
 
 ```
 scripts/live-probe.sh
@@ -219,7 +219,7 @@ A verification that stays "submitted" means the callback never arrived. The
 simulator calls back over loopback to this process's own listener, so the usual
 cause is `SEQPALD_LISTEN` naming an address the process cannot reach itself on.
 
-## 6. Backup and restore (the DB is books and records)
+## 7. Backup and restore (the DB is books and records)
 
 The SQLite DB is the platform's only copy of accounts, issuances, deploys, and the
 hash-chained audit log. `deploy/seqpald-backup` copies it through SQLite's online
