@@ -670,7 +670,13 @@ func (s *server) maybeStampVesting(iss *Issuance, sub *Subscription, investor *A
 			}
 		}
 	}
-	vesting = append(vesting, map[string]any{"aid": sub.InvestorAID, "atoms": sub.TokenAtoms, "until_height": until})
+	// The lockup is published in the asset's rules, which the POLICY SERVER
+	// enforces, so it has to name the account that server holds. Stamped against
+	// a SeqPal id it would restrict an account openampd does not have, and the
+	// actual holder would be free to sell.
+	vesting = append(vesting, map[string]any{
+		"aid": s.openampAIDFor(sub.InvestorAID), "atoms": sub.TokenAtoms, "until_height": until,
+	})
 	rules["vesting"] = vesting
 	// Every policy-rules mutation flows through the amendment-chain chokepoint (M7
 	// section 3): it posts the rules AND records an anchored amendment, so the

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -391,5 +392,57 @@ func TestThePassportCarriesBothIds(t *testing.T) {
 	}
 	if enclaveAID != aidFor([]string{xonly}) {
 		t.Fatalf("the OpenAMP account id is not the one this key derives: %q", enclaveAID)
+	}
+}
+
+// Every account id this platform hands to the POLICY SERVER has to be the one
+// the policy server holds. This reads each callOpenAMP invocation and the lines
+// that build its body, and fails on a SeqPal account id appearing there -- which
+// is the failure this resolver exists for, and a silent one: openampd answers
+// about an account it does not have, and the answer is what a holder with
+// nothing looks like.
+//
+// It sees payloads built beside their call. A payload assembled somewhere else
+// and passed in (the asset rules are one) is not visible to it, so this is a
+// guard against the common shape rather than a proof.
+func TestNoPayloadNamesASeqPalIdToThePolicyServer(t *testing.T) {
+	seqpalIDs := []string{"acct.AID", "toAID", "sub.InvestorAID", "investorAID", "holderAID"}
+	files, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		src, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lines := strings.Split(string(src), "\n")
+		for i, ln := range lines {
+			if !strings.Contains(ln, "callOpenAMP") {
+				continue
+			}
+			// The body literal, which is written just before the call as often as
+			// just inside it.
+			start, end := i-12, i+8
+			if start < 0 {
+				start = 0
+			}
+			if end > len(lines) {
+				end = len(lines)
+			}
+			window := strings.Join(lines[start:end], "\n")
+			for _, id := range seqpalIDs {
+				for _, shape := range []string{`_aid": ` + id, `"aid": ` + id, `"/v1/users/"+` + id} {
+					if strings.Contains(window, shape) {
+						t.Errorf("%s:%d hands a SeqPal account id to the policy server (%s).\n"+
+							"Go through openampAIDFor or enclaveAIDOf: the two ids are the same "+
+							"string only for an ID founded on an OpenAMP account.", f, i+1, id)
+					}
+				}
+			}
+		}
 	}
 }

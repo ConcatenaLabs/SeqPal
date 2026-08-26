@@ -366,7 +366,8 @@ func (s *server) handleDRRedeem(w http.ResponseWriter, r *http.Request) {
 		BurnAtoms uint64 `json:"burn_atoms"`
 	}
 	code, berr := s.callOpenAMPStatus("POST", "/v1/issuer/burn", s.cfg.issuerToken,
-		map[string]any{"asset": iss.AssetID, "holder_aid": holderAID, "atoms": req.Atoms, "fee_mode": "sponsor"}, &built)
+		map[string]any{"asset": iss.AssetID, "holder_aid": s.openampAIDFor(holderAID),
+			"atoms": req.Atoms, "fee_mode": "sponsor"}, &built)
 	if berr != nil {
 		_ = s.st.UpdateDROpFields(op.ID, map[string]any{"state": "failed", "error": berr.Error()})
 		writeErr(w, statusForOpenAMP(code), "burn build failed: %v", berr)

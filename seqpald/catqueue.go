@@ -55,8 +55,10 @@ func (s *server) writeCategories(aid string) ([]string, error) {
 // SeqPal account id it has always had, while the policy server knows only the
 // account derived from the enclave key.
 func (s *server) writeCategoriesFor(claimsAID, enclaveAID string) ([]string, error) {
-	aid := enclaveAID
-	unlock := s.catMu.lock(aid)
+	// Named for what it is: the account the POLICY SERVER holds, which is not the
+	// id the claims are filed under.
+	oaid := enclaveAID
+	unlock := s.catMu.lock(oaid)
 	defer unlock()
 
 	claims, err := s.st.ClaimsByAID(claimsAID)
@@ -71,27 +73,28 @@ func (s *server) writeCategoriesFor(claimsAID, enclaveAID string) ([]string, err
 	// Pre-image: the current openampd list (for the audit record).
 	before := []string{}
 	var cur openampUser
-	if err := s.callOpenAMP("GET", "/v1/users/"+aid, "", nil, &cur); err == nil {
+	if err := s.callOpenAMP("GET", "/v1/users/"+oaid, "", nil, &cur); err == nil {
 		before = append(before, cur.Categories...)
 	}
 
 	if err := s.callOpenAMP("POST", "/v1/issuer/categories", s.cfg.issuerToken,
-		map[string]any{"aid": aid, "categories": newList}, nil); err != nil {
+		map[string]any{"aid": oaid, "categories": newList}, nil); err != nil {
 		return nil, fmt.Errorf("write categories: %w", err)
 	}
 
 	// Verify by re-reading. The write is not considered done until the policy
 	// server confirms it stuck.
 	var after openampUser
-	if err := s.callOpenAMP("GET", "/v1/users/"+aid, "", nil, &after); err != nil {
+	if err := s.callOpenAMP("GET", "/v1/users/"+oaid, "", nil, &after); err != nil {
 		return nil, fmt.Errorf("verify categories: %w", err)
 	}
 	if !sameStringSet(after.Categories, newList) {
 		return nil, fmt.Errorf("category write did not verify: policy server has %v, expected %v", after.Categories, newList)
 	}
 
-	s.st.Audit(aid, "categories.write", map[string]any{
-		"aid": aid, "before": before, "after": newList, "vocab_version": vocabVersion,
+	// Filed against the SeqPal ID, naming the account it was written to.
+	s.st.Audit(claimsAID, "categories.write", map[string]any{
+		"aid": oaid, "before": before, "after": newList, "vocab_version": vocabVersion,
 	})
 	return newList, nil
 }
