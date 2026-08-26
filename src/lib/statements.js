@@ -1,6 +1,6 @@
 // What a SeqPal ID signs, and the exact bytes of it.
 //
-// SeqPal holds no keys. Every signature here is produced by the holder's own
+// SeqPal holds no key that signs any of this. Every signature here is by the holder's own
 // Sequentia wallet (see wallet.js) over a message this module defines, so this
 // file's job is to make the signed bytes reproducible: seqpald recomputes them
 // from the same fields and verifies the signature against the account's
