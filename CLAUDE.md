@@ -118,6 +118,9 @@ rule that catches something that actually breaks.
   address it already has: overwriting a single address column stranded whatever had been sent
   to the one it replaced. An account fee is raised at most once (unique index on
   `aid, kind, subject`), because the page that quotes it polls from several cards at a time.
+  Quoting a rail takes `st.LockFee(invoice)` and re-reads the row first: the quote set is a
+  read-modify-write, so two rails quoted at once would each write a set missing the other's,
+  and a dropped quote is a deposit address nothing watches any more.
 - **A decision that never arrives is CHASED, never waited on forever.** A callback crosses a
   network once, and the process can restart between the submission and the delivery, so
   `runIDVReconcileCron` asks the provider directly about any check outstanding past

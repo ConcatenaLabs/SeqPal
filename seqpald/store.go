@@ -1158,7 +1158,16 @@ WHERE aid != '' AND state = 'paid' AND check_id = '';
 type Store struct {
 	db      *sql.DB
 	auditMu sync.Mutex // serializes the audit chain's read-head/append
+	// Serializes read-modify-write on one fee invoice. Quoting a rail reads what
+	// the invoice already has, adds to it and writes the set back, so two
+	// requests that read before either wrote would each drop the other's quote --
+	// and a dropped quote is a deposit address nothing watches any more.
+	feeMu *keyedMutex
 }
+
+// LockFee serializes work on one fee invoice. Call it before a read that a write
+// depends on, and release with the returned function.
+func (s *Store) LockFee(invoiceID string) func() { return s.feeMu.lock(invoiceID) }
 
 func openStore(path string) (*Store, error) {
 	dsn := "file:" + path + "?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)"
@@ -1172,7 +1181,7 @@ func openStore(path string) (*Store, error) {
 	if err := db.Ping(); err != nil {
 		return nil, err
 	}
-	s := &Store{db: db}
+	s := &Store{db: db, feeMu: newKeyedMutex()}
 	if err := s.migrate(); err != nil {
 		db.Close()
 		return nil, err

@@ -115,6 +115,15 @@ func (s *server) handlePayFee(w http.ResponseWriter, r *http.Request) {
 // address the deposit watcher credits when the payment confirms. ctx names the
 // thing being paid for, and is recorded in the audit entry.
 func (s *server) payInvoiceOnRail(w http.ResponseWriter, acct *Account, inv *FeeInvoice, wanted string, ctx map[string]any) {
+	// One quote at a time on one invoice. Everything below reads what this
+	// invoice already holds for the chosen rail and then writes to it, so two
+	// requests arriving together would each derive a fresh address and one of
+	// them would be forgotten -- and a forgotten address is one nothing watches,
+	// which is what quoting per rail exists to prevent.
+	defer s.st.LockFee(inv.ID)()
+	if fresh, err := s.st.FeeInvoiceByID(inv.ID); err == nil && fresh != nil {
+		*inv = *fresh
+	}
 	audit := func(event string, extra map[string]any) {
 		fields := map[string]any{"invoice": inv.ID}
 		for k, v := range ctx {

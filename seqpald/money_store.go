@@ -737,7 +737,14 @@ func decodeQuotes(s string) map[string]FeeQuote {
 }
 
 // SetFeeQuote records the quote one rail was given, keeping every other rail's.
+// It merges onto what the ROW holds rather than onto the caller's copy, which
+// may have been read before another rail was quoted.
 func (s *Store) SetFeeQuote(inv *FeeInvoice, rail string, q FeeQuote) error {
+	var stored string
+	if err := s.db.QueryRow(`SELECT quotes FROM fee_invoices WHERE id = ?`, inv.ID).Scan(&stored); err != nil {
+		return err
+	}
+	inv.Quotes = decodeQuotes(stored)
 	if inv.Quotes == nil {
 		inv.Quotes = map[string]FeeQuote{}
 	}
