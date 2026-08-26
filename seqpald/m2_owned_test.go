@@ -773,6 +773,14 @@ func TestOwnedEscrowEnclave(t *testing.T) {
 	h := newOWHarness(t)
 	session, issuerAID, _ := h.register(vecPriv2, "Escrow Issuer Co", "HN")
 
+	// The controller verifies first: an entity is verified by the person who
+	// controls it, and an unverified one cannot vouch for a company.
+	if v := h.do("POST", "/api/id/verify", session, map[string]any{
+		"residence": "HN-PRO", "screening_name": "Escrow Issuer Co", "base_eligibility": "ret",
+	}); v.code != 200 {
+		t.Fatalf("controller verify: %d %s", v.code, v.errMsg())
+	}
+
 	// A corporate entity, then KYB verify to provision its treasury enclave.
 	ent := h.do("POST", "/api/entities", session, map[string]any{"name": "Acme Holdings", "jurisdiction": "HN"})
 	if ent.code != 200 {

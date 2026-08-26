@@ -381,6 +381,57 @@ func (s *server) handleEntityVerify(w http.ResponseWriter, r *http.Request) {
 	var req entityVerifyReq
 	_ = readJSON(r, &req)
 
+	// The person doing this is the entity's controller, and approving a KYB
+	// provisions a treasury enclave. An identity that is parked for review or
+	// refused could otherwise route straight around its own refusal: make a
+	// company, verify the company, hold assets in the company's treasury.
+	controller, err := s.st.ClaimsByAID(acct.AID)
+	if err != nil {
+		writeErr(w, 500, "store error")
+		return
+	}
+	if !eligibilityLive(controller, time.Now().Unix()) {
+		s.st.Audit(acct.AID, "entity.verify.refused", map[string]any{
+			"entity_id": id, "reason": "the controlling identity is not verified",
+		})
+		writeErr(w, 403, "an entity is verified by the person who controls it, and this SeqPal ID "+
+			"is not verified. Verify your own identity first")
+		return
+	}
+
+	// An entity has a name, and a sanctions list has entities on it -- most of
+	// the EU consolidated list's rows are marked "enterprise" rather than
+	// "person". Only the personal path screened, so a listed company could be
+	// approved and handed a treasury while a listed person could not get past
+	// verification.
+	if !s.screen.ready() {
+		writeErr(w, 503, "sanctions screening is still loading on this instance; try again in a moment")
+		return
+	}
+	var entityHits []ScreeningResult
+	for _, rslt := range s.screen.Screen(e.Name) {
+		_ = s.st.UpsertScreening(acct.AID, rslt)
+		if rslt.Matched {
+			entityHits = append(entityHits, rslt)
+		}
+	}
+	if len(entityHits) > 0 {
+		for _, h := range entityHits {
+			rid, _ := randHex(12)
+			_ = s.st.InsertReview(&ReviewItem{
+				ID: rid, AID: acct.AID, List: h.List, MatchedEntry: h.MatchedEntry,
+				State: "pending", Disposition: s.screen.disposition(h.List, h.MatchedEntry),
+				CreatedAt: time.Now().Unix(),
+			})
+		}
+		s.st.Audit(acct.AID, "entity.verify.refused", map[string]any{
+			"entity_id": id, "reason": "sanctions name match on the entity", "lists": listsOf(entityHits),
+		})
+		writeErr(w, 409, "this entity's name matches a sanctions list, so nothing was provisioned "+
+			"for it. A reviewer decides whether it is the same entity or a false positive")
+		return
+	}
+
 	// KYB approval mints the entity a treasury enclave: its own key (custodied by
 	// seqpald) registered with openampd. This is the entity treasury AID that goes
 	// into rules.primary_aids for the entity's offerings.
