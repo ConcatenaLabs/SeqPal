@@ -234,3 +234,34 @@ func newKeyEchoNode(t *testing.T) *httptest.Server {
 	t.Cleanup(srv.Close)
 	return srv
 }
+
+// The other half of naming a holding key: one the account CAN sign with is
+// taken. Deriving it means asking the node about a descriptor that makes a
+// single address, which takes no range -- and asking for one is an error, not
+// an empty answer, so every key was refused as deriving from nothing.
+func TestANamedHoldingKeyFromALinkedWalletIsTaken(t *testing.T) {
+	h := newHarness(t)
+	h.s.cfg.damp = true
+	h.s.cfg.nodeURL = newWalletNode(t, true).URL
+	h.s.screen = newScreener("")
+	session, aid := walletSession(t, h, testPKH)
+
+	iss := seedIssuanceOfKind(t, h.s, aid, "network")
+	if err := h.s.st.UpdateIssuanceFields(iss.ID, map[string]any{"status": "draft"}); err != nil {
+		t.Fatal(err)
+	}
+	res := h.do("POST", "/api/deploy", session, map[string]any{
+		"issuance_id": iss.ID, "enforcement": "network", "supply": 1000, "precision": 0,
+		"holder_key": strings.Repeat("d", 64),
+	})
+	// The stub node derives one address for every descriptor, so this key does
+	// belong to the wallet. What matters is that the holding key was ACCEPTED:
+	// the deploy gets as far as the policy server, which this harness does not
+	// stand up, rather than being refused as a key from no wallet of theirs.
+	if res.code == 403 {
+		t.Fatalf("a key the account's wallet derives must be taken, not refused: %s", res.raw)
+	}
+	if msg, _ := res.body["error"].(string); strings.Contains(msg, "does not derive") {
+		t.Fatalf("the holding key was refused as underivable: %q", msg)
+	}
+}
