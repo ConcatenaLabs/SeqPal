@@ -36,8 +36,6 @@ import (
 // refusal tells them to sign instead rather than silently failing.
 const whitelistScanWindow = 200
 
-const whitelistRequestTag = "seqpal-whitelist-request-v1"
-
 // How long a refusal stands before the same holder may ask again about the same
 // token. Long enough that asking is a considered act rather than a reflex, short
 // enough that a holder whose circumstances changed is not shut out.

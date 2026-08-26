@@ -120,6 +120,16 @@ native-BTC escrow rail is off unless `SEQPALD_BTC_RPC_URL` is set.
 | `SEQPALD_REPORT_SECS` | `31536000` | annual report cadence. A value below 1 second falls back to the default: a ticker cannot run a non-positive cadence |
 | `SEQPALD_WALLET_POLL_SECS` | `15` | escrow wallet poll cadence. A value below 1 second falls back to the default: a ticker cannot run a non-positive cadence |
 
+## 1b. Checks before a deploy
+
+    cd seqpald && go vet ./... && go test ./...
+    go run honnef.co/go/tools/cmd/staticcheck@latest ./...
+
+`staticcheck` is clean, so anything it reports is something this change
+introduced. It is what found a signing tag left behind by a removed feature,
+which is the kind of dead code that reads as security-relevant to the next
+person.
+
 ## 2. Pre-deploy probe
 
 Always, from the laptop or the box:

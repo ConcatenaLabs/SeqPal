@@ -51,7 +51,6 @@ type supNode struct {
 	submits     int                          // submitsupervisionrecord calls
 	failPrivate bool
 	recHashN    int // getsupervisionrecordhash calls
-	mu          sync.Mutex
 }
 
 func newSupNode(n *fakeNode) *supNode {
@@ -116,9 +115,7 @@ func (sn *supNode) dispatch(method string, params []json.RawMessage) (any, int, 
 		var outputs map[string]json.RawMessage
 		json.Unmarshal(params[1], &outputs)
 		tx := &supTx{}
-		for _, in := range inputs {
-			tx.vins = append(tx.vins, in)
-		}
+		tx.vins = append(tx.vins, inputs...)
 		// data/addr outputs first, fee LAST (as consensus requires).
 		for k := range outputs {
 			switch k {

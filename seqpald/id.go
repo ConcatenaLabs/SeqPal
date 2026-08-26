@@ -199,21 +199,6 @@ func (s *server) submitVerification(aid, kind, name, entityID string) (*Verifica
 	return check, nil
 }
 
-// personaDisposition is the SIMULATED document-review outcome, made deterministic
-// by name so demos and tests run unattended. The default is approval; the refusal
-// personas exist so the rejected/needs-info states are demonstrable.
-func personaDisposition(name string) string {
-	u := strings.ToUpper(name)
-	switch {
-	case strings.Contains(u, "REVIEW-REJECT"):
-		return "reject"
-	case strings.Contains(u, "REVIEW-NEEDSINFO"):
-		return "needs_info"
-	default:
-		return "approve"
-	}
-}
-
 // signClaims produces the seqpald-signed claims record. The signature is over the
 // canonical {aid, residence, eligibility, verifiedAt, valid_until} tuple that
 // drives category assignment, using the platform claims-signing key.
