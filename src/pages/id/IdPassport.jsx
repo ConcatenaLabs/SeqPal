@@ -174,7 +174,11 @@ export default function IdPassport() {
         {/* Categories */}
         <Section
           title="Eligibility categories"
-          sub="Compound tokens the policy server checks on every transfer. An expired identity carries none."
+          sub={
+            p.has_enclave
+              ? 'Compound tokens the policy server checks on every transfer. An expired identity carries none.'
+              : 'Compound tokens that say what you are eligible for. SeqPal holds them for this ID and checks them wherever they apply; attaching an OpenAMP account also puts them where restricted-asset transfers are checked. An expired identity carries none.'
+          }
         >
           {p.categories?.length ? (
             <div className="space-y-2">
