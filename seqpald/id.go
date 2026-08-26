@@ -327,9 +327,14 @@ func (s *server) handleIDPassport(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{
 		// What kind of account this is, so the passport can stop calling a
 		// wallet-backed id an enclave account id.
-		"identity":       acct.Identity,
-		"has_enclave":    s.hasEnclave(acct),
-		"aid":            acct.AID,
+		"identity":    acct.Identity,
+		"has_enclave": s.hasEnclave(acct),
+		"aid":         acct.AID,
+		// The account the POLICY SERVER knows this ID by. The same id for an ID
+		// founded on an OpenAMP account, and a different one for an ID founded as
+		// a wallet that attached one later -- so a holder quoting "their AID" to a
+		// venue needs to be shown which is which, not one labelled as the other.
+		"enclave_aid":    s.enclaveAIDOf(acct),
 		"enclave_key":    acct.XOnly,
 		"status":         status,
 		"categories":     cats,
