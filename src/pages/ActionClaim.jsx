@@ -131,7 +131,7 @@ export default function ActionClaim() {
         return
       }
       const signature = await signHoldingStmt(fields)
-      if (!signature) throw new Error('Connect your Sequentia wallet to sign the holding proof.')
+      if (!signature) throw new Error('Your wallet did not return a signature, so nothing was claimed.')
       const res = await api.claimAction(id, {
         pubkey,
         outpoints: sorted,

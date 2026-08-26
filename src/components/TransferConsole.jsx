@@ -165,7 +165,7 @@ export default function TransferConsole({ holdings }) {
   const complete = async () => {
     setErr(null)
     if (!hasKey) {
-      setErr('Connect your Sequentia wallet to sign the transfer.')
+      setErr('This transfer is co-signed by a wallet that verifies the transaction it signs, which is the browser extension. Sign in with it to complete this.')
       return
     }
     setBusy(true)
@@ -181,7 +181,7 @@ export default function TransferConsole({ holdings }) {
         return
       }
       if (!sigs) {
-        setErr('Connect your Sequentia wallet to sign the transfer.')
+        setErr('Your wallet did not return a signature, so nothing was transferred.')
         return
       }
       const res = await api.completeTransfer(built.transfer_id, { sigs })

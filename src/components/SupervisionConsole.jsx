@@ -127,7 +127,7 @@ export default function SupervisionConsole({ iss }) {
   const complete = async () => {
     setErr(null)
     if (!hasKey) {
-      setErr('Connect your Sequentia wallet to sign. Nothing takes effect until you sign.')
+      setErr('This freeze is signed by the supervision key held in the browser extension. Nothing takes effect until you sign.')
       return
     }
     setBusy('sign')
@@ -140,7 +140,7 @@ export default function SupervisionConsole({ iss }) {
         return
       }
       if (!sig) {
-        setErr('Connect your Sequentia wallet to sign.')
+        setErr('Your wallet did not return a signature, so nothing takes effect.')
         return
       }
       await api.supervisionComplete(iss.id, pending.action, pending.op_id, { sig })
@@ -288,7 +288,7 @@ export default function SupervisionConsole({ iss }) {
             </div>
             {!hasKey && (
               <p className="mt-2 text-xs font-medium text-amber-700">
-                Connect your Sequentia wallet to sign. Cancelling leaves everything unchanged.
+                This is signed with the supervision key held in the browser extension. Cancelling leaves everything unchanged.
               </p>
             )}
           </div>

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Icon } from './icons'
 import { Badge } from './ui'
 import * as api from '../lib/api'
+import OfflineSignature from './OfflineSignature'
 import { usePoll } from '../lib/poll'
 import { useStore } from '../lib/store'
 import { canonicalJSON } from '../lib/openamp'
@@ -22,6 +23,10 @@ export default function ListingCard({ iss }) {
   const [sign, setSign] = useState(false)
   const [busy, setBusy] = useState(null) // 'grant' | 'revoke' | null
   const [err, setErr] = useState(null)
+  // A SeqPal ID that is only a wallet signs this elsewhere and pastes it back.
+  // The statement is the same either way; only where it gets signed differs.
+  const [prep, setPrep] = useState(null)
+  const [sig, setSig] = useState('')
 
   const parseVenues = () =>
     venues
@@ -36,22 +41,42 @@ export default function ListingCard({ iss }) {
       const vs = parseVenues()
       const body = { authorized, venues: vs }
       if (sign && authorized) {
-        if (!hasKey) {
-          setErr('Connect your Sequentia wallet to sign the authorization, or grant it unsigned.')
-          return
-        }
         // The exact canonical bytes seqpald verifies (listings.go listingStatement),
-        // signed TAGGED with the issuer's own key.
+        // signed TAGGED with the issuer's own key, or as an ordinary message with
+        // the tag on the line above -- which is the same commitment written out.
         const statement = canonicalJSON({ role: 'listing', asset: iss.assetId, authorized, venues: vs })
-        const sig = await signWithKey(LISTING_TAG, statement)
-        if (!sig) {
-          setErr('Connect your Sequentia wallet to sign the authorization, or grant it unsigned.')
+        if (!hasKey) {
+          setPrep({ sign_this_message: LISTING_TAG + '\n' + statement })
           return
         }
-        body.signature = sig
+        const signature = await signWithKey(LISTING_TAG, statement)
+        if (!signature) {
+          setErr('Your wallet did not return a signature. Grant it unsigned, or try again.')
+          return
+        }
+        body.signature = signature
         body.signer_xonly = xonly
       }
       await api.grantListing(iss.id, body)
+      refresh()
+    } catch (e) {
+      setErr(e.message)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const submitSigned = async () => {
+    setErr(null)
+    setBusy('grant')
+    try {
+      await api.grantListing(iss.id, {
+        authorized: true,
+        venues: parseVenues(),
+        signature: sig.trim(),
+      })
+      setSig('')
+      setPrep(null)
       refresh()
     } catch (e) {
       setErr(e.message)
@@ -135,6 +160,14 @@ export default function ListingCard({ iss }) {
         </label>
 
         {err && <p className="text-sm font-medium text-rose-600">{err}</p>}
+        <OfflineSignature
+          prep={prep}
+          sig={sig}
+          onSig={setSig}
+          onSubmit={submitSigned}
+          busy={busy === 'grant'}
+          label="Grant the signed authorization"
+        />
 
         <div className="flex flex-wrap gap-2">
           <button onClick={() => submit(true)} disabled={!!busy} className="btn-primary disabled:opacity-60">
