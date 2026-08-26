@@ -73,6 +73,13 @@ rule that catches something that actually breaks.
   signed message from that key), or a verified holder could launder eligibility onto somebody
   else's key. Approving is a decision; `included` is only ever set when a published policy
   change carried the key (`noteWhitelistInclusions`, unfreeze only -- a freeze REMOVES keys).
+- **A compliance action must bind every kind of SeqPal ID.** The policy server only knows
+  accounts with an OpenAMP key, so `callOpenAMP` fails for an ID that is only a wallet -- and
+  a caller that returns on that error has skipped whatever came after it. A confirmed sanctions
+  match did exactly that and left the identity verified. Refuse the CLAIMS record first (it is
+  what every eligibility read consults, it only ever restricts, and it is the sole enforcement
+  such an ID has), then go to the policy server through `freezeAtPolicyServer` /
+  `stampCategories`, which report "there was nothing there" rather than failing.
 - **A stored descriptor cannot be derived from without canonicalising it first.**
   `toPKH` drops the checksum (it covered different text), and `deriveaddresses` refuses a
   descriptor with no checksum. Go through `pkhForm`. Three callers did not, and because each

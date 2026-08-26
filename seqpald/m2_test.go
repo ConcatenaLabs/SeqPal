@@ -429,3 +429,43 @@ func dup(n int) string {
 	}
 	return string(b)
 }
+
+// A confirmed sanctions match has to bind whatever kind of SeqPal ID it lands
+// on. The freeze it used to do first is a policy-server action, and a SeqPal ID
+// that is only a wallet has no account there -- so the call failed, the function
+// returned on the error, and the claims were never refused. The identity stayed
+// verified and eligible, which is the one outcome a sanctions control must never
+// produce.
+func TestASanctionsConfirmationRefusesAWalletBackedID(t *testing.T) {
+	h := newHarness(t)
+	h.s.cfg.nodeURL = newWalletNode(t, true).URL
+	h.s.screen = newScreener("")
+	session, aid := walletSession(t, h, testPKH)
+	if v := h.do("POST", "/api/id/verify", session, map[string]any{
+		"residence": "AE", "screening_name": "Wallet Wendy", "base_eligibility": "ret",
+	}); v.code != 200 {
+		t.Fatalf("verify: %d %s", v.code, v.raw)
+	}
+	if c, _ := h.s.st.ClaimsByAID(aid); c == nil || c.Status != "verified" {
+		t.Fatalf("the holder must start verified, got %v", c)
+	}
+
+	item := &ReviewItem{
+		ID: mustID(), AID: aid, List: "OFAC SDN", MatchedEntry: "WENDY, Wallet",
+		State: "pending", CreatedAt: time.Now().Unix(),
+	}
+	if err := h.s.st.InsertReview(item); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.s.decideReview(item, "confirm", "auditor", ""); err != nil {
+		t.Fatalf("confirming a match must not fail on an account the policy server never had: %v", err)
+	}
+
+	c, _ := h.s.st.ClaimsByAID(aid)
+	if c == nil || c.Status != "refused" {
+		t.Fatalf("a confirmed match must refuse the identity, got %v", c)
+	}
+	if eligibilityLive(c, time.Now().Unix()) {
+		t.Fatal("a refused identity must not be eligible for anything")
+	}
+}
