@@ -636,3 +636,41 @@ func TestAMatchCannotBeReVerifiedAway(t *testing.T) {
 		t.Fatalf("re-verifying a refused identity must be refused, got %d %s", third.code, third.raw)
 	}
 }
+
+// An instance whose sanctions lists have not loaded finds no match against
+// anybody. Screening is the whole of what verification decides, so answering
+// "clean" from a fixture is not a degraded answer -- it is the wrong one, and
+// it grants eligibility. On the live service the process listened 29 seconds
+// before its lists finished loading, and a listed name verified inside that
+// window.
+func TestVerificationWaitsForTheRealLists(t *testing.T) {
+	h := newHarness(t)
+	h.s.cfg.nodeURL = newWalletNode(t, true).URL
+	h.s.screen = newScreener("")
+	session, aid := walletSession(t, h, testPKH)
+
+	// An instance configured to keep the lists somewhere, which has not got them.
+	h.s.screen.mu.Lock()
+	h.s.screen.loaded = false
+	h.s.screen.mu.Unlock()
+
+	res := h.do("POST", "/api/id/verify", session, map[string]any{
+		"residence": "AE", "screening_name": "Wallet Wendy", "base_eligibility": "ret",
+	})
+	if res.code != 503 {
+		t.Fatalf("verification must wait for the lists, got %d %s", res.code, res.raw)
+	}
+	if c, _ := h.s.st.ClaimsByAID(aid); c != nil && eligibilityLive(c, time.Now().Unix()) {
+		t.Fatal("nothing may be granted while the lists are missing")
+	}
+
+	// Once they are there it proceeds as normal.
+	h.s.screen.mu.Lock()
+	h.s.screen.loaded = true
+	h.s.screen.mu.Unlock()
+	if ok := h.do("POST", "/api/id/verify", session, map[string]any{
+		"residence": "AE", "screening_name": "Wallet Wendy", "base_eligibility": "ret",
+	}); ok.code != 200 {
+		t.Fatalf("verify: %d %s", ok.code, ok.raw)
+	}
+}

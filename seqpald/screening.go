@@ -72,6 +72,10 @@ type screener struct {
 	cacheDir     string
 	refreshedAt  time.Time
 	client       *http.Client
+	// Whether the name sets are the real lists rather than the bundled test
+	// fixture. An instance told where to cache the lists is expected to have
+	// them, and must not decide anyone is clean until it does.
+	loaded bool
 }
 
 func newScreener(cacheDir string) *screener {
@@ -84,7 +88,48 @@ func newScreener(cacheDir string) *screener {
 		client: &http.Client{Timeout: 3 * time.Minute},
 	}
 	sc.loadFixture()
+	// The lists on disk are the ones this instance last downloaded, and reading
+	// them costs a second. Without this the process came up screening against
+	// the bundled fixture -- which is to say, against almost nobody -- and kept
+	// doing so until the first refresh finished, half a minute later, granting
+	// eligibility to anyone who verified in between.
+	sc.loadCache()
+	// With nowhere to cache, this is a test or an offline demo: the fixture is
+	// the documented stand-in and there is nothing to wait for.
+	if cacheDir == "" {
+		sc.loaded = true
+	}
 	return sc
+}
+
+// loadCache seeds the name sets from the last successful download of each list.
+func (sc *screener) loadCache() {
+	for _, list := range sanctionsLists {
+		body := sc.readCache(list)
+		if body == nil {
+			continue
+		}
+		names := parseSanctions(list, body)
+		if len(names) == 0 {
+			continue
+		}
+		sc.mu.Lock()
+		for _, n := range names {
+			sc.names[list][normalizeName(n)] = true
+		}
+		total := len(sc.names[list])
+		sc.loaded = true
+		sc.mu.Unlock()
+		log.Printf("screening: %s loaded from cache, %d names on file", list, total)
+	}
+}
+
+// ready reports whether this instance is screening against the real lists. An
+// instance that is not has no business deciding an identity is clean.
+func (sc *screener) ready() bool {
+	sc.mu.RLock()
+	defer sc.mu.RUnlock()
+	return sc.loaded
 }
 
 func (sc *screener) loadFixture() {
@@ -139,6 +184,7 @@ func (sc *screener) Refresh() {
 			sc.names[list][normalizeName(n)] = true
 		}
 		total := len(sc.names[list])
+		sc.loaded = true
 		sc.mu.Unlock()
 		log.Printf("screening: %s refreshed, %d names on file", list, total)
 	}
