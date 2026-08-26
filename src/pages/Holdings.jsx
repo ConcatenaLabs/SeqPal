@@ -21,7 +21,7 @@ import { fmtAssetAmount } from '../lib/format'
 // treasury). A position delivered to a holder through another issuer's portal
 // has no id we can enumerate here, so it is absent rather than faked.
 export default function Holdings() {
-  const { loading, isSignedIn, account, issuances, watchFor } = useStore()
+  const { loading, isSignedIn, account, issuances, watchFor, hasEnclave } = useStore()
   const [rows, setRows] = useState(null) // null = loading
 
   useEffect(() => {
@@ -76,11 +76,21 @@ export default function Holdings() {
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight text-ink-900">My holdings</h1>
           <p className="mt-1 text-ink-700/80">
-            On-chain balances for your enclave account,{' '}
-            <span className="font-mono text-sm">
-              {account.aid.slice(0, 8)}…{account.aid.slice(-6)}
-            </span>
-            .
+            {hasEnclave ? (
+              <>
+                On-chain balances for your enclave account,{' '}
+                <span className="font-mono text-sm">
+                  {account.aid.slice(0, 8)}…{account.aid.slice(-6)}
+                </span>
+                .
+              </>
+            ) : (
+              <>
+                This page shows balances held in an OpenAMP account. This SeqPal ID has none
+                attached, so there is nothing here to show; freely-tradable stocks and
+                network-enforced assets live in your own wallet, which is where you see them.
+              </>
+            )}
           </p>
         </div>
         <Link to="/id" className="btn-outline">
@@ -101,9 +111,18 @@ export default function Holdings() {
             </div>
             <h3 className="mt-5 text-lg font-bold text-ink-900">No holdings yet</h3>
             <p className="mt-2 max-w-md text-sm leading-relaxed text-ink-700/80">
-              This account holds no SeqPal-managed asset that the policy server can see. When
-              you deploy an asset it mints into this enclave and appears here. A position you
-              received through another issuer's portal is not enumerated on this page.
+              {hasEnclave ? (
+                <>
+                  This account holds no SeqPal-managed asset that the policy server can see. When
+                  you deploy an asset it mints into this enclave and appears here. A position you
+                  received through another issuer&rsquo;s portal is not enumerated on this page.
+                </>
+              ) : (
+                <>
+                  Nothing settles here for a SeqPal ID with no OpenAMP account attached. What you
+                  hold in your own wallet is shown by that wallet, not by this page.
+                </>
+              )}
             </p>
             <Link to="/dashboard" className="btn-primary mt-6">
               Go to the issuer dashboard

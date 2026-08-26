@@ -283,6 +283,10 @@ func (s *server) handleIDPassport(w http.ResponseWriter, r *http.Request) {
 	// Where the ID is accepted: which SeqPal-managed assets this holder is
 	// eligible for right now (advisory), and which venues honor the credential.
 	height := s.tipHeight()
+	// These are OpenAMP restricted assets: eligibility for them is real and stays
+	// real, but receiving one needs an enclave account. An ID without one clears
+	// the rules and still cannot hold any of them, so the list says so rather
+	// than reading as access it does not have.
 	eligibleAssets := s.eligibleAssetsFor(user.Categories, user.Frozen, height)
 
 	writeJSON(w, 200, map[string]any{

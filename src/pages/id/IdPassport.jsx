@@ -281,6 +281,17 @@ export default function IdPassport() {
           sub="Which SeqPal-managed assets you are eligible for right now, and which venues honor the credential."
         >
           <div className="space-y-2">
+            {/* Eligibility for these is real and stays real. Holding one is a
+                separate question: they settle in an OpenAMP account, and an ID
+                without one clears the rules and still cannot receive them.
+                Saying "eligible" alone would promise access this ID does not
+                have. */}
+            {!p.has_enclave && (p.accepted?.assets || []).length > 0 && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-900">
+                Your eligibility clears these, and it will still clear them later. Receiving one
+                needs an OpenAMP account, which this SeqPal ID does not have attached yet.
+              </div>
+            )}
             {(p.accepted?.assets || []).length === 0 && (
               <div className="rounded-xl border border-dashed border-ink-900/20 px-4 py-6 text-center text-sm text-ink-700/60">
                 No SeqPal-managed assets are live yet.
