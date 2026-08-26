@@ -208,8 +208,13 @@ func (s *server) handleP2PInitiate(w http.ResponseWriter, r *http.Request) {
 		} `json:"to_sign"`
 	}
 	body := map[string]any{
-		"asset": asset, "sender_aid": acct.AID, "recipient_aid": toAID,
-		"atoms": req.Atoms, "fee_mode": "sponsor",
+		// Both parties are named to the POLICY SERVER, which knows a holder by the
+		// account their enclave key derives. A SeqPal id is only the same string
+		// for an ID founded on an enclave, so a transfer between two IDs founded
+		// as wallets named two accounts openampd has never heard of.
+		"asset": asset, "sender_aid": s.enclaveAIDOf(acct),
+		"recipient_aid": s.openampAIDFor(toAID),
+		"atoms":         req.Atoms, "fee_mode": "sponsor",
 		// Pass-through: openampd blinds the transfer when true (the recipient leg
 		// uses a blinded address it derives for the beneficiary's enclave).
 		"confidential": req.Confidential,
