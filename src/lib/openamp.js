@@ -17,7 +17,13 @@ async function j(res) {
   } catch {
     body = { error: text }
   }
-  if (!res.ok) throw new Error(body.error || `${res.status} ${res.statusText}`)
+  if (!res.ok) {
+    // Carry the status: a caller distinguishing "no such account" from "the
+    // policy server is unwell" cannot do it from the message text alone.
+    const err = new Error(body.error || `${res.status} ${res.statusText}`)
+    err.status = res.status
+    throw err
+  }
   return body
 }
 
@@ -28,6 +34,12 @@ export const getAsset = (id) => fetch(`${OPENAMP_API}/assets/${encodeURIComponen
 export const listAssets = () => fetch(`${OPENAMP_API}/assets`).then(j)
 
 // { aid, asset, atoms, utxos }. Confirmed balances only.
+// The account record for an account id: { aid, pubkeys[] }, where pubkeys[0] is
+// the active enclave key. Used to turn an account id a holder pasted into the
+// key SeqPal must challenge; the caller re-derives the id from that key before
+// trusting it.
+export const getUser = (aid) => fetch(`${OPENAMP_API}/users/${encodeURIComponent(aid)}`).then(j)
+
 export const getBalance = (aid, asset) =>
   fetch(
     `${OPENAMP_API}/users/${encodeURIComponent(aid)}/balance?asset=${encodeURIComponent(asset)}`

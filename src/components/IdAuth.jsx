@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Icon } from './icons'
 import { useStore } from '../lib/store'
-import { isXonly } from '../lib/statements'
+import { computeAID, isAid, isXonly } from '../lib/statements'
+import * as oamp from '../lib/openamp'
 import * as wallet from '../lib/wallet'
 import { RESIDENCE_OPTIONS } from '../data/jurisdictions'
 
@@ -160,41 +161,90 @@ function NewAccount({ identity, onDone }) {
 /* ───────────────────────── linking a wallet by hand ──────────────────────── */
 
 function LinkWallet({ onIdentity, onBack, busy }) {
-  const [xonly, setXonly] = useState('')
-  const value = xonly.trim().toLowerCase()
+  const [entry, setEntry] = useState('')
+  const [err, setErr] = useState(null)
+  const [resolving, setResolving] = useState(false)
+  const value = entry.trim().toLowerCase()
+  const known = isAid(value) || isXonly(value)
+
+  // Wallets show the account id far more prominently than the key it is derived
+  // from, so both are accepted. An account id is resolved to its key through the
+  // policy server, and then CHECKED: the id is re-derived from the key returned
+  // and must match what was pasted, so a wrong or substituted key is caught here
+  // rather than at a signature that mysteriously fails to verify.
+  const submit = async () => {
+    setErr(null)
+    if (isXonly(value)) {
+      onIdentity({ kind: 'linked', xonly: value, aid: computeAID([value]) })
+      return
+    }
+    setResolving(true)
+    try {
+      const user = await oamp.getUser(value)
+      const xonly = (user?.pubkeys || [])[0]
+      if (!isXonly(xonly)) {
+        throw new Error('The policy server has no account key registered for that account id.')
+      }
+      if (computeAID([xonly]) !== value) {
+        throw new Error('That account id does not match the key the policy server returned for it. Nothing was linked.')
+      }
+      onIdentity({ kind: 'linked', xonly, aid: value })
+    } catch (e) {
+      setErr(
+        e?.status === 404
+          ? 'No account with that id is registered with the policy server yet. Receive a restricted asset in that wallet first, or paste the account key instead.'
+          : e.message
+      )
+    } finally {
+      setResolving(false)
+    }
+  }
+
+  // Say what is wrong with what is actually in the box. A disabled button that
+  // explains nothing is the reason someone pastes the right thing from the wrong
+  // screen and has no way to find out.
+  const hint = () => {
+    if (!value) return null
+    if (known) return null
+    if (!/^[0-9a-f]+$/.test(value)) return 'That does not look like hex. Paste the value your wallet shows, with nothing around it.'
+    return `That is ${value.length} hex characters. An account id is 40, and an account key is 64.`
+  }
+  const problem = hint()
+
   return (
     <div className="space-y-4">
       <p className="text-sm leading-relaxed text-ink-700/80">
-        Any Sequentia wallet works. Find your account key, the x-only public key your wallet
-        derives at <span className="font-mono text-xs">m/5/0</span>, shown wherever it lists
-        your restricted-asset account, and paste it here. SeqPal will ask that wallet to sign a
-        challenge to prove you hold it, and will ask it again for every statement you sign
-        afterwards.
+        Any Sequentia wallet works. Paste the <strong>account id</strong> your wallet shows for
+        your restricted-asset account. SeqPal looks up the account key that belongs to it, then
+        asks that wallet to sign a challenge to prove you hold it, and asks it again for every
+        statement you sign afterwards.
       </p>
       <Field
-        id="link-xonly"
-        label="Your OpenAMP account key (x-only, 64 hex)"
-        hint="A public key. It is safe to paste, and it is all SeqPal keeps."
+        id="link-aid"
+        label="Your restricted-asset account id"
+        hint="40 hex characters, and public: it is the same id you give a sender to receive a restricted asset. If your wallet shows you the 64-hex account key instead, that works too."
       >
         <input
-          id="link-xonly"
+          id="link-aid"
           className="input font-mono text-xs"
           spellCheck={false}
-          placeholder="0000…"
-          value={xonly}
-          onChange={(e) => setXonly(e.target.value)}
+          placeholder="account id"
+          value={entry}
+          onChange={(e) => setEntry(e.target.value)}
         />
       </Field>
+      {problem && <p className="text-xs leading-relaxed text-amber-700">{problem}</p>}
+      <ErrorNote>{err}</ErrorNote>
       <div className="flex gap-3">
         <button
-          onClick={() => onIdentity({ kind: 'linked', xonly: value, aid: null })}
-          disabled={busy || !isXonly(value)}
+          onClick={submit}
+          disabled={busy || resolving || !known}
           className="btn-primary flex-1 disabled:opacity-50"
         >
-          {busy ? (
+          {busy || resolving ? (
             <>
               <Spinner />
-              Verifying
+              {resolving ? 'Looking up that account' : 'Verifying'}
             </>
           ) : (
             'Link this wallet'
