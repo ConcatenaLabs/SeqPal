@@ -23,8 +23,11 @@ var sanctionsLists = []string{"ofac_sdn", "ofac_consolidated", "eu_consolidated"
 var sanctionsSources = map[string]string{
 	"ofac_sdn":          "https://www.treasury.gov/ofac/downloads/sdn.csv",
 	"ofac_consolidated": "https://www.treasury.gov/ofac/downloads/consolidated/cons_prim.csv",
-	"eu_consolidated":   "https://webgate.ec.europa.eu/europeaid/fsd/fsf/public/files/csvFullSanctionsList/content",
-	"un_sc":             "https://scsanctions.un.org/resources/xml/en/consolidated.xml",
+	// The europeaid path redirects, and the redirect ends in a 403: this list has
+	// never actually downloaded. The public token endpoint below is the one the
+	// EU serves the consolidated list from, and it answers 200.
+	"eu_consolidated": "https://webgate.ec.europa.eu/fsd/fsf/public/files/csvFullSanctionsList_1_1/content?token=dG9rZW4tMjAxNw",
+	"un_sc":           "https://scsanctions.un.org/resources/xml/en/consolidated.xml",
 }
 
 // fixtureList seeds each list with at least the deterministic TEST personas, so
@@ -76,7 +79,9 @@ func newScreener(cacheDir string) *screener {
 		names:        map[string]map[string]bool{},
 		dispositions: map[string]map[string]string{},
 		cacheDir:     cacheDir,
-		client:       &http.Client{Timeout: 30 * time.Second},
+		// The EU list is 25MB, and 30 seconds did not always cover it even when
+		// the URL was right.
+		client: &http.Client{Timeout: 3 * time.Minute},
 	}
 	sc.loadFixture()
 	return sc
@@ -122,13 +127,20 @@ func (sc *screener) Refresh() {
 		}
 		names := parseSanctions(list, body)
 		if len(names) == 0 {
+			// A source that downloads but yields no names is a parser that no
+			// longer matches the file, and it leaves this list at the bundled
+			// fixture -- which is to say, not screening. Silence made that
+			// indistinguishable from a list that simply had nothing new.
+			log.Printf("screening: %s downloaded but parsed to no names; leaving it at cached/fixture", list)
 			continue
 		}
 		sc.mu.Lock()
 		for _, n := range names {
 			sc.names[list][normalizeName(n)] = true
 		}
+		total := len(sc.names[list])
 		sc.mu.Unlock()
+		log.Printf("screening: %s refreshed, %d names on file", list, total)
 	}
 	sc.mu.Lock()
 	sc.refreshedAt = time.Now()
@@ -226,6 +238,11 @@ var xmlNameTag = regexp.MustCompile(`(?is)<(?:WHOLE_NAME|FULL_NAME|NAME_ORIGINAL
 // element; the EU CSV is semicolon-delimited with the name in an early field.
 // This is best-effort by design: unparsed real entries just do not screen, the
 // fixture personas always do, and the refusal path is real.
+// Which field of the EU consolidated CSV carries the name. The file is wide (118
+// columns) and its first sixteen describe the designation rather than the
+// person, so this is not a number to guess at: it is NameAlias_WholeName.
+const euWholeNameField = 19
+
 func parseSanctions(list string, body []byte) []string {
 	text := string(body)
 	switch list {
@@ -238,7 +255,14 @@ func parseSanctions(list string, body []byte) []string {
 		}
 		return out
 	case "eu_consolidated":
-		return parseDelimited(text, ';', 8)
+		// Semicolon-delimited, with a header row. The name is NameAlias_WholeName;
+		// field 8 is Entity_SubjectType_ClassificationCode, which is the literal
+		// word "person" or "enterprise" on every row -- a list of those matches
+		// nobody, which is what this screened against for as long as it was set.
+		if i := strings.IndexByte(text, '\n'); i >= 0 {
+			text = text[i+1:]
+		}
+		return parseDelimited(text, ';', euWholeNameField)
 	default: // ofac_sdn, ofac_consolidated
 		return parseDelimited(text, ',', 1)
 	}
