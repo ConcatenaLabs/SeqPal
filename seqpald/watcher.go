@@ -101,6 +101,21 @@ func (s *server) watchTickAll() {
 	}
 }
 
+// watchMilestone is the part of a watch state whose change is an EVENT: the
+// status it reports, the block it landed in, the Bitcoin header it is anchored
+// to, and whether it is anchored at all. A confirmation count is not in here on
+// purpose -- it changes every block, for every watched issuance, forever.
+//
+// A reorg shows up as the block hash or the anchor hash changing under a
+// constant status, which is exactly the thing the books have to carry, so both
+// are here rather than status alone.
+type watchMilestone struct {
+	status     string
+	blockHash  string
+	anchorHash string
+	anchored   bool
+}
+
 // watchTickOne advances one issuance's chain state, persists and emits on a
 // material change, and drives the best-effort deploy-time side effects (price
 // seeding, registry publication) that depend on chain state.
@@ -108,17 +123,30 @@ func (s *server) watchTickOne(w *WatchState) {
 	if s.cfg.nodeURL == "" {
 		return // no node configured: nothing authoritative to read
 	}
+	// What the record should say happened, captured before the tick changes it.
+	was := watchMilestone{status: w.Status, blockHash: w.BlockHash, anchorHash: w.AnchorHash,
+		anchored: w.AnchorHeight > 0}
 	changed := s.computeWatch(w)
 	if changed {
 		if err := s.st.UpsertWatch(w); err != nil {
 			log.Printf("watcher: persist %s: %v", w.IssuanceID, err)
 			return
 		}
+		// Persist and publish on every change: a browser watching a deploy wants
+		// each new confirmation. The AUDIT LOG is a different thing -- it is the
+		// books, and a confirmation counter going from 300 to 301 is a heartbeat.
+		// Writing one per issuance per block put 759,334 heartbeats in a log of
+		// 760,687 entries, which buried every sanctions freeze, deploy refusal
+		// and verification in it and grew the records database to 315MB.
 		s.bus().publish(w.OwnerAID, eventFrom(w))
-		s.st.Audit(w.OwnerAID, "watch.update", map[string]any{
-			"issuance_id": w.IssuanceID, "asset": w.AssetID, "status": w.Status,
-			"confirmations": w.Confirmations, "anchor_depth": w.AnchorDepth,
-		})
+		if now := (watchMilestone{status: w.Status, blockHash: w.BlockHash,
+			anchorHash: w.AnchorHash, anchored: w.AnchorHeight > 0}); now != was {
+			s.st.Audit(w.OwnerAID, "watch.update", map[string]any{
+				"issuance_id": w.IssuanceID, "asset": w.AssetID, "status": w.Status,
+				"confirmations": w.Confirmations, "anchor_depth": w.AnchorDepth,
+				"was_status": was.status,
+			})
+		}
 	}
 	// Side effects that need chain state. Price seeding does not need
 	// confirmation (it is a data feed); registry publication does (electrs must
