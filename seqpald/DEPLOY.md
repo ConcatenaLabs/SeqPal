@@ -84,7 +84,7 @@ native-BTC escrow rail is off unless `SEQPALD_BTC_RPC_URL` is set.
 | `SEQPALD_CONFIDENTIAL` (`-confidential`) | unset | `1`/`true`: accept per-transfer confidential transfers |
 | `SEQPALD_WEBROOT` (`-webroot`) | empty | built SPA directory served at `/` (empty = API only) |
 | `SEQPALD_DEV_ORIGINS` (`-devorigins`) | empty | comma-separated extra CORS origins for local development |
-| `SEQPALD_ADMIN_AIDS` (`-adminaids`) | empty | comma-separated AIDs allowed to use the manual-review surface. Empty means nobody can decide a review, and an identity a sanctions match parks stays parked with no eligibility and no way out |
+| `SEQPALD_ADMIN_AIDS` (`-adminaids`) | empty | comma-separated AIDs allowed to use the manual-review surface. This surface stands in for an identity provider's adjudication, which is where that decision belongs; on a deployment without one it is the only way to release an identity a sanctions name match has parked, so set it or leave those identities parked |
 | `SEQPALD_SCREEN_DIR` (`-screendir`) | `./sanctions-cache` | cache directory for downloaded sanctions lists. Set it: an instance with one loads the real lists at startup and refuses to verify anyone until it has them, while an instance without one screens against the bundled fixture and finds no match against anybody |
 | `SEQPALD_BLOCKS_PER_DAY` (`-blocksperday`) | `1440` | assumed Sequentia blocks per day for lockup height conversion (60-second spacing: 1440). Below 1 is refused: a lockup measured in zero blocks expires the moment it is stamped |
 | `SEQPALD_TIP_HEIGHT` (`-tipheight`) | `0` | fallback tip height when no node RPC is configured |
@@ -191,10 +191,14 @@ Then in the browser: sign in with a Sequentia wallet (SeqPal holds no key and
 makes none), run an issuance through onboarding, and deploy. The asset id and
 txid returned are real and resolve against `GET /openamp/v1/assets/{id}`.
 
-There is one more thing to set that nothing will remind you of: `SEQPALD_ADMIN_AIDS`.
-Without it the manual-review queue has no reviewer, so the first identity a
-sanctions match parks stays parked, with no eligibility and nobody able to clear
-or confirm it.
+One more thing nothing will remind you of: a name match on a sanctions list parks
+the identity with no eligibility, and only an adjudication releases it. That
+decision belongs to an identity-verification provider, and this deployment has
+none, so the only thing that can make it is the manual-review surface behind
+`SEQPALD_ADMIN_AIDS`. Set it to the account ids that may act on the queue, or
+accept that a parked identity stays parked. The built-in auto-reviewer will not
+help: it resolves only the deterministic test personas, and deliberately leaves a
+genuine match alone.
 
 ## 6. Backup and restore (the DB is books and records)
 
