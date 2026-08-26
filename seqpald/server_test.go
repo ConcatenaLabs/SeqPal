@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -34,6 +35,9 @@ type fakeOpenAMP struct {
 	// not, so a milestone's own test file can add the upstream surface it needs
 	// without this stub having to know about it.
 	extra atomic.Value
+	// Which accounts have actually been registered, so a probe about an account
+	// nobody registered answers the way the real policy server does.
+	registered sync.Map
 }
 
 func newFakeOpenAMP(t *testing.T) *fakeOpenAMP {
@@ -58,6 +62,7 @@ func newFakeOpenAMP(t *testing.T) *fakeOpenAMP {
 		if o, _ := f.aidOverride.Load().(string); o != "" {
 			aid = o
 		}
+		f.registered.Store(aid, true)
 		writeJSON(w, 200, map[string]any{"aid": aid})
 	})
 
@@ -78,7 +83,14 @@ func newFakeOpenAMP(t *testing.T) *fakeOpenAMP {
 		})
 	})
 
+	// An account the policy server has never been told about has no address, and
+	// says so. Answering every aid was the reason a check that fails closed on an
+	// unresolvable address looked like it worked.
 	mux.HandleFunc("GET /v1/users/{aid}/address", func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := f.registered.Load(r.PathValue("aid")); !ok {
+			writeJSON(w, 404, map[string]any{"error": "no such user"})
+			return
+		}
 		writeJSON(w, 200, map[string]any{"address": "tb1p" + strings.Repeat("q", 58)})
 	})
 
