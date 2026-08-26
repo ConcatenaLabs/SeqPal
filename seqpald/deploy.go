@@ -186,15 +186,6 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		refuse(400, err.Error())
 		return
 	}
-	// The sanctions floor. Refused rather than quietly dropped: the terms hash
-	// commits to the matrix as submitted, so compiling something narrower would
-	// leave the published terms saying one thing and the live rules another.
-	if blocked := admittedFloorJurisdictions(rawOrEmpty(iss.Terms)); len(blocked) > 0 {
-		refuse(422, "this offering admits "+strings.Join(blocked, ", ")+", which the "+
-			"OFAC- and FATF-aligned sanctions floor does not allow any offering to admit. "+
-			"Remove them from the jurisdiction matrix and deploy again; nothing was minted")
-		return
-	}
 	// atoms = supply * 10^precision, guarded against uint64 overflow.
 	atoms, ok := atomsFor(req.Supply, precision)
 	if !ok {
@@ -290,6 +281,17 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.Unmarshal(rawOrEmpty(terms), new(any)); err != nil {
 		refuse(400, "terms must be a JSON object")
+		return
+	}
+	// The sanctions floor, read from the terms being DEPLOYED rather than the
+	// draft's -- a deploy carries its own matrix, and a draft's is usually empty.
+	// Refused rather than quietly narrowed: the terms hash commits to the matrix
+	// as submitted, so compiling something else would leave the published terms
+	// and the live rules saying different things.
+	if blocked := admittedFloorJurisdictions(rawOrEmpty(terms)); len(blocked) > 0 {
+		refuse(422, "this offering admits "+strings.Join(blocked, ", ")+", which the "+
+			"OFAC- and FATF-aligned sanctions floor does not allow any offering to admit. "+
+			"Remove them from the jurisdiction matrix and deploy again; nothing was minted")
 		return
 	}
 	// Fail closed on the structure (W-7): an unrecognized name refuses here
