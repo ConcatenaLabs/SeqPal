@@ -7,7 +7,7 @@ import * as api from '../lib/api'
 // The RFSA Financial Products Registry filing (M4). A public offering cannot
 // deploy without a filing, which seqpald enforces (a 403 at deploy otherwise).
 // The regulator RELATIONSHIP is a labeled simulation; the number, the public
-// lookup, the deploy gate, and the anchored filing hash are all real.
+// lookup, the deploy gate, and the filing hash are all real.
 //
 // The filing binds the terms_hash and the document manifest hash, so it is
 // generated from the same deterministic document package the data room shows.
@@ -60,8 +60,8 @@ export default function RfsaFilingCard({ iss }) {
       </div>
       <p className="mt-1.5 text-sm leading-relaxed text-ink-700/70">
         This is marked a public offering, so it cannot deploy until it is filed with the RFSA
-        Financial Products Registry. The filing binds the terms hash and the document manifest and
-        is anchored on chain.
+        Financial Products Registry. The filing binds the terms hash and the document manifest, and
+        its hash is held in a hash-chained log and timestamped against Bitcoin.
       </p>
 
       {!filing ? (
@@ -85,7 +85,7 @@ export default function RfsaFilingCard({ iss }) {
           </div>
           <div className="rounded-lg bg-ink-900/[0.03] px-3 py-2">
             <div className="text-[11px] font-semibold uppercase tracking-wide text-ink-700/60">
-              Filing hash (anchored)
+              Filing hash
             </div>
             <div className="mt-1">
               <CopyId value={filing.filing_hash} label="filing hash" />

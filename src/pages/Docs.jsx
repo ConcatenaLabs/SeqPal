@@ -150,8 +150,8 @@ export default function Docs() {
           You do not have to trust SeqPal for any financial fact about an asset it manages.
           The verification explainer walks from an offering&rsquo;s terms document, to its
           canonical hash, to the on-chain contract commitment, to the policy-key
-          commitment, and through the anchored amendment chain, all recomputed in your own
-          browser.
+          commitment, and through the amendment chain to the rules the policy server holds
+          right now, all recomputed in your own browser.
         </p>
         <Link to="/docs/verify" className="btn-outline mt-1 inline-flex">
           <Icon.shield width={15} height={15} /> Open the verification explainer

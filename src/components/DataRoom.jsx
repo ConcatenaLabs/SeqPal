@@ -410,9 +410,10 @@ export default function DataRoom({ iss }) {
             )}
           </div>
           <p className="mt-2 text-[11px] leading-relaxed text-ink-700/55">
-            E-signature: the signature is a real BIP340 signature by your enclave key over the
-            tagged document hash, stored and anchored. Only the provider-grade e-signature interface
-            is a simulation.
+            E-signature: the signature is real, over the real document hash &mdash; tagged and made
+            by your OpenAMP key, or an ordinary signed message from a wallet you have linked &mdash;
+            and it is stored with the key or address that checks it, so anyone can. Only the
+            provider-grade e-signature interface is a simulation.
           </p>
         </>
       )}
