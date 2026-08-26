@@ -7,8 +7,8 @@ import (
 )
 
 // The stranded-key re-delivery runbook (M7 section 5). A returning investor who
-// lost their enclave key is made whole end to end, as a scripted/admin path
-// (POST /api/id/redeliver, restricted to platform reviewers). Every step is
+// lost their enclave key is made whole end to end, as a scripted operator path
+// (POST /api/id/redeliver, restricted to SEQPALD_ADMIN_AIDS). Every step is
 // logged, idempotent, and reconciled like every other fund movement.
 //
 // The five steps, and how each is discharged honestly here:

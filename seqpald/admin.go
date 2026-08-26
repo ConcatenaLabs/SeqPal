@@ -7,14 +7,18 @@ import (
 	"time"
 )
 
-// requireAdmin gates the seqpald manual-review surface. Admin AIDs are configured
-// out of band (SEQPALD_ADMIN_AIDS); the reviewer is a real person acting through
-// their SeqPal ID session.
+// requireAdmin gates the one operator surface seqpald has: the stranded-key
+// re-delivery runbook. It is not a review surface -- adjudication belongs to the
+// verification provider and there is no queue here to work -- so an empty
+// SEQPALD_ADMIN_AIDS means nobody can run a re-delivery, not that identities are
+// parked. The operator is a real person acting through their own SeqPal ID
+// session, which is what puts their AID on every step of the runbook.
 func (s *server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		acct := principal(r)
 		if acct == nil || !s.cfg.adminAIDs[acct.AID] {
-			writeErr(w, 403, "this surface is restricted to platform reviewers")
+			writeErr(w, 403, "this is an operator surface, and this SeqPal ID is not "+
+				"configured as one (SEQPALD_ADMIN_AIDS)")
 			return
 		}
 		next(w, r)
