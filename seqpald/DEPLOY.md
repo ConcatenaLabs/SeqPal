@@ -199,8 +199,9 @@ or confirm it.
 ## 6. Backup and restore (the DB is books and records)
 
 The SQLite DB is the platform's only copy of accounts, issuances, deploys, and the
-hash-chained audit log. Back it up with the online backup API, never by copying a
-WAL-mode file in place:
+hash-chained audit log. Nothing backs it up on a timer, so run this after a
+schema change and on whatever schedule the deployment warrants. Back it up with
+the online backup API, never by copying a WAL-mode file in place:
 
 ```
 install -d -o seqpal -g seqpal -m 0700 /var/backups/seqpald

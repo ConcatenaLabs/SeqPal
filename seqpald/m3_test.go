@@ -891,3 +891,35 @@ func m3SeedDraft(t *testing.T, s *server, ownerAID, ticker string) string {
 	}
 	return id
 }
+
+// The audit log is the books. A confirmation counter going from 300 to 301 is
+// not an entry in them: it happens for every watched issuance every block,
+// forever. On the live service that had put 759,334 such heartbeats into a log
+// of 760,687 entries -- so every sanctions freeze, deploy refusal and
+// verification in it sat under a thousand-to-one of noise, and the records
+// database had grown to 315MB.
+//
+// What IS an event: the status changing, the block it landed in changing, the
+// Bitcoin header it is anchored to changing, or it becoming anchored. A reorg
+// is the third of those under a constant status, which is why the block and
+// anchor hashes are in the comparison and not just the status.
+func TestTheAuditLogRecordsChainEventsNotHeartbeats(t *testing.T) {
+	same := watchMilestone{status: "confirmed", blockHash: "bb", anchorHash: "aa", anchored: true}
+
+	if (watchMilestone{status: "confirmed", blockHash: "bb", anchorHash: "aa", anchored: true}) != same {
+		t.Fatal("an unchanged milestone compared unequal to itself")
+	}
+	for _, tc := range []struct {
+		name string
+		m    watchMilestone
+	}{
+		{"status changed", watchMilestone{status: "anchored", blockHash: "bb", anchorHash: "aa", anchored: true}},
+		{"reorged into another block", watchMilestone{status: "confirmed", blockHash: "cc", anchorHash: "aa", anchored: true}},
+		{"anchor moved", watchMilestone{status: "confirmed", blockHash: "bb", anchorHash: "dd", anchored: true}},
+		{"lost its anchor", watchMilestone{status: "confirmed", blockHash: "bb", anchorHash: "aa", anchored: false}},
+	} {
+		if tc.m == same {
+			t.Fatalf("%s did not register as an event", tc.name)
+		}
+	}
+}
