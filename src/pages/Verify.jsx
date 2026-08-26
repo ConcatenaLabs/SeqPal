@@ -320,13 +320,15 @@ export default function Verify() {
           </p>
         </Step>
 
-        <Step n={5} title="The genesis commitment, plus any anchored amendments">
+        <Step n={5} title="The genesis commitment, plus every amendment since">
           <p>
-            The on-chain commitment is the genesis <span className="font-mono text-xs">terms_hash</span>{' '}
-            plus an anchored chain of rules amendments. Each amendment is a content-addressed document
-            recording the prior rules hash, the new rules hash, the basis, and the effective Sequentia
-            block height, anchored through the transparency log. So the current rules are the genesis
-            terms plus every amendment, and each link is checkable.
+            The on-chain commitment is the genesis <span className="font-mono text-xs">terms_hash</span>.
+            Each rules amendment since is a content-addressed document recording the prior rules hash,
+            the new rules hash, the basis, and the effective Sequentia block height, held in
+            SeqPal&rsquo;s hash-chained audit log and timestamped against Bitcoin by the log-head
+            anchor made at the same moment. The amendment hash is not itself written on chain: what
+            is on chain is the rules the policy server holds, and what you can check is that they
+            equal the genesis terms plus every amendment, each link at a time.
           </p>
           {amends?.genesis_terms_hash && (
             <KV k="genesis terms_hash">
@@ -360,7 +362,7 @@ export default function Verify() {
                 <p className="pt-1 text-xs text-ink-700/70">
                   {amends.head.head_consistent
                     ? 'The live on-chain rules equal the head of this anchored chain: the amendment chain is the current rules, verifiably.'
-                    : 'The on-chain rules and the anchored chain head do not currently match: a mutation is mid-reconciliation.'}
+                    : 'The on-chain rules and the amendment chain head do not currently match: a mutation is mid-reconciliation.'}
                 </p>
               )}
             </div>

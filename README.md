@@ -153,8 +153,11 @@ recovery.
 
 ## Checking a signature yourself
 
-Every e-signature this platform records is anchored so that anyone can check it
-without asking SeqPal to be believed. `GET /api/documents/{hash}/signatures`
+Every e-signature this platform records is kept with the thing that checks it, so
+anyone can check it without asking SeqPal to be believed. (The signature and what
+verifies it are what make it checkable; the log-head anchor made at the same
+moment timestamps it against Bitcoin, but the document hash is not itself written
+on chain.) `GET /api/documents/{hash}/signatures`
 returns each one with the thing it is checked against:
 
 ```json

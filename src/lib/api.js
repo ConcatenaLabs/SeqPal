@@ -200,7 +200,7 @@ export const offerClose = (id) =>
 export const characterization = (structure) =>
   req(`/characterization${structure ? `?structure=${encodeURIComponent(structure)}` : ''}`)
 
-// The genesis-terms-hash plus anchored amendment chain, for the Verify explainer.
+// The genesis-terms-hash plus the amendment chain, for the Verify explainer.
 // { issuance_id, asset_id, genesis_terms_hash, contract_hash, amendments[], note }.
 // Owner session only.
 export const amendments = (id) => req(`/issuances/${encodeURIComponent(id)}/amendments`)
