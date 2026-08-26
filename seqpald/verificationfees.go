@@ -16,6 +16,15 @@ import (
 // (the provider asked for a better photo, not for a new applicant), so it does
 // not raise a second fee. A refusal is terminal and cannot be resubmitted at all.
 
+// What a check costs where a deployment does not say otherwise. These are the
+// PUBLISHED prices, from src/data/pricing.js, and a test holds them to it: the
+// pricing page is what an issuer reads before they arrive, so charging more
+// than it says overcharges them.
+const (
+	defaultKYCFeeUSD = 20
+	defaultKYBFeeUSD = 150
+)
+
 // verificationFeeKind maps a check kind to the fee kind that buys it.
 func verificationFeeKind(checkKind string) string {
 	if checkKind == "business" {

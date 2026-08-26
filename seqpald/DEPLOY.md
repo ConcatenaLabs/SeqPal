@@ -110,8 +110,8 @@ native-BTC escrow rail is off unless `SEQPALD_BTC_RPC_URL` is set.
 | `SEQPALD_DAMP` | unset | `1`/`true`: network-enforced (OpenDAMP) deploys allowed; see above |
 | `SEQPALD_SETUP_FEE_USD` | `500` | platform setup fee invoiced in USDX |
 | `SEQPALD_ESCROW_FEE_BPS` | `50` | escrow and settlement fee, basis points of the released payment |
-| `SEQPALD_KYC_FEE_USD` | `25` | identity verification fee, collected before the check is submitted to the provider. Zero charges nothing |
-| `SEQPALD_KYB_FEE_USD` | `150` | business verification fee, charged per business for the same reason. Zero charges nothing |
+| `SEQPALD_KYC_FEE_USD` | `20` | identity verification fee, collected before the check is submitted to the provider. The default is the published price in `src/data/pricing.js`; zero charges nothing |
+| `SEQPALD_KYB_FEE_USD` | `150` | business verification fee, charged per business for the same reason. Also the published price; zero charges nothing |
 | `SEQPALD_IDV_GRACE_SECS` | `30` | how long a check may be outstanding before the provider is asked about it directly |
 | `SEQPALD_IDV_RECONCILE_SECS` | `15` | how often outstanding checks are chased. A decision delivered over a network can be missed; a check nobody chases leaves its holder stuck at `submitted` |
 | `SEQPALD_FEE_ASSET` | empty | asset the escrow wallet's and bearer mint's network fees are paid in; empty = the node's `bitcoin` label (tSEQ) |
