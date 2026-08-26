@@ -321,3 +321,48 @@ func TestVerifyWorksWithoutAnEnclave(t *testing.T) {
 		t.Fatal("categories must still be projected, even with nowhere to stamp them")
 	}
 }
+
+// A verified wallet-backed ID must not read as "Verified" with nothing to show
+// for it, and its own account id must not be presented as an enclave account.
+func TestPassportOfAWalletBackedID(t *testing.T) {
+	h := newHarness(t)
+	h.s.cfg.nodeURL = newWalletNode(t, true).URL
+	h.s.screen = newScreener("")
+	ch := h.do("POST", "/api/auth/wallet/challenge", "", map[string]any{"descriptor": testPKH})
+	reg := h.do("POST", "/api/auth/wallet/register", "", map[string]any{
+		"descriptor": testPKH, "challenge": ch.body["challenge"], "sig": "X",
+		"display_name": "Wallet Wendy", "residence": "AE",
+	})
+	var session string
+	for _, c := range reg.set {
+		if c.Name == sessionCookie {
+			session = c.Value
+		}
+	}
+	if v := h.do("POST", "/api/id/verify", session, map[string]any{
+		"residence": "AE", "screening_name": "Wallet Wendy", "base_eligibility": "ret",
+	}); v.code != 200 {
+		t.Fatalf("verify: %d %s", v.code, v.raw)
+	}
+
+	p := h.do("GET", "/api/id/passport", session, nil)
+	if p.code != 200 {
+		t.Fatalf("passport: %d %s", p.code, p.raw)
+	}
+	if p.body["has_enclave"] != false {
+		t.Fatalf("the passport must say there is no enclave account, got %v", p.body["has_enclave"])
+	}
+	if k, _ := p.body["enclave_key"].(string); k != "" {
+		t.Fatalf("there is no enclave key to report, got %q", k)
+	}
+	// The point of the fix: verified, with the categories that verification
+	// projected, rather than zero because it read a policy server that has never
+	// heard of this account.
+	cats, _ := p.body["categories"].([]any)
+	if len(cats) == 0 {
+		t.Fatal("a verified wallet-backed ID must carry the categories it was granted")
+	}
+	if p.body["status"] != "verified" {
+		t.Fatalf("status: %v", p.body["status"])
+	}
+}

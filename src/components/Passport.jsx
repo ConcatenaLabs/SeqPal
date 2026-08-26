@@ -8,7 +8,10 @@ export default function Passport({ account, entity }) {
   const rec = entity || account
   // Whether this ID has an OpenAMP enclave account at all. A wallet-backed one
   // does not, and every label below has to stop implying otherwise.
-  const hasEnclave = (account?.identity ?? 'aid') !== 'xpub'
+  // The record itself says whether there is an enclave account. Reading it off
+  // the signed-in account was wrong: this component is handed the passport
+  // payload, where that field lives.
+  const hasEnclave = rec?.has_enclave ?? (rec?.identity ?? 'aid') !== 'xpub'
   const p = rec?.profile && typeof rec.profile === 'object' ? rec.profile : {}
   const accreditation = p.accredited
     ? p.accreditation_method === 'document'

@@ -124,12 +124,26 @@ export default function IdPassport() {
         </div>
         <div className="grid gap-6 px-6 py-6 sm:grid-cols-2">
           <div>
-            <div className="text-xs text-white/40">Sequentia enclave account (AID)</div>
+            {/* A wallet-backed ID has no enclave account. Calling its id an AID
+                describes something that does not exist, and offering an empty
+                "enclave key" beside it says the same thing twice. */}
+            <div className="text-xs text-white/40">
+              {p.has_enclave ? 'Sequentia enclave account (AID)' : 'SeqPal account id'}
+            </div>
             <div className="mt-1 break-all font-mono text-sm text-seq-400">{p.aid}</div>
           </div>
           <div>
-            <div className="text-xs text-white/40">Enclave key (x-only)</div>
-            <div className="mt-1 break-all font-mono text-xs text-white/70">{p.enclave_key}</div>
+            <div className="text-xs text-white/40">
+              {p.has_enclave ? 'Enclave key (x-only)' : 'OpenAMP account'}
+            </div>
+            {p.has_enclave ? (
+              <div className="mt-1 break-all font-mono text-xs text-white/70">{p.enclave_key}</div>
+            ) : (
+              <div className="mt-1 text-xs leading-relaxed text-white/70">
+                None attached. Restricted assets need one; freely-tradable stocks and
+                network-enforced assets do not.
+              </div>
+            )}
           </div>
           <div>
             <div className="text-xs text-white/40">Eligibility valid until</div>
