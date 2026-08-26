@@ -130,6 +130,15 @@ func (s *server) payInvoiceOnRail(w http.ResponseWriter, acct *Account, inv *Fee
 	if fresh, err := s.st.FeeInvoiceByID(inv.ID); err == nil && fresh != nil {
 		*inv = *fresh
 	}
+	// It may have been paid while this request was waiting -- the deposit its
+	// last quote asked for confirmed, or the other rail settled. Quoting it again
+	// would hand out an address for a fee that is already settled, and the
+	// watcher only looks at UNPAID invoices, so anything sent there would sit
+	// unnoticed. The caller checked this too, before the lock.
+	if inv.State == "paid" {
+		writeJSON(w, 200, map[string]any{"invoice": inv, "already_paid": true})
+		return
+	}
 	audit := func(event string, extra map[string]any) {
 		fields := map[string]any{"invoice": inv.ID}
 		for k, v := range ctx {

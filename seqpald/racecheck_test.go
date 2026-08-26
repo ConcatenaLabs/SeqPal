@@ -175,3 +175,28 @@ func TestOneReferenceHasOneEnclaveKey(t *testing.T) {
 		}
 	}
 }
+
+// A fee that settled while a pay request was in flight must not be quoted
+// again: the watcher only looks at unpaid invoices, so anything sent to an
+// address handed out after settlement sits unnoticed.
+func TestAPaidFeeIsNotQuotedAgain(t *testing.T) {
+	h := newHarness(t)
+	h.s.cfg.nodeURL = newWalletNode(t, true).URL
+	h.s.cfg.kycFeeUSD = 20
+	session, _ := walletSession(t, h, testPKH)
+
+	if r := h.do("POST", "/api/id/fees/pay", session, map[string]any{
+		"kind": "identity", "rail": "card",
+	}); r.code != 200 {
+		t.Fatalf("fees/pay: %d %s", r.code, r.errMsg())
+	}
+	h.s.settleFiatDue()
+
+	again := h.do("POST", "/api/id/fees/pay", session, map[string]any{"kind": "identity", "rail": "usdx"})
+	if again.code != 200 {
+		t.Fatalf("paying a settled fee = %d, want 200 saying so (%s)", again.code, again.raw)
+	}
+	if again.body["already_paid"] != true || again.body["deposit_address"] != nil {
+		t.Fatalf("a settled fee must be reported paid and quote nothing, got %s", again.raw)
+	}
+}
