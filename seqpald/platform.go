@@ -37,6 +37,12 @@ func (s *server) ensureSetupInvoice(issuanceID string) (*FeeInvoice, error) {
 		inv.PaidAt = time.Now().Unix()
 	}
 	if err := s.st.InsertFeeInvoice(inv); err != nil {
+		// Lost a race with a concurrent raise: the page that quotes this fee
+		// polls. The unique index is what makes one of them lose rather than
+		// both winning and the deploy gate reading an invoice nobody paid.
+		if existing, qerr := s.st.SetupFeeForIssuance(issuanceID); qerr == nil && existing != nil {
+			return existing, nil
+		}
 		return nil, err
 	}
 	return inv, nil
