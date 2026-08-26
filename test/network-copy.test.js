@@ -118,3 +118,26 @@ test('/docs carries the protocol-level explanation, including what is not enforc
     'the docs point at the authoritative list of what is NOT enforced rather than implying completeness',
   )
 })
+
+test('the holder-list console takes a signature the browser could not make', () => {
+  // The key that authorises a change is the holding key the token was issued
+  // at, and for an issuer whose SeqPal ID is a wallet that key is not in any
+  // browser. Requiring a connected wallet to sign made the console unusable for
+  // exactly the issuers who can deploy this kind of token.
+  const src = read('components/PolicyConsole.jsx')
+  assert.match(src, /setPaste\(true\)/, 'no wallet here to sign means offering the paste path')
+  assert.match(src, /complete\(undefined, sigPaste\)/, 'a pasted signature publishes the change')
+  assert.ok(
+    !/disabled=\{[^}]*!hasKey/.test(src),
+    'no button on this console is disabled merely because no wallet is connected',
+  )
+})
+
+test('the election says a network-enforced token needs its own software to move', () => {
+  const src = read('pages/onboarding/Steps.jsx')
+  assert.match(
+    src,
+    /does not sit in an ordinary wallet balance/,
+    'the election states that no ordinary wallet sends this token',
+  )
+})
