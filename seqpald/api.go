@@ -318,6 +318,13 @@ func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		// refused with a 501. Deploys are always transparent mints.
 		"confidential":    s.cfg.confidential,
 		"damp":            s.cfg.damp,
+		// The setup fee is a real gate: an unpaid one refuses the deploy with a
+		// 402. What it costs is configuration, and a screen that asserts an amount
+		// (or asserts there is none) is wrong on any deployment configured
+		// differently, which is how the onboarding step came to say the fee was
+		// simulated while the README said it blocked the deploy. Both were reading
+		// their own deployment.
+		"setup_fee_usd":   s.cfg.setupFeeUSD,
 		"openamp_ok":      openampOK,
 		"issuer_token_ok": issuerOK,
 	})
