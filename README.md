@@ -88,9 +88,10 @@ registrar steps are simulated so the flow can be walked end to end.
 - KYC/KYB identity verification: the sanctions screen runs against downloaded
   lists, but document review is a simulated queue with no vendor call.
 - The card/fiat payment rail (its settlements are marked `funds_simulated`).
-- The e-signature provider: documents and subscription agreements are signed
-  with the SeqPal ID key in the holder's own wallet (BIP340 over the content
-  hash), not through a vendor.
+- The e-signature provider: documents and subscription agreements are signed in
+  the holder's own wallet, over the content hash, not through a vendor. The
+  signature itself is real either way it is made — see below for how to check
+  one.
 - Próspera incorporation and the RFSA registry (a filing gets a number and a
   public lookup from a simulated registry).
 - The brokerage-custody relationship for Depository Receipts.
@@ -149,6 +150,41 @@ recovery.
 - **Whitelabel Placement Portal** — a branded fundraising portal on the issuer's
   own domain (CNAME, escrow, operator terms), plus the public investor-facing
   portal with real SeqPal ID eligibility gating, subscription, e-sign, and escrow.
+
+## Checking a signature yourself
+
+Every e-signature this platform records is anchored so that anyone can check it
+without asking SeqPal to be believed. `GET /api/documents/{hash}/signatures`
+returns each one with the thing it is checked against:
+
+```json
+{
+  "doc_hash": "…",
+  "tag": "openamp-document-v1",
+  "signatures": [
+    { "signer_aid": "…", "xonly": "…",   "sig": "<128 hex>" },
+    { "signer_aid": "…", "address": "tb1…", "sig": "<base64>" }
+  ]
+}
+```
+
+A signature with an `xonly` is a BIP340 signature over the tagged hash of the
+document hash: `taggedHash(tag, doc_hash_bytes)`, tagged as BIP340 specifies
+(`sha256(sha256(tag) || sha256(tag) || msg)`), verified against that key.
+
+A signature with an `address` is an ordinary signed message, which any Sequentia
+or Bitcoin node checks directly. The message is the tag, a newline, and the
+document hash prefixed by `hex:`:
+
+```
+sequentia-cli verifymessage <address> <sig> "$(printf 'openamp-document-v1\nhex:%s' <doc_hash>)"
+```
+
+The same two forms apply everywhere this platform records a signature — the
+payout mandates, the market-abuse acknowledgment and the public listing
+authorization each carry either a key or an address for the same reason. Which
+form a holder produces depends only on what their wallet can do, and neither is
+worth more than the other.
 
 ## Architecture
 
