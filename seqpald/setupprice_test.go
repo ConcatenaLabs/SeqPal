@@ -179,3 +179,30 @@ func TestAnOfferingIsChargedThePublishedPriceThroughTheAPI(t *testing.T) {
 		t.Fatalf("deploy after paying the published fee = %d, want 200 (%s)", dep.code, dep.raw)
 	}
 }
+
+// What an issuer can get wrong is refused before they are asked to pay for it.
+// A network-enforced deploy with no usable holding key is a misconfiguration:
+// paying first and finding that out afterwards is money taken for a deploy that
+// was never going to run.
+func TestAMisconfiguredDeployIsRefusedBeforeItIsBilled(t *testing.T) {
+	h := newM5Harness(t, m5opts{})
+	h.s.cfg.setupFeeOverrideUSD = -1 // charge the published schedule
+	h.s.cfg.damp = true
+	session, _, _ := h.register(genPriv(t), "Issuer", "HN")
+	issID := h.createIssuance(session, "Net Co", "NETQ", map[string]any{
+		"jurisdictions": map[string]any{"HN": map[string]any{"access": "standard"}}, "price": 1.0,
+	})
+
+	// The account has an OpenAMP key of its own, so name a holding key that is
+	// neither its own nor from any wallet it has linked.
+	res := h.do("POST", "/api/deploy", session, map[string]any{
+		"issuance_id": issID, "supply": 1000, "precision": 0,
+		"enforcement": "network", "holder_key": strings.Repeat("ab", 32),
+	})
+	if res.code == 402 {
+		t.Fatalf("the issuer was billed before being told the deploy was misconfigured: %s", res.raw)
+	}
+	if res.code != 400 && res.code != 403 {
+		t.Fatalf("a deploy with an unusable holding key = %d, want it refused for the key (%s)", res.code, res.raw)
+	}
+}
