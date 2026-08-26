@@ -45,7 +45,12 @@ type config struct {
 	idvProvider string
 	idvSecret   string
 	idvDecision time.Duration
-	adminAIDs   map[string]bool // AIDs allowed to use the manual-review surface
+	// How long a check may be outstanding before it is chased, and how often it
+	// is chased. A decision delivered over a network can be missed, and a check
+	// nobody chases leaves its holder stuck at "submitted".
+	idvGrace     time.Duration
+	idvReconcile time.Duration
+	adminAIDs    map[string]bool // AIDs allowed to use the manual-review surface
 
 	// Chain-derived compile inputs. Tip height comes from the node RPC when
 	// configured, else assumedTip. The M3 chain watcher uses the same node RPC.
@@ -228,6 +233,8 @@ func main() {
 	cfg.idvProvider = strings.ToLower(strings.TrimSpace(env("SEQPALD_IDV_PROVIDER", "simulated")))
 	cfg.idvSecret = env("SEQPALD_IDV_CALLBACK_SECRET", "")
 	cfg.idvDecision = interval("SEQPALD_IDV_DECISION_SECS", 3)
+	cfg.idvGrace = interval("SEQPALD_IDV_GRACE_SECS", 30)
+	cfg.idvReconcile = interval("SEQPALD_IDV_RECONCILE_SECS", 15)
 	if cfg.idvSecret == "" {
 		// The callback decides who is verified, so it is never open. With no
 		// secret configured there is nothing to authenticate against, and a

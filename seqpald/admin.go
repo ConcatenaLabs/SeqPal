@@ -109,6 +109,8 @@ func (s *server) startWorkers() {
 		go s.runBtcReorgWatcher(s.cfg.watchInterval)
 	}
 	go s.runFiatCron(2 * time.Second)
+	// The backstop for a provider decision that never reached us.
+	go s.runIDVReconcileCron(s.cfg.idvReconcile)
 	// M7 (Backend-B): heal any half-applied rules mutation (amendment chain), and,
 	// once a node/policy server is reachable, take scheduled ownership snapshots and
 	// issue the labeled-simulated annual report. All best-effort and idempotent.

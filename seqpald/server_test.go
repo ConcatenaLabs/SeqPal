@@ -1046,6 +1046,12 @@ func (p *testIDV) CreateCheck(c *VerificationCheck) (string, error) {
 	return "test-" + c.ID, nil
 }
 
+// The test provider never decides on its own: tests adjudicate explicitly, so
+// the reconciler must find nothing to do.
+func (p *testIDV) PollCheck(*VerificationCheck) (idvDecision, string, bool, error) {
+	return "", "", false, nil
+}
+
 // adjudicate delivers a provider decision for an account's most recent check,
 // the way the callback would.
 func (h *harness) adjudicate(aid string, decision idvDecision) {

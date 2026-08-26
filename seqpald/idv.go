@@ -64,6 +64,12 @@ type idvProvider interface {
 	// CreateCheck submits an applicant and returns the provider's own reference
 	// for it. The reference is what comes back on the callback.
 	CreateCheck(check *VerificationCheck) (providerRef string, err error)
+	// PollCheck asks the provider where a check stands, and is the backstop for
+	// a callback that never arrived: delivery is over a network, and a decision
+	// this platform never hears is a holder stuck at "submitted" with no way
+	// out, having already paid for the check. decided is false while the
+	// provider is still working, which is not an error.
+	PollCheck(check *VerificationCheck) (decision idvDecision, reason string, decided bool, err error)
 }
 
 // --- the simulated provider --------------------------------------------------
@@ -82,6 +88,18 @@ type simulatedIDV struct {
 }
 
 func (p *simulatedIDV) Name() string { return "simulated" }
+
+// PollCheck answers what the simulator would have delivered, once it would have
+// delivered it. The decision is deterministic in the name, so asking is the same
+// answer as the callback carried -- which is exactly the property that makes a
+// reconciliation poll safe against a real provider too.
+func (p *simulatedIDV) PollCheck(check *VerificationCheck) (idvDecision, string, bool, error) {
+	if time.Since(time.Unix(check.CreatedAt, 0)) < p.delay {
+		return "", "", false, nil
+	}
+	decision, reason := simulatedDecision(check.SubjectName)
+	return decision, reason, true, nil
+}
 
 func (p *simulatedIDV) CreateCheck(check *VerificationCheck) (string, error) {
 	ref := "sim-" + check.ID
@@ -252,7 +270,20 @@ func (s *server) applyAdjudication(check *VerificationCheck, decision idvDecisio
 		})
 	}
 
-	return s.st.CompleteVerificationCheck(check.ID, string(decision), reason, now)
+	// The decision is recorded last and only once: a callback and a reconciling
+	// poll can arrive together, and the first of them is the decision. The work
+	// above may then have run twice, which is why all of it is idempotent -- the
+	// claims are upserted, the categories restamped, the freeze re-asserted.
+	decided, err := s.st.CompleteVerificationCheck(check.ID, string(decision), reason, now)
+	if err != nil {
+		return err
+	}
+	if !decided {
+		s.st.Audit(check.AID, "id.verify.already_decided", map[string]any{
+			"check": check.ID, "decision": string(decision),
+		})
+	}
+	return nil
 }
 
 // secretEqual compares in constant time, so a caller cannot learn the secret one
@@ -266,6 +297,53 @@ func secretEqual(got, want string) bool {
 		diff |= got[i] ^ want[i]
 	}
 	return diff == 0
+}
+
+// runIDVReconcileCron is the backstop for a decision this platform never heard.
+// A callback crosses a network once: the process can be restarted between the
+// submission and the delivery, the delivery can fail, and the provider can drop
+// it. Without this, a check that goes quiet leaves the holder at "submitted"
+// forever -- unable to submit again, since submitting over a check that is with
+// the provider is refused, and already charged for that check.
+//
+// Reconciling by polling is not a demo affordance: it is what an integration
+// with a real provider does about missed webhooks, which is why the poll sits
+// on the provider interface rather than beside the simulator.
+func (s *server) runIDVReconcileCron(every time.Duration) {
+	if every <= 0 {
+		every = time.Minute
+	}
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for range t.C {
+		s.reconcileVerifications()
+	}
+}
+
+func (s *server) reconcileVerifications() {
+	// Only checks old enough that a decision was due. One submitted a moment ago
+	// is not late, it is in flight.
+	cutoff := time.Now().Add(-s.cfg.idvGrace).Unix()
+	checks, err := s.st.OutstandingVerificationChecks(cutoff)
+	if err != nil {
+		return
+	}
+	for _, c := range checks {
+		decision, reason, decided, err := s.idv.PollCheck(c)
+		if err != nil {
+			log.Printf("idv: poll %s (%s): %v", c.ID, c.ProviderRef, err)
+			continue
+		}
+		if !decided || !decision.valid() {
+			continue
+		}
+		s.st.Audit(c.AID, "id.verify.reconciled", map[string]any{
+			"check": c.ID, "provider": c.Provider, "decision": string(decision),
+		})
+		if err := s.applyAdjudication(c, decision, reason); err != nil {
+			log.Printf("idv: reconcile %s: %v", c.ID, err)
+		}
+	}
 }
 
 // newIDVProvider builds the adapter this deployment verifies through. Only the
