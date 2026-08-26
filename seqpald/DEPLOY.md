@@ -86,7 +86,7 @@ native-BTC escrow rail is off unless `SEQPALD_BTC_RPC_URL` is set.
 | `SEQPALD_DEV_ORIGINS` (`-devorigins`) | empty | comma-separated extra CORS origins for local development |
 | `SEQPALD_ADMIN_AIDS` (`-adminaids`) | empty | comma-separated AIDs allowed to use the manual-review surface. Empty means nobody can decide a review, and an identity a sanctions match parks stays parked with no eligibility and no way out |
 | `SEQPALD_SCREEN_DIR` (`-screendir`) | `./sanctions-cache` | cache directory for downloaded sanctions lists. Set it: an instance with one loads the real lists at startup and refuses to verify anyone until it has them, while an instance without one screens against the bundled fixture and finds no match against anybody |
-| `SEQPALD_BLOCKS_PER_DAY` (`-blocksperday`) | `1440` | assumed Sequentia blocks per day for lockup height conversion (60-second spacing: 1440) |
+| `SEQPALD_BLOCKS_PER_DAY` (`-blocksperday`) | `1440` | assumed Sequentia blocks per day for lockup height conversion (60-second spacing: 1440). Below 1 is refused: a lockup measured in zero blocks expires the moment it is stamped |
 | `SEQPALD_TIP_HEIGHT` (`-tipheight`) | `0` | fallback tip height when no node RPC is configured |
 | `SEQPALD_NODE_URL` (`-nodeurl`) | empty | Sequentia node JSON-RPC URL: chain watcher, tip height, supervision RPCs, bearer mints |
 | `SEQPALD_NODE_USER` (`-nodeuser`) | empty | node RPC username |
@@ -103,16 +103,16 @@ native-BTC escrow rail is off unless `SEQPALD_BTC_RPC_URL` is set.
 | `SEQPALD_BTC_RPC_USER` (`-btcuser`) | empty | testnet4 RPC username (the node's `mainchainrpcuser`) |
 | `SEQPALD_BTC_RPC_PASS` (`-btcpass`) | empty | testnet4 RPC password (the node's `mainchainrpcpassword`) |
 | `SEQPALD_USDX_ASSET` (`-usdxasset`) | the public USDX id `2a5155…b9de` | USDX asset id (fee and escrow payment asset) |
-| `SEQPALD_ESCROW_CONFS` (`-escrowconfs`) | `1` | confirmations before a deposit becomes `in_escrow` |
+| `SEQPALD_ESCROW_CONFS` (`-escrowconfs`) | `1` | confirmations before a deposit becomes `in_escrow`. Below 1 is refused: nothing here is final at 0-conf, and a deposit that has not confirmed has not arrived |
 | `SEQPALD_ATOMIC_CLOSE` (`-atomicclose`) | `1` | settle USDX subscriptions as one atomic delivery-versus-payment transaction; falls back to the two-transaction close when the policy server has no payment leg |
 | `SEQPALD_DAMP` | unset | `1`/`true`: network-enforced (OpenDAMP) deploys allowed; see above |
 | `SEQPALD_SETUP_FEE_USD` | `500` | platform setup fee invoiced in USDX |
 | `SEQPALD_ESCROW_FEE_BPS` | `50` | escrow and settlement fee, basis points of the released payment |
 | `SEQPALD_FEE_ASSET` | empty | asset the escrow wallet's and bearer mint's network fees are paid in; empty = the node's `bitcoin` label (tSEQ) |
-| `SEQPALD_RULES_RECONCILE_SECS` | `30` | rules-mutation reconcile cadence |
-| `SEQPALD_SNAPSHOT_SECS` | `86400` | register snapshot cadence |
-| `SEQPALD_REPORT_SECS` | `31536000` | annual report cadence |
-| `SEQPALD_WALLET_POLL_SECS` | `15` | escrow wallet poll cadence |
+| `SEQPALD_RULES_RECONCILE_SECS` | `30` | rules-mutation reconcile cadence. A value below 1 second falls back to the default: a ticker cannot run a non-positive cadence |
+| `SEQPALD_SNAPSHOT_SECS` | `86400` | register snapshot cadence. A value below 1 second falls back to the default: a ticker cannot run a non-positive cadence |
+| `SEQPALD_REPORT_SECS` | `31536000` | annual report cadence. A value below 1 second falls back to the default: a ticker cannot run a non-positive cadence |
+| `SEQPALD_WALLET_POLL_SECS` | `15` | escrow wallet poll cadence. A value below 1 second falls back to the default: a ticker cannot run a non-positive cadence |
 
 ## 2. Pre-deploy probe
 
