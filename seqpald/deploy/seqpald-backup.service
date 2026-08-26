@@ -1,0 +1,13 @@
+[Unit]
+Description=Back up the seqpald database
+Documentation=https://github.com/ConcatenaLabs/SeqPal/blob/main/seqpald/DEPLOY.md
+After=seqpald.service
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/local/bin/seqpald-backup
+# The books, on a box with no second copy of them: a failure here should be
+# visible in `systemctl list-timers` and the journal rather than silent.
+StandardOutput=journal
+StandardError=journal
