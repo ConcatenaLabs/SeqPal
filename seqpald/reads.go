@@ -32,9 +32,46 @@ func (s *server) handleIssuanceHolders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.st.Audit(acct.AID, "issuance.holders.read", map[string]any{"issuance_id": iss.ID, "asset": iss.AssetID})
+
+	// The register is keyed the policy server's way, and a holder's passport
+	// shows their SeqPal account id. Those are the same string only for an ID
+	// founded on an OpenAMP account, so an issuer reading their own cap table
+	// could not tell which verified identity a row belonged to. seqpal_ids maps
+	// the ones this platform knows; the register itself is passed through
+	// untouched, because it is the truthful source for what is held.
+	out := holders
+	if mapped := s.seqpalIDsInRegister(holders); len(mapped) > 0 {
+		var reg map[string]any
+		if err := json.Unmarshal(holders, &reg); err == nil {
+			reg["seqpal_ids"] = mapped
+			if merged, err := json.Marshal(reg); err == nil {
+				out = merged
+			}
+		}
+	}
 	w.Header().Set("content-type", "application/json")
 	w.WriteHeader(200)
-	w.Write(holders)
+	w.Write(out)
+}
+
+// seqpalIDsInRegister resolves the account ids in a holder register back to the
+// SeqPal IDs that hold them, for the rows this platform registered.
+func (s *server) seqpalIDsInRegister(register json.RawMessage) map[string]string {
+	var reg struct {
+		Holders map[string]json.RawMessage `json:"holders"`
+	}
+	if err := json.Unmarshal(register, &reg); err != nil || len(reg.Holders) == 0 {
+		return nil
+	}
+	aids := make([]string, 0, len(reg.Holders))
+	for aid := range reg.Holders {
+		aids = append(aids, aid)
+	}
+	mapped, err := s.st.SeqPalAIDsByEnclaveAID(aids)
+	if err != nil {
+		return nil
+	}
+	return mapped
 }
 
 // logEntry mirrors openampd's transparency-log line. The SPA recomputes each

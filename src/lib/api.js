@@ -125,8 +125,12 @@ export const deploy = (body) => req('/deploy', { method: 'POST', body })
 // ── owner-scoped chain reads (M3) ───────────────────────────────────────────
 // The register / cap table for one deployed issuance, proxied verbatim from
 // openampd GET /v1/issuer/holders: { asset, height, holders:{aid:atoms},
-// total_atoms }. 403 unless the session owns the issuance; the atoms figure is
-// confirmed on-chain balance, the only truthful source for "held".
+// total_atoms }, plus seqpal_ids:{policy-server aid -> SeqPal account id} for
+// the holders this platform registered. The register is keyed the policy
+// server's way and a passport shows the SeqPal id; those are the same string
+// only for an ID founded on an OpenAMP account. 403 unless the session owns the
+// issuance; the atoms figure is confirmed on-chain balance, the only truthful
+// source for "held".
 export const issuanceHolders = (id) =>
   req(`/issuances/${encodeURIComponent(id)}/holders`)
 

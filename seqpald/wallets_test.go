@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -444,5 +445,39 @@ func TestNoPayloadNamesASeqPalIdToThePolicyServer(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// The register is keyed by the policy server's account ids and a passport shows
+// the SeqPal one. They were the same string until a SeqPal ID could be founded
+// on a wallet, so an issuer reading their own cap table lost the ability to tell
+// which verified identity a row belongs to.
+func TestTheRegisterCanBeMatchedToIdentities(t *testing.T) {
+	h := newHarness(t)
+	h.s.cfg.nodeURL = newWalletNode(t, true).URL
+	h.s.screen = newScreener("")
+	session, aid := walletSession(t, h, testPKH)
+
+	xonly := xonlyHex(t, vecPriv)
+	enclaveAID := aidFor([]string{xonly})
+	ch := h.do("POST", "/api/auth/challenge", "", map[string]any{"xonly": xonly})
+	challenge, _ := ch.body["challenge"].(string)
+	if att := h.do("POST", "/api/auth/attach-enclave", session, map[string]any{
+		"xonly": xonly, "challenge": challenge, "sig": signChallengeHex(t, vecPriv, challenge),
+	}); att.code != 200 {
+		t.Fatalf("attach: %d %s", att.code, att.raw)
+	}
+
+	register := json.RawMessage(`{"holders":{"` + enclaveAID + `":1000,"` +
+		strings.Repeat("7", 40) + `":50}}`)
+	mapped := h.s.seqpalIDsInRegister(register)
+	if mapped[enclaveAID] != aid {
+		t.Fatalf("the register row for this holder maps to %q, want the SeqPal id %q",
+			mapped[enclaveAID], aid)
+	}
+	// A holder this platform never registered simply has no entry, rather than a
+	// guess.
+	if _, ok := mapped[strings.Repeat("7", 40)]; ok {
+		t.Fatal("a stranger's row was given a SeqPal identity")
 	}
 }

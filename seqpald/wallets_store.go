@@ -172,3 +172,39 @@ func scanAccountWallet(row *sql.Row) (*AccountWallet, error) {
 	}
 	return &wl, nil
 }
+
+// SeqPalAIDsByEnclaveAID maps the account ids the POLICY SERVER uses back to the
+// SeqPal IDs that hold them. The register is keyed the policy server's way, and
+// a holder's passport shows the SeqPal id: without this, an issuer looking at
+// their own cap table cannot tell which verified identity a row belongs to, and
+// a holder cannot find themselves on it. They were the same string until a
+// SeqPal ID could be founded on a wallet.
+//
+// Only ids that resolve appear. A row for an account this platform did not
+// register -- a holder who never had a SeqPal ID -- simply has no entry.
+func (s *Store) SeqPalAIDsByEnclaveAID(enclaveAIDs []string) (map[string]string, error) {
+	out := map[string]string{}
+	if len(enclaveAIDs) == 0 {
+		return out, nil
+	}
+	rows, err := s.db.Query(
+		`SELECT enclave_aid, aid FROM account_wallets WHERE kind = 'enclave' AND enclave_aid != ''`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	held := map[string]string{}
+	for rows.Next() {
+		var oaid, aid string
+		if err := rows.Scan(&oaid, &aid); err != nil {
+			return nil, err
+		}
+		held[oaid] = aid
+	}
+	for _, oaid := range enclaveAIDs {
+		if aid, ok := held[oaid]; ok && aid != oaid {
+			out[oaid] = aid
+		}
+	}
+	return out, rows.Err()
+}
