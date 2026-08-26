@@ -84,8 +84,8 @@ native-BTC escrow rail is off unless `SEQPALD_BTC_RPC_URL` is set.
 | `SEQPALD_CONFIDENTIAL` (`-confidential`) | unset | `1`/`true`: accept per-transfer confidential transfers |
 | `SEQPALD_WEBROOT` (`-webroot`) | empty | built SPA directory served at `/` (empty = API only) |
 | `SEQPALD_DEV_ORIGINS` (`-devorigins`) | empty | comma-separated extra CORS origins for local development |
-| `SEQPALD_ADMIN_AIDS` (`-adminaids`) | empty | comma-separated AIDs allowed to use the manual-review surface |
-| `SEQPALD_SCREEN_DIR` (`-screendir`) | `./sanctions-cache` | cache directory for downloaded sanctions lists |
+| `SEQPALD_ADMIN_AIDS` (`-adminaids`) | empty | comma-separated AIDs allowed to use the manual-review surface. Empty means nobody can decide a review, and an identity a sanctions match parks stays parked with no eligibility and no way out |
+| `SEQPALD_SCREEN_DIR` (`-screendir`) | `./sanctions-cache` | cache directory for downloaded sanctions lists. Set it: an instance with one loads the real lists at startup and refuses to verify anyone until it has them, while an instance without one screens against the bundled fixture and finds no match against anybody |
 | `SEQPALD_BLOCKS_PER_DAY` (`-blocksperday`) | `1440` | assumed Sequentia blocks per day for lockup height conversion (60-second spacing: 1440) |
 | `SEQPALD_TIP_HEIGHT` (`-tipheight`) | `0` | fallback tip height when no node RPC is configured |
 | `SEQPALD_NODE_URL` (`-nodeurl`) | empty | Sequentia node JSON-RPC URL: chain watcher, tip height, supervision RPCs, bearer mints |
@@ -176,9 +176,25 @@ curl -s -X POST https://sequentiatestnet.com/seqpal/api/deploy   # 401, never a 
 `/seqpal/api/health` reports `issuer_token_ok`: it probes OpenAMP with the real
 token, so a false value means deployment is broken even though the daemon is up.
 
-Then in the browser: create a SeqPal ID (export the encrypted key when prompted),
-run an issuance through onboarding, and deploy. The asset id and txid returned are
-real and resolve against `GET /openamp/v1/assets/{id}`.
+Check the sanctions lists loaded, because nothing verifies until they have and
+an instance that quietly fell back to the bundled fixture finds no match against
+anybody:
+
+```
+journalctl -u seqpald --since -5min | grep screening
+# one "loaded from cache" or "refreshed" line per list, each with a name count
+# in the thousands. A "parsed to no names" line means the parser no longer
+# matches that source's format.
+```
+
+Then in the browser: sign in with a Sequentia wallet (SeqPal holds no key and
+makes none), run an issuance through onboarding, and deploy. The asset id and
+txid returned are real and resolve against `GET /openamp/v1/assets/{id}`.
+
+There is one more thing to set that nothing will remind you of: `SEQPALD_ADMIN_AIDS`.
+Without it the manual-review queue has no reviewer, so the first identity a
+sanctions match parks stays parked, with no eligibility and nobody able to clear
+or confirm it.
 
 ## 6. Backup and restore (the DB is books and records)
 
