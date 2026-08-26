@@ -26,12 +26,18 @@ npm install
 npm run dev          # vite
 npm run build        # vite build -> dist/
 npm run preview
-npm test             # node --test
+npm test             # eslint (no-undef) + node --test
 
 cd seqpald && go build ./... && go test ./...
 ```
 
 There is no CI. Those commands are the whole gate.
+
+`eslint` runs one rule, `no-undef`, and it earns its place: a bundler only resolves what
+crosses a module boundary, so `vite build` compiles a call to an identifier that does not
+exist without a word and the ReferenceError arrives in front of a user. Two such bugs were
+already in the tree when it was added. Keep it narrow -- a style sweep here would bury the
+rule that catches something that actually breaks.
 
 ## The custody line
 

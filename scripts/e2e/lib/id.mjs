@@ -36,13 +36,18 @@ export class SeqPalID {
     return new SeqPalID(priv, label)
   }
 
-  // Load a persisted SeqPal ID backup (the exact encrypted envelope the SPA
-  // exports: keys.js encryptKey / store.jsx downloadEnvelope) and decrypt it with
-  // a passphrase. Both the path and the passphrase come from the caller's env,
-  // never inlined, so no secret lives in this repo.
-  static async fromEnvelope(path, passphrase, label) {
-    const env = JSON.parse(await readFile(path, 'utf8'))
-    const priv = await decryptKey(env, passphrase)
+  // Load a persisted SeqPal ID from a private key the operator supplies.
+  //
+  // This used to read the encrypted envelope the SPA exported, which no longer
+  // exists: a SeqPal ID is the key of a wallet its holder already has, and
+  // SeqPal neither makes one nor keeps a copy. The driver plays a holder, so it
+  // needs a key of its own; it takes one from the environment rather than
+  // inventing an account it does not control.
+  static fromPrivateKey(privHex, label) {
+    const priv = String(privHex || '').trim().toLowerCase()
+    if (!/^[0-9a-f]{64}$/.test(priv)) {
+      throw new Error(`${label}: a 32-byte private key in hex is required`)
+    }
     return new SeqPalID(priv, label)
   }
 
