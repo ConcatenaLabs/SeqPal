@@ -366,7 +366,7 @@ func (s *server) handleSignDocument(w http.ResponseWriter, r *http.Request) {
 	// The e-signature is a real BIP340 signature over the tagged document hash by
 	// the signer's enclave key. The e-signature PROVIDER is a labeled simulation;
 	// the signature is cryptographically real.
-	if err := verifyTaggedByKey(acct.XOnly, documentTag, msg, strings.TrimSpace(req.Sig)); err != nil {
+	if err := s.verifyAccountStatement(acct, documentTag, msg, strings.TrimSpace(req.Sig)); err != nil {
 		s.st.Audit(acct.AID, "document.sign.refused", map[string]any{"doc_hash": hash, "reason": err.Error()})
 		writeErr(w, 400, "the document signature does not verify for this identity's key")
 		return

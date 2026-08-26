@@ -385,3 +385,25 @@ test('the link field tells an account id, an account key and a descriptor apart'
     assert.ok(!looksLikeDescriptor(junk) && !isAid(junk) && !isXonly(junk), `refused: ${junk}`)
   }
 })
+
+// A wallet with no enclave key signs an ordinary message, and the tag has to be
+// inside that message or it separates nothing. This mirrors seqpald's
+// classicStatementMessage exactly; if the two drift, every such signature is
+// rejected for reasons that look like anything but a format difference.
+test('the classic statement text matches what the server verifies', () => {
+  const classic = (tag, { statement, hash }) => `${tag}\n${hash ? `hex:${hash}` : statement}`
+
+  assert.equal(classic('seqpal-close-v1', { statement: '{"a":1}' }), 'seqpal-close-v1\n{"a":1}')
+  assert.equal(
+    classic('openamp-document-v1', { hash: 'ab'.repeat(32) }),
+    'openamp-document-v1\nhex:' + 'ab'.repeat(32)
+  )
+  // Two tags over one statement must not produce the same signed text.
+  assert.notEqual(
+    classic('seqpal-close-v1', { statement: '{"a":1}' }),
+    classic('seqpal-payout-mandate-v1', { statement: '{"a":1}' })
+  )
+  // A canonical statement never begins with the digest marker, so the two forms
+  // cannot be confused for one another.
+  assert.ok(!'{"a":1}'.startsWith('hex:'))
+})

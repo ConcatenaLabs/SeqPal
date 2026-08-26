@@ -83,7 +83,7 @@ func (s *server) handleClose(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 403, "the closing authorization must be signed by the issuer's own key")
 		return
 	}
-	if err := verifyTaggedByKey(signer, closeTag, stmt, req.Signature); err != nil {
+	if err := s.verifyKeyStatement(signer, closeTag, stmt, req.Signature); err != nil {
 		writeErr(w, 400, "the closing authorization signature does not verify")
 		return
 	}

@@ -71,7 +71,7 @@ func (s *server) handleGrantListing(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, 403, "the listing authorization must be signed by the issuer's own key")
 			return
 		}
-		if err := verifyTaggedByKey(signer, listingTag, listingStatement(iss.AssetID, req.Authorized, venues), sig); err != nil {
+		if err := s.verifyKeyStatement(signer, listingTag, listingStatement(iss.AssetID, req.Authorized, venues), sig); err != nil {
 			writeErr(w, 400, "the listing signature does not verify for the issuer key")
 			return
 		}

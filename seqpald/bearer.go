@@ -85,7 +85,7 @@ func (s *server) handleBearerAttestation(w http.ResponseWriter, r *http.Request)
 		})
 		return
 	}
-	if err := verifyTaggedByKey(acct.XOnly, bearerAttestationTag, digest[:], sig); err != nil {
+	if err := s.verifyAccountStatement(acct, bearerAttestationTag, digest[:], sig); err != nil {
 		refuse(400, "the attestation signature does not verify for your key")
 		return
 	}
