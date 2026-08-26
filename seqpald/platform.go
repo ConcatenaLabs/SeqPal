@@ -257,13 +257,14 @@ func (s *server) handleMandate(w http.ResponseWriter, r *http.Request) {
 				"ordinary wallet signs sign_this_message as a message instead"))
 		return
 	}
-	if err := s.verifyAccountStatement(acct, mandateTag, statement, req.Signature); err != nil {
+	verifiedBy, verr := s.verifyAccountStatementBy(acct, mandateTag, statement, req.Signature)
+	if verr != nil {
 		writeErr(w, 400, "the mandate signature does not verify for your key")
 		return
 	}
 	m := &PayoutMandate{
 		IssuanceID: iss.ID, Chain: chain, Asset: req.Asset, Address: addr,
-		Signature: req.Signature, SignerXOnly: signer,
+		Signature: req.Signature, SignerXOnly: signer, SignerAddress: verifiedBy,
 	}
 	if err := s.st.UpsertMandate(m); err != nil {
 		writeErr(w, 500, "store error")

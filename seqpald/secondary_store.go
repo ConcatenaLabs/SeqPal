@@ -183,7 +183,11 @@ type MarketAbuseAck struct {
 	AckHash     string `json:"ack_hash,omitempty"`
 	Signature   string `json:"signature,omitempty"`
 	SignerXOnly string `json:"signer_xonly,omitempty"`
-	CreatedAt   int64  `json:"created_at"`
+	// What checks this signature: the key for a tagged one, or the address an
+	// ordinary signed message verifies for. A record with neither is a signature
+	// nobody can check.
+	SignerAddress string `json:"signer_address,omitempty"`
+	CreatedAt     int64  `json:"created_at"`
 }
 
 // UpsertMarketAbuseAck records the acknowledgment. It preserves the first
@@ -194,20 +198,20 @@ func (s *Store) UpsertMarketAbuseAck(a *MarketAbuseAck) error {
 		a.CreatedAt = time.Now().Unix()
 	}
 	_, err := s.db.Exec(
-		`INSERT INTO market_abuse_acks (aid, version, ack_hash, signature, signer_xonly, created_at)
-         VALUES (?,?,?,?,?,?)
+		`INSERT INTO market_abuse_acks (aid, version, ack_hash, signature, signer_xonly, signer_address, created_at)
+         VALUES (?,?,?,?,?,?,?)
          ON CONFLICT(aid) DO UPDATE SET
             version=excluded.version, ack_hash=excluded.ack_hash, signature=excluded.signature,
-            signer_xonly=excluded.signer_xonly`,
-		a.AID, a.Version, a.AckHash, a.Signature, a.SignerXOnly, a.CreatedAt)
+            signer_xonly=excluded.signer_xonly, signer_address=excluded.signer_address`,
+		a.AID, a.Version, a.AckHash, a.Signature, a.SignerXOnly, a.SignerAddress, a.CreatedAt)
 	return err
 }
 
 func (s *Store) MarketAbuseAckByAID(aid string) (*MarketAbuseAck, error) {
 	var a MarketAbuseAck
 	err := s.db.QueryRow(
-		`SELECT aid, version, ack_hash, signature, signer_xonly, created_at FROM market_abuse_acks WHERE aid = ?`, aid).
-		Scan(&a.AID, &a.Version, &a.AckHash, &a.Signature, &a.SignerXOnly, &a.CreatedAt)
+		`SELECT aid, version, ack_hash, signature, signer_xonly, signer_address, created_at FROM market_abuse_acks WHERE aid = ?`, aid).
+		Scan(&a.AID, &a.Version, &a.AckHash, &a.Signature, &a.SignerXOnly, &a.SignerAddress, &a.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -233,11 +237,15 @@ type Listing struct {
 	Venues      json.RawMessage `json:"venues"`
 	Signature   string          `json:"signature,omitempty"`
 	SignerXOnly string          `json:"signer_xonly,omitempty"`
-	CreatedAt   int64           `json:"created_at"`
-	UpdatedAt   int64           `json:"updated_at"`
+	// What checks this signature: the key for a tagged one, or the address an
+	// ordinary signed message verifies for. A record with neither is a signature
+	// nobody can check.
+	SignerAddress string `json:"signer_address,omitempty"`
+	CreatedAt     int64  `json:"created_at"`
+	UpdatedAt     int64  `json:"updated_at"`
 }
 
-const listingCols = `asset_id, issuance_id, issuer_aid, ticker, name, authorized, venues, signature, signer_xonly, created_at, updated_at`
+const listingCols = `asset_id, issuance_id, issuer_aid, ticker, name, authorized, venues, signature, signer_xonly, signer_address, created_at, updated_at`
 
 func (s *Store) UpsertListing(l *Listing) error {
 	now := time.Now().Unix()
@@ -250,13 +258,14 @@ func (s *Store) UpsertListing(l *Listing) error {
 		venues = "[]"
 	}
 	_, err := s.db.Exec(
-		`INSERT INTO listings (`+listingCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+		`INSERT INTO listings (`+listingCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
          ON CONFLICT(asset_id) DO UPDATE SET
             issuance_id=excluded.issuance_id, issuer_aid=excluded.issuer_aid, ticker=excluded.ticker,
             name=excluded.name, authorized=excluded.authorized, venues=excluded.venues,
-            signature=excluded.signature, signer_xonly=excluded.signer_xonly, updated_at=excluded.updated_at`,
+            signature=excluded.signature, signer_xonly=excluded.signer_xonly,
+            signer_address=excluded.signer_address, updated_at=excluded.updated_at`,
 		l.AssetID, l.IssuanceID, l.IssuerAID, l.Ticker, l.Name, boolInt(l.Authorized), venues,
-		l.Signature, l.SignerXOnly, l.CreatedAt, l.UpdatedAt)
+		l.Signature, l.SignerXOnly, l.SignerAddress, l.CreatedAt, l.UpdatedAt)
 	return err
 }
 
@@ -304,7 +313,7 @@ func scanListingInto(sc scanner) (*Listing, error) {
 	var auth int
 	var venues string
 	err := sc.Scan(&l.AssetID, &l.IssuanceID, &l.IssuerAID, &l.Ticker, &l.Name, &auth, &venues,
-		&l.Signature, &l.SignerXOnly, &l.CreatedAt, &l.UpdatedAt)
+		&l.Signature, &l.SignerXOnly, &l.SignerAddress, &l.CreatedAt, &l.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}

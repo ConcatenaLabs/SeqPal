@@ -1038,6 +1038,16 @@ CREATE UNIQUE INDEX idx_account_wallets_one_enclave
 	`
 ALTER TABLE doc_signatures ADD COLUMN address TEXT NOT NULL DEFAULT '';
 `,
+	// Every other record that keeps a signature has the same hole: it kept the
+	// signer's x-only key, and a signature by a wallet has an address instead.
+	// The listing authorization is the one that matters most -- it is PUBLIC, and
+	// it exists so a venue can rely on it, which means checking it.
+	`
+ALTER TABLE payout_mandates ADD COLUMN signer_address TEXT NOT NULL DEFAULT '';
+ALTER TABLE investor_mandates ADD COLUMN signer_address TEXT NOT NULL DEFAULT '';
+ALTER TABLE market_abuse_acks ADD COLUMN signer_address TEXT NOT NULL DEFAULT '';
+ALTER TABLE listings ADD COLUMN signer_address TEXT NOT NULL DEFAULT '';
+`,
 }
 
 // Store is seqpald's persistent state. Every financial fact the UI shows is

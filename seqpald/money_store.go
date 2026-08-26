@@ -434,27 +434,33 @@ type PayoutMandate struct {
 	Address     string `json:"address"`
 	Signature   string `json:"signature,omitempty"`
 	SignerXOnly string `json:"signer_xonly,omitempty"`
-	CreatedAt   int64  `json:"created_at"`
+	// What checks this signature: the key for a tagged one, or the address an
+	// ordinary signed message verifies for. A record with neither is a signature
+	// nobody can check.
+	SignerAddress string `json:"signer_address,omitempty"`
+	CreatedAt     int64  `json:"created_at"`
 }
 
 func (s *Store) UpsertMandate(m *PayoutMandate) error {
 	m.CreatedAt = time.Now().Unix()
 	_, err := s.db.Exec(
-		`INSERT INTO payout_mandates (issuance_id, chain, asset, address, signature, signer_xonly, created_at)
-         VALUES (?,?,?,?,?,?,?)
+		`INSERT INTO payout_mandates (issuance_id, chain, asset, address, signature, signer_xonly, signer_address, created_at)
+         VALUES (?,?,?,?,?,?,?,?)
          ON CONFLICT(issuance_id, chain) DO UPDATE SET
             asset=excluded.asset, address=excluded.address, signature=excluded.signature,
-            signer_xonly=excluded.signer_xonly, created_at=excluded.created_at`,
-		m.IssuanceID, m.Chain, m.Asset, m.Address, m.Signature, m.SignerXOnly, m.CreatedAt)
+            signer_xonly=excluded.signer_xonly, signer_address=excluded.signer_address,
+            created_at=excluded.created_at`,
+		m.IssuanceID, m.Chain, m.Asset, m.Address, m.Signature, m.SignerXOnly,
+		m.SignerAddress, m.CreatedAt)
 	return err
 }
 
 func (s *Store) MandateFor(issuanceID, chain string) (*PayoutMandate, error) {
 	var m PayoutMandate
 	err := s.db.QueryRow(
-		`SELECT issuance_id, chain, asset, address, signature, signer_xonly, created_at
+		`SELECT issuance_id, chain, asset, address, signature, signer_xonly, signer_address, created_at
          FROM payout_mandates WHERE issuance_id = ? AND chain = ?`, issuanceID, chain).
-		Scan(&m.IssuanceID, &m.Chain, &m.Asset, &m.Address, &m.Signature, &m.SignerXOnly, &m.CreatedAt)
+		Scan(&m.IssuanceID, &m.Chain, &m.Asset, &m.Address, &m.Signature, &m.SignerXOnly, &m.SignerAddress, &m.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -466,7 +472,7 @@ func (s *Store) MandateFor(issuanceID, chain string) (*PayoutMandate, error) {
 
 func (s *Store) MandatesByIssuance(issuanceID string) ([]*PayoutMandate, error) {
 	rows, err := s.db.Query(
-		`SELECT issuance_id, chain, asset, address, signature, signer_xonly, created_at
+		`SELECT issuance_id, chain, asset, address, signature, signer_xonly, signer_address, created_at
          FROM payout_mandates WHERE issuance_id = ? ORDER BY chain`, issuanceID)
 	if err != nil {
 		return nil, err
@@ -475,7 +481,7 @@ func (s *Store) MandatesByIssuance(issuanceID string) ([]*PayoutMandate, error) 
 	out := []*PayoutMandate{}
 	for rows.Next() {
 		var m PayoutMandate
-		if err := rows.Scan(&m.IssuanceID, &m.Chain, &m.Asset, &m.Address, &m.Signature, &m.SignerXOnly, &m.CreatedAt); err != nil {
+		if err := rows.Scan(&m.IssuanceID, &m.Chain, &m.Asset, &m.Address, &m.Signature, &m.SignerXOnly, &m.SignerAddress, &m.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, &m)
