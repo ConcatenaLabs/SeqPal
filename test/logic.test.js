@@ -15,6 +15,7 @@ function walkSrc(dir = SRC, out = []) {
   return out
 }
 
+import { REAL } from '../src/data/honesty.js'
 import { computeSetupCost } from '../src/data/pricing.js'
 import { STATUS, OFF_PLATFORM_STEPS, offPlatformSteps } from '../src/lib/lifecycle.js'
 import { isEligible, tierFor } from '../src/lib/policy.js'
@@ -468,5 +469,28 @@ test('one canonical form in both languages', () => {
     '{"amp":"Smith & Sons <Holdings>","big":100000000000000000000,"ctl":"tab\\there",' +
       '"emo":"a\u{1F642}b","exp":1e+21,"negzero":0,"one":1,"round":9007199254740992,"sol":"a/b",' +
       '"tiny":1e-7,"uni":"Ærø Zürich 東京"}',
+  )
+})
+
+// The honesty list is the platform's own statement of precisely what is real,
+// so a claim on it that has quietly stopped being true is worse than the same
+// sentence anywhere else. These three describe things that changed: a SeqPal ID
+// is no longer always an enclave account, categories are not always kept at the
+// policy server, and a network-enforced asset has no enclave and no clawback.
+test('the honesty list describes both kinds of SeqPal ID', () => {
+  const real = REAL.join('\n')
+  assert.match(
+    real,
+    /wallet with no OpenAMP account at all/,
+    'the ID definition covers a wallet-backed SeqPal ID',
+  )
+  assert.ok(
+    !/on every asset the enclave issuer half/.test(real),
+    'nothing claims every asset has an enclave: a network-enforced one does not',
+  )
+  assert.match(
+    real,
+    /A network-enforced asset has no enclave and no clawback/,
+    'and it says so plainly',
   )
 })
