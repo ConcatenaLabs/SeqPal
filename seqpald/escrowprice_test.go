@@ -123,8 +123,10 @@ func TestAFeeLargerThanTheFundsIsTakenInFullAndTheRestIsOwed(t *testing.T) {
 	const dollar = 100_000_000
 	h := newHarness(t)
 	h.s.cfg.escrowFeeOverrideBps = -1
-	// $50 held, which is what a demo raise looks like. The published minimum is
-	// $5,000, so the fee owed is a hundred times the money there is.
+	// $50 held. The published minimum is $5,000, so the fee owed is a hundred
+	// times the money there is. This is not a schedule that suits fifty dollars;
+	// it is a schedule for the raises it was written for, and the honest thing at
+	// this size is to take what is there and say what is still owed.
 	issID := seedEscrow(t, h, map[string]uint64{"sub-a": 50 * dollar}, "USDX", time.Now().Unix())
 	plan, err := h.s.publishedEscrowFees(issID, time.Now().Unix())
 	if err != nil {
@@ -176,4 +178,47 @@ func seedEscrow(t *testing.T, h *harness, deposits map[string]uint64, ccy string
 		}
 	}
 	return issID
+}
+
+// At the size a raise on this testnet can actually be funded to, the schedule is
+// coherent everywhere: the minimum is a floor rather than the whole fee, and the
+// cap is what bites on a long one. The faucet hands out enough USDX for one
+// subscription of this size, which is what makes the demo show this rather than
+// a fee that eats the escrow.
+func TestTheScheduleIsCoherentOnARealisticRaise(t *testing.T) {
+	const dollar = 100_000_000
+	const raise = uint64(500_000) * dollar
+
+	for _, c := range []struct {
+		name    string
+		days    int64
+		want    uint64
+		percent string
+	}{
+		{"closed the same day, so the minimum is the floor", 0, uint64(escrowMinimumUSD) * dollar, "1%"},
+		{"four months, which is the typical window", 120, uint64(5_000) * dollar, "1%"},
+		{"a year, where the cap starts to matter", 365, raise * 3 / 100, "3% (capped)"},
+	} {
+		h := newHarness(t)
+		h.s.cfg.escrowFeeOverrideBps = -1
+		issID := seedEscrow(t, h, map[string]uint64{"sub-a": raise},
+			"USDX", time.Now().Add(-time.Duration(c.days)*24*time.Hour).Unix())
+		plan, err := h.s.publishedEscrowFees(issID, time.Now().Unix())
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := plan["sub-a"].Fee
+		if got != c.want {
+			t.Errorf("%s: charged %d, want %d (%s of the raise)", c.name, got, c.want, c.percent)
+		}
+		// The whole point: at this size the fee is a slice of the raise, not all
+		// of it, so the issuer is actually paid.
+		if got >= raise/10 {
+			t.Errorf("%s: the fee took %d of a %d raise, which is not a fee", c.name, got, raise)
+		}
+		if plan["sub-a"].Owed != got {
+			t.Errorf("%s: nothing should be left owed at this size, got %d owed vs %d taken",
+				c.name, plan["sub-a"].Owed, got)
+		}
+	}
 }
