@@ -86,6 +86,16 @@ export function isXonly(v) {
   return /^[0-9a-f]{64}$/i.test(String(v || '').trim())
 }
 
+// A wallet descriptor, as opposed to an id or a key. Wallets write these as a
+// function call -- pkh(...), wpkh(...), tr(...) -- and nothing else a holder
+// could reasonably paste into the same box does, so that is the whole test. It
+// deliberately does not check WHICH function: telling someone their wpkh
+// descriptor is the wrong kind is the server's job, and a better message than
+// "that is not any of the three things".
+export function looksLikeDescriptor(v) {
+  return /^[a-z]+\(/i.test(String(v || '').trim())
+}
+
 // An OpenAMP account id: 20 bytes, hex. Wallets show this far more prominently
 // than the key it is derived from, so anywhere a key is asked for, this is what
 // a holder is likely to have in their clipboard.

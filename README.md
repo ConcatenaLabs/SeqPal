@@ -23,9 +23,10 @@ registrar steps are simulated so the flow can be walked end to end.
   address restricted assets live in. A wallet that injects `window.sequentia` is
   asked directly; any other Sequentia wallet is linked by that public key and
   signs each statement out of band.
-- A wallet with **no** OpenAMP account gets a SeqPal ID too, identified by a
-  public `pkh(...)` descriptor it controls and proved with an ordinary signed
-  message, which is a button a hardware or node wallet has always had. Such an
+- A wallet with **no** OpenAMP account gets a SeqPal ID too, from the same
+  "link another wallet" field: paste a public `pkh(...)` descriptor instead of an
+  account id and it is proved with an ordinary signed message, which is a button
+  a hardware or node wallet has always had. Such an
   ID cannot hold OpenAMP restricted assets until an OpenAMP account is attached
   to it, and every path that needs one says so. Everything else is open to it:
   freely-tradable (supervised) stocks, network-enforced (OpenDAMP) assets, and
