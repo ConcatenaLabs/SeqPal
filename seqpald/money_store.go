@@ -390,7 +390,9 @@ func (s *Store) FeeInvoiceByID(id string) (*FeeInvoice, error) {
 // SetupFeeForIssuance returns the setup invoice for an issuance (there is at most
 // one), or nil.
 func (s *Store) SetupFeeForIssuance(issuanceID string) (*FeeInvoice, error) {
-	return scanFeeInvoice(s.db.QueryRow(feeInvoiceSelect+` WHERE issuance_id = ? AND kind = 'setup' LIMIT 1`, issuanceID))
+	return scanFeeInvoice(s.db.QueryRow(feeInvoiceSelect+
+		` WHERE issuance_id = ? AND kind = 'setup' ORDER BY (state = 'paid') DESC, rowid ASC LIMIT 1`,
+		issuanceID))
 }
 
 func (s *Store) FeeInvoicesByIssuance(issuanceID string) ([]*FeeInvoice, error) {

@@ -1151,6 +1151,23 @@ SET check_id = COALESCE((
 ), '')
 WHERE aid != '' AND state = 'paid' AND check_id = '';
 `,
+	// An offering's setup fee is raised on demand too, by a page that polls, and
+	// it is the DEPLOY gate: raised twice, the issuer pays whichever invoice they
+	// were quoted while the gate reads whichever the lookup returned, and a paid
+	// offering stays blocked. One per offering, per kind, so the index says so.
+	// The unique index covers lookups by issuance_id as its prefix, so the plain
+	// one it replaces is not missed.
+	`
+DELETE FROM fee_invoices WHERE issuance_id != '' AND rowid NOT IN (
+  SELECT (SELECT g.rowid FROM fee_invoices g
+          WHERE g.issuance_id = f.issuance_id AND g.kind = f.kind
+          ORDER BY (g.state = 'paid') DESC, g.rowid ASC LIMIT 1)
+  FROM fee_invoices f WHERE f.issuance_id != '' GROUP BY f.issuance_id, f.kind
+);
+DROP INDEX IF EXISTS idx_fee_invoices_issuance;
+CREATE UNIQUE INDEX idx_fee_invoices_issuance ON fee_invoices(issuance_id, kind)
+  WHERE issuance_id != '';
+`,
 }
 
 // Store is seqpald's persistent state. Every financial fact the UI shows is

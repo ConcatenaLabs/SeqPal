@@ -97,3 +97,42 @@ func TestQuotingTwoRailsAtOnceKeepsBoth(t *testing.T) {
 		t.Fatalf("both rails quoted must survive, got %+v", inv.Quotes)
 	}
 }
+
+// The setup fee is the deploy gate, and its invoice is raised on demand by a
+// page that polls. Raised twice, the issuer pays whichever one they were quoted
+// while the gate reads whichever the lookup happens to return, and a paid
+// offering stays blocked.
+func TestAnIssuanceRaisesOneSetupFee(t *testing.T) {
+	h := newHarness(t)
+	h.s.cfg.setupFeeUSD = 500
+
+	var wg sync.WaitGroup
+	ids := make([]string, 8)
+	for i := range ids {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			if inv, err := h.s.ensureSetupInvoice("iss-1"); err == nil && inv != nil {
+				ids[i] = inv.ID
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	var n int
+	if err := h.s.st.db.QueryRow(
+		`SELECT count(*) FROM fee_invoices WHERE issuance_id = 'iss-1' AND kind = 'setup'`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("one offering, one setup fee: got %d", n)
+	}
+	for i, id := range ids {
+		if id == "" {
+			t.Fatalf("raise %d returned no invoice", i)
+		}
+		if id != ids[0] {
+			t.Fatalf("concurrent raises produced different setup invoices: %q and %q", ids[0], id)
+		}
+	}
+}
