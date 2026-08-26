@@ -317,7 +317,6 @@ func TestWalletChallengeWindowIsLongEnoughToLeaveThePage(t *testing.T) {
 func TestVerifyWorksWithoutAnEnclave(t *testing.T) {
 	h := newHarness(t)
 	h.s.cfg.nodeURL = newWalletNode(t, true).URL
-	h.s.screen = newScreener("") // the sanctions screener the verify path uses
 	ch := h.do("POST", "/api/auth/wallet/challenge", "", map[string]any{"descriptor": testPKH})
 	reg := h.do("POST", "/api/auth/wallet/register", "", map[string]any{
 		"descriptor": testPKH, "challenge": ch.body["challenge"], "sig": "X",
@@ -339,14 +338,23 @@ func TestVerifyWorksWithoutAnEnclave(t *testing.T) {
 	if v.code != 200 {
 		t.Fatalf("verifying a wallet-backed ID must work, got %d %s", v.code, v.raw)
 	}
-	if v.body["status"] != "verified" {
+	// Submitted, not decided: an ID with no OpenAMP account goes to the provider
+	// like any other, and is granted nothing until they answer.
+	if v.body["status"] != "submitted" {
 		t.Fatalf("status: %v", v.body["status"])
 	}
 	if v.body["aid"] != reg.body["account"].(map[string]any)["aid"] {
 		t.Fatal("the id in the verification result must be this account's own")
 	}
-	if _, ok := v.body["categories"]; !ok {
-		t.Fatal("categories must still be projected, even with nowhere to stamp them")
+	aid := reg.body["account"].(map[string]any)["aid"].(string)
+
+	// And once the provider clears it, the categories are projected and carried
+	// even though this ID has no OpenAMP account to stamp them on.
+	h.adjudicate(aid, idvClear)
+	p := h.do("GET", "/api/id/passport", session, nil)
+	cats, _ := p.body["categories"].([]any)
+	if len(cats) == 0 {
+		t.Fatalf("categories must still be projected, even with nowhere to stamp them: %s", p.raw)
 	}
 }
 
@@ -355,7 +363,6 @@ func TestVerifyWorksWithoutAnEnclave(t *testing.T) {
 func TestPassportOfAWalletBackedID(t *testing.T) {
 	h := newHarness(t)
 	h.s.cfg.nodeURL = newWalletNode(t, true).URL
-	h.s.screen = newScreener("")
 	ch := h.do("POST", "/api/auth/wallet/challenge", "", map[string]any{"descriptor": testPKH})
 	reg := h.do("POST", "/api/auth/wallet/register", "", map[string]any{
 		"descriptor": testPKH, "challenge": ch.body["challenge"], "sig": "X",
@@ -367,11 +374,9 @@ func TestPassportOfAWalletBackedID(t *testing.T) {
 			session = c.Value
 		}
 	}
-	if v := h.do("POST", "/api/id/verify", session, map[string]any{
+	h.verifyIdentity(session, reg.body["account"].(map[string]any)["aid"].(string), map[string]any{
 		"residence": "AE", "screening_name": "Wallet Wendy", "base_eligibility": "ret",
-	}); v.code != 200 {
-		t.Fatalf("verify: %d %s", v.code, v.raw)
-	}
+	})
 
 	p := h.do("GET", "/api/id/passport", session, nil)
 	if p.code != 200 {

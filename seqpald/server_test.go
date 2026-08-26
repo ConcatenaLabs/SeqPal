@@ -182,6 +182,12 @@ func newHarness(t *testing.T) *harness {
 		// As production builds it. Without this a category write panics on a nil
 		// mutex, which is a way for a test suite to never reach the write at all.
 		catMu: newKeyedMutex(),
+		// A provider that records the check and waits to be told. Tests drive the
+		// adjudication through applyAdjudication, which is where a real callback
+		// lands, so they exercise the decision path without depending on a
+		// goroutine and a loopback HTTP round trip to settle first. The callback
+		// endpoint itself has its own test.
+		idv: &testIDV{},
 	}
 	return &harness{t: t, s: s, h: s.handler(), oa: oa}
 }
@@ -196,7 +202,20 @@ type resp struct {
 // do drives the real router, through the /seqpal prefix the proxy uses, with the
 // session cookie carried by hand (the cookie is Secure, so no jar over plain
 // http in tests).
+// doWithHeader is do with extra request headers, for the callers that are not a
+// browser session -- the verification provider's callback carries what proves it
+// is theirs.
+func (h *harness) doWithHeader(method, path, session string, hdr map[string]string, body any) resp {
+	h.t.Helper()
+	return h.doRaw(method, path, session, hdr, body)
+}
+
 func (h *harness) do(method, path, session string, body any) resp {
+	h.t.Helper()
+	return h.doRaw(method, path, session, nil, body)
+}
+
+func (h *harness) doRaw(method, path, session string, hdr map[string]string, body any) resp {
 	h.t.Helper()
 	var rdr *bytes.Reader
 	if body != nil {
@@ -210,6 +229,9 @@ func (h *harness) do(method, path, session string, body any) resp {
 	}
 	req := httptest.NewRequest(method, "/seqpal"+path, rdr)
 	req.Header.Set("content-type", "application/json")
+	for k, v := range hdr {
+		req.Header.Set(k, v)
+	}
 	if session != "" {
 		req.AddCookie(&http.Cookie{Name: sessionCookie, Value: session})
 	}
@@ -1012,4 +1034,38 @@ func rawSignHex(t *testing.T, privHex string, digest [32]byte) string {
 		t.Fatal(err)
 	}
 	return hex.EncodeToString(sig.Serialize())
+}
+
+// testIDV is the identity-verification provider a test runs against: it accepts
+// a check and decides nothing until the test says so.
+type testIDV struct{}
+
+func (p *testIDV) Name() string { return "test" }
+
+func (p *testIDV) CreateCheck(c *VerificationCheck) (string, error) {
+	return "test-" + c.ID, nil
+}
+
+// adjudicate delivers a provider decision for an account's most recent check,
+// the way the callback would.
+func (h *harness) adjudicate(aid string, decision idvDecision) {
+	h.t.Helper()
+	check, err := h.s.st.LatestVerificationCheck(aid)
+	if err != nil || check == nil {
+		h.t.Fatalf("no verification check for %s: %v", aid, err)
+	}
+	if err := h.s.applyAdjudication(check, decision, ""); err != nil {
+		h.t.Fatalf("adjudicate %s as %s: %v", aid, decision, err)
+	}
+}
+
+// verifyIdentity submits a verification and has the provider clear it, which is
+// what most tests mean when they say an identity is verified.
+func (h *harness) verifyIdentity(session, aid string, body map[string]any) {
+	h.t.Helper()
+	res := h.do("POST", "/api/id/verify", session, body)
+	if res.code != 200 {
+		h.t.Fatalf("verify: %d %s", res.code, res.raw)
+	}
+	h.adjudicate(aid, idvClear)
 }

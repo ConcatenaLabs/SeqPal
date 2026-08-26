@@ -23,28 +23,6 @@ const LIST_LABELS = {
   un_sc: 'UN Security Council',
 }
 
-function ScreeningRows({ screening }) {
-  if (!screening?.length) return null
-  return (
-    <div className="mt-4 divide-y divide-ink-900/10 rounded-xl border border-ink-900/10">
-      {screening.map((s) => (
-        <div key={s.list} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
-          <span className="text-ink-700/80">{LIST_LABELS[s.list] || s.list}</span>
-          {s.matched ? (
-            <span className="inline-flex items-center gap-1.5 font-medium text-rose-700">
-              <span className="h-1.5 w-1.5 rounded-full bg-rose-500" /> Name match
-              {s.matched_entry ? `: ${s.matched_entry}` : ''}
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 text-emerald-700">
-              <Icon.check width={14} height={14} /> Clear
-            </span>
-          )}
-        </div>
-      ))}
-    </div>
-  )
-}
 
 /* ─────────────────────────── Verify step ─────────────────────────── */
 
@@ -87,11 +65,29 @@ function VerifyStep({ account, onVerified }) {
         const p = await idPassport()
         if (p.status === 'verified') {
           clearInterval(pollRef.current)
-          setResult({ status: 'verified', categories: p.categories?.map((c) => c.token) || [], valid_until: p.valid_until, screening: p.screening })
+          setResult({
+            status: 'verified',
+            categories: p.categories?.map((c) => c.token) || [],
+            valid_until: p.valid_until,
+            verification: p.verification,
+          })
           onVerified?.()
         } else if (p.status === 'refused') {
           clearInterval(pollRef.current)
-          setResult((r) => ({ ...r, status: 'refused', message: 'The identity was refused after review.' }))
+          setResult((r) => ({
+            ...r,
+            status: 'refused',
+            verification: p.verification,
+            message: p.verification?.reason || 'The verification provider refused this identity.',
+          }))
+        } else if (p.status === 'needs_info') {
+          clearInterval(pollRef.current)
+          setResult((r) => ({
+            ...r,
+            status: 'needs_info',
+            verification: p.verification,
+            message: p.verification?.reason || 'The verification provider needs more from you.',
+          }))
         }
       } catch {
         // transient; keep polling
@@ -127,8 +123,11 @@ function VerifyStep({ account, onVerified }) {
       }
       const res = await idVerify(body)
       setResult(res)
+      // Verification is the provider's, and providers are asynchronous: the
+      // submission returns nothing decided, and the outcome arrives on their
+      // callback. This waits for it the way the holder does.
       if (res.status === 'verified') onVerified?.()
-      if (res.status === 'pending_review') startPolling()
+      if (res.status === 'submitted') startPolling()
     } catch (e2) {
       setErr(e2.message)
     } finally {
@@ -162,7 +161,6 @@ function VerifyStep({ account, onVerified }) {
               ))}
             </div>
           )}
-          <ScreeningRows screening={result.screening} />
           <Link to="/id/passport" className="btn-primary w-full">
             View my passport
             <Icon.arrowRight width={16} height={16} />
@@ -170,22 +168,26 @@ function VerifyStep({ account, onVerified }) {
         </div>
       )
     }
-    if (s === 'pending_review') {
+    if (s === 'submitted') {
       return (
         <div className="space-y-4">
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3.5 text-sm text-amber-900">
             <div className="flex items-center gap-2 font-semibold">
-              <Icon.shield width={16} height={16} /> In manual review
+              <Icon.shield width={16} height={16} /> With the verification provider
             </div>
             <p className="mt-1.5 leading-relaxed">
-              A sanctions-list name match was found, so no eligibility has been granted. A
-              reviewer decides whether this is a genuine hit or a false positive. This page
-              updates automatically when the review resolves.
+              Your details are with{' '}
+              {result.provider ? (
+                <span className="font-medium">{result.provider}</span>
+              ) : (
+                'our identity-verification provider'
+              )}
+              , who checks the documents and the watchlists. Nothing is granted until they
+              answer, and this page updates when they do.
             </p>
           </div>
-          <ScreeningRows screening={result.screening} />
           <div className="flex items-center gap-2 text-sm text-ink-700/70">
-            <Spinner /> Waiting for the review outcome
+            <Spinner /> Waiting for their decision
           </div>
         </div>
       )
@@ -211,10 +213,10 @@ function VerifyStep({ account, onVerified }) {
         <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3.5 text-sm text-rose-800">
           <div className="font-semibold">Verification refused</div>
           <p className="mt-1.5 leading-relaxed">
-            {result.message || 'The review was rejected. No eligibility was granted.'}
+            {result.message ||
+              'The verification provider refused this identity. No eligibility was granted.'}
           </p>
         </div>
-        <ScreeningRows screening={result.screening} />
       </div>
     )
   }

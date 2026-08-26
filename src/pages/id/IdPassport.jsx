@@ -7,12 +7,6 @@ import { useStore } from '../../lib/store'
 import { idPassport } from '../../lib/api'
 import LinkedWallets from '../../components/LinkedWallets'
 
-const LIST_LABELS = {
-  ofac_sdn: 'OFAC SDN',
-  ofac_consolidated: 'OFAC consolidated',
-  eu_consolidated: 'EU consolidated',
-  un_sc: 'UN Security Council',
-}
 
 const STATUS = {
   verified: { label: 'Verified', color: 'emerald' },
@@ -220,37 +214,48 @@ export default function IdPassport() {
           )}
         </Section>
 
-        {/* Screening */}
+        {/* Verification */}
         <Section
-          title="Sanctions screening"
-          sub="Screened at verification and on a daily schedule against the real public lists."
+          title="Verification"
+          sub="Identity verification is performed by a provider \u2014 documents, watchlists and all \u2014 and this is their decision, not SeqPal's."
         >
-          <div className="divide-y divide-ink-900/10 rounded-xl border border-ink-900/10 bg-white">
-            {(p.screening?.length ? p.screening : (p.lists_screened || []).map((l) => ({ list: l }))).map(
-              (s) => (
-                <div key={s.list} className="flex items-center justify-between gap-3 px-4 py-3">
-                  <div>
-                    <div className="text-sm font-medium text-ink-900">
-                      {LIST_LABELS[s.list] || s.list}
-                    </div>
-                    <div className="text-xs text-ink-700/55">
-                      {s.last_screened_at ? `Last screened ${fmtDate(s.last_screened_at)}` : 'Not yet screened'}
-                    </div>
+          {p.verification ? (
+            <div className="rounded-xl border border-ink-900/10 bg-white px-4 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-medium text-ink-900">{p.verification.provider}</div>
+                  <div className="text-xs text-ink-700/55">
+                    {p.verification.status === 'complete'
+                      ? `Decided ${fmtDate(p.verification.decided_at)}`
+                      : `Submitted ${fmtDate(p.verification.created_at)}`}
                   </div>
-                  {s.matched ? (
-                    <span className="inline-flex items-center gap-1.5 text-sm font-medium text-rose-700">
-                      <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
-                      Match{s.matched_entry ? `: ${s.matched_entry}` : ''}
+                </div>
+                {p.verification.status === 'complete' ? (
+                  p.verification.result === 'clear' ? (
+                    <span className="inline-flex items-center gap-1.5 text-sm text-emerald-700">
+                      <Icon.check width={14} height={14} /> Cleared
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1.5 text-sm text-emerald-700">
-                      <Icon.check width={14} height={14} /> Clear
+                    <span className="inline-flex items-center gap-1.5 text-sm font-medium text-rose-700">
+                      <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+                      {p.verification.result === 'reject' ? 'Refused' : 'More needed'}
                     </span>
-                  )}
+                  )
+                ) : (
+                  <span className="text-sm text-ink-700/70">With the provider</span>
+                )}
+              </div>
+              {p.verification.reason && (
+                <div className="mt-1.5 text-xs leading-relaxed text-ink-700/70">
+                  {p.verification.reason}
                 </div>
-              )
-            )}
-          </div>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-ink-900/10 bg-white px-4 py-3 text-sm text-ink-700/70">
+              This identity has not been submitted for verification yet.
+            </div>
+          )}
         </Section>
 
         {/* Linked entities */}

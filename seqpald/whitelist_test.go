@@ -30,13 +30,11 @@ func seedNetworkIssuance(t *testing.T, s *server, ownerAID string) *Issuance {
 	return out
 }
 
-func verifyWalletHolder(t *testing.T, h *harness, session string) {
+func verifyWalletHolder(t *testing.T, h *harness, session, aid string) {
 	t.Helper()
-	if v := h.do("POST", "/api/id/verify", session, map[string]any{
+	h.verifyIdentity(session, aid, map[string]any{
 		"residence": "AE", "screening_name": "Wallet Wendy", "base_eligibility": "ret",
-	}); v.code != 200 {
-		t.Fatalf("verify: %d %s", v.code, v.raw)
-	}
+	})
 }
 
 // A verified holder can ask to be admitted, and a key their own wallet derives
@@ -45,9 +43,8 @@ func TestWhitelistRequestFromAnOwnKey(t *testing.T) {
 	h := newHarness(t)
 	node := newWalletNode(t, true)
 	h.s.cfg.nodeURL = node.URL
-	h.s.screen = newScreener("")
 	session, aid := walletSession(t, h, testPKH)
-	verifyWalletHolder(t, h, session)
+	verifyWalletHolder(t, h, session, aid)
 	_, ownerAID, _ := m3SeedAccount(t, h.s, vecPriv, "Issuer Ida")
 	iss := seedNetworkIssuance(t, h.s, ownerAID)
 
@@ -93,9 +90,8 @@ func TestWhitelistRequestRefusesAnUnprovenKey(t *testing.T) {
 	h := newHarness(t)
 	// This node derives addresses that never match, and verifies no signature.
 	h.s.cfg.nodeURL = newWalletNodeNoMatch(t).URL
-	h.s.screen = newScreener("")
-	session, _ := walletSession(t, h, testPKH)
-	verifyWalletHolder(t, h, session)
+	session, aid := walletSession(t, h, testPKH)
+	verifyWalletHolder(t, h, session, aid)
 	_, ownerAID, _ := m3SeedAccount(t, h.s, vecPriv, "Issuer Ida")
 	iss := seedNetworkIssuance(t, h.s, ownerAID)
 
@@ -124,9 +120,8 @@ func TestWhitelistRequestRefusesAnUnprovenKey(t *testing.T) {
 func TestApprovalIsNotYetInclusion(t *testing.T) {
 	h := newHarness(t)
 	h.s.cfg.nodeURL = newWalletNode(t, true).URL
-	h.s.screen = newScreener("")
-	holderSession, _ := walletSession(t, h, testPKH)
-	verifyWalletHolder(t, h, holderSession)
+	holderSession, holderAID := walletSession(t, h, testPKH)
+	verifyWalletHolder(t, h, holderSession, holderAID)
 
 	ownerSession, ownerAID, _ := m3SeedAccount(t, h.s, vecPriv, "Issuer Ida")
 	iss := seedNetworkIssuance(t, h.s, ownerAID)
@@ -168,9 +163,8 @@ func TestApprovalIsNotYetInclusion(t *testing.T) {
 func TestAFreezeDoesNotIncludeAnybody(t *testing.T) {
 	h := newHarness(t)
 	h.s.cfg.nodeURL = newWalletNode(t, true).URL
-	h.s.screen = newScreener("")
-	holderSession, _ := walletSession(t, h, testPKH)
-	verifyWalletHolder(t, h, holderSession)
+	holderSession, holderAID := walletSession(t, h, testPKH)
+	verifyWalletHolder(t, h, holderSession, holderAID)
 	ownerSession, ownerAID, _ := m3SeedAccount(t, h.s, vecPriv, "Issuer Ida")
 	iss := seedNetworkIssuance(t, h.s, ownerAID)
 	key := strings.Repeat("d", 64)
@@ -192,9 +186,8 @@ func TestAFreezeDoesNotIncludeAnybody(t *testing.T) {
 func TestWhitelistRequestOnlyForNetworkAssets(t *testing.T) {
 	h := newHarness(t)
 	h.s.cfg.nodeURL = newWalletNode(t, true).URL
-	h.s.screen = newScreener("")
-	session, _ := walletSession(t, h, testPKH)
-	verifyWalletHolder(t, h, session)
+	session, aid := walletSession(t, h, testPKH)
+	verifyWalletHolder(t, h, session, aid)
 
 	_, ownerAID, _ := m3SeedAccount(t, h.s, vecPriv, "Issuer Ida")
 	id, _ := randHex(12)
@@ -222,9 +215,8 @@ func TestWhitelistRequestOnlyForNetworkAssets(t *testing.T) {
 func TestARefusalStandsForAWhile(t *testing.T) {
 	h := newHarness(t)
 	h.s.cfg.nodeURL = newWalletNode(t, true).URL
-	h.s.screen = newScreener("")
-	holderSession, _ := walletSession(t, h, testPKH)
-	verifyWalletHolder(t, h, holderSession)
+	holderSession, holderAID := walletSession(t, h, testPKH)
+	verifyWalletHolder(t, h, holderSession, holderAID)
 	ownerSession, ownerAID, _ := m3SeedAccount(t, h.s, vecPriv, "Issuer Ida")
 	iss := seedNetworkIssuance(t, h.s, ownerAID)
 	key := strings.Repeat("d", 64)
@@ -262,7 +254,6 @@ func TestARefusalStandsForAWhile(t *testing.T) {
 func TestEligibilityCountsEveryProvenHoldingKey(t *testing.T) {
 	h := newHarness(t)
 	h.s.cfg.nodeURL = newWalletNode(t, true).URL
-	h.s.screen = newScreener("")
 	_, aid := walletSession(t, h, testPKH)
 
 	asset := strings.Repeat("c", 64)

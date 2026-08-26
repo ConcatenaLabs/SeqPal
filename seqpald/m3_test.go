@@ -336,7 +336,7 @@ func newM3Server(t *testing.T, oaURL string) *server {
 		rl:     newRateLimiter(),
 		chalRL: newWindowLimiter(challengesPerKeyPerHour, challengesGlobalPerHour, time.Hour),
 		catMu:  newKeyedMutex(),
-		screen: newScreener(""),
+		idv:    &testIDV{},
 	}
 }
 

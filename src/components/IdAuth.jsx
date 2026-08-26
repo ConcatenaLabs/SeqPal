@@ -19,8 +19,8 @@ import { RESIDENCE_OPTIONS } from '../data/jurisdictions'
 // statement out of band (see WalletSignPrompt).
 //
 // Registration stays role-agnostic: it never asks whether you intend to issue
-// or invest. The real eligibility verification (document review + sanctions
-// screen) is a separate step on /id/register once the identity exists.
+// or invest. The eligibility verification, which the provider performs, is a
+// separate step on /id/register once the identity exists.
 
 export function Field({ id, label, children, hint }) {
   return (

@@ -73,14 +73,17 @@ rule that catches something that actually breaks.
   signed message from that key), or a verified holder could launder eligibility onto somebody
   else's key. Approving is a decision; `included` is only ever set when a published policy
   change carried the key (`noteWhitelistInclusions`, unfreeze only -- a freeze REMOVES keys).
-- **Screening is real, and it decides.** The document review is simulated and labelled; the
-  sanctions screening is not. So: nothing is verified while `s.screen.ready()` is false (an
-  instance with a cache directory loads the real lists at startup before it serves), a match
-  parks the identity and only a reviewer moves it (`handleIDVerify` refuses to re-run over a
-  live match -- screening reads a name the holder declares, so re-running was a way to be
-  verified under a different one), and verifying a COMPANY is the same decision: the
-  controller must be eligible, and the company's own name is screened, because most of the EU
-  list is enterprises.
+- **Identity verification is a PROVIDER's, and it is asynchronous.** SeqPal runs no watchlist:
+  documents, PEP, adverse media and sanctions are the provider's work, and this platform
+  consumes their decision. `POST /api/id/verify` records claims as `submitted`, grants nothing,
+  and hands a check to `s.idv`; the decision arrives at `POST /api/id/verify/callback`,
+  authenticated by `SEQPALD_IDV_CALLBACK_SECRET` and idempotent because a provider that does
+  not hear 200 retries. `applyAdjudication` is the ONE place an outcome takes effect -- clear
+  verifies and stamps, reject refuses and freezes, resubmission asks for more. Never decide a
+  verification anywhere else, and never make it synchronous: real providers are not, and the
+  point of this shape is that swapping one in is an adapter, not a redesign. A refusal cannot
+  be submitted away (`handleIDVerify` refuses over `refused` and `submitted`); `needs_info` is
+  the one not-verified state that invites another try.
 - **A SeqPal ID has TWO account ids, and openampd knows only one of them.** `accounts.aid` is
   the id the ID was founded with and never changes; the policy server knows the account the
   enclave key derives. They coincide only for an ID founded ON an enclave. Never pass

@@ -1048,6 +1048,42 @@ ALTER TABLE investor_mandates ADD COLUMN signer_address TEXT NOT NULL DEFAULT ''
 ALTER TABLE market_abuse_acks ADD COLUMN signer_address TEXT NOT NULL DEFAULT '';
 ALTER TABLE listings ADD COLUMN signer_address TEXT NOT NULL DEFAULT '';
 `,
+	// Identity verification is a provider's job, and this is where its decisions
+	// land. The screening this platform used to do itself goes with it: a demo
+	// that verifies nobody has no reason to hold a watchlist, and holding one
+	// would be a piece of production that production will not contain.
+	//
+	// The screening and review tables are dropped rather than left dead. Every
+	// decision they ever carried is in the audit log, which is the books; these
+	// were working state for a mechanism that no longer exists.
+	//
+	// An identity parked in review has nowhere to go under the new model -- there
+	// is no reviewer and no queue -- so it becomes needs_info, which the holder
+	// can act on by submitting again.
+	`
+CREATE TABLE verification_checks (
+    id           TEXT PRIMARY KEY,
+    aid          TEXT NOT NULL,
+    kind         TEXT NOT NULL,
+    subject_name TEXT NOT NULL DEFAULT '',
+    entity_id    TEXT NOT NULL DEFAULT '',
+    provider     TEXT NOT NULL,
+    provider_ref TEXT NOT NULL DEFAULT '',
+    status       TEXT NOT NULL,
+    result       TEXT NOT NULL DEFAULT '',
+    reason       TEXT NOT NULL DEFAULT '',
+    created_at   INTEGER NOT NULL,
+    decided_at   INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX idx_verification_checks_aid ON verification_checks(aid);
+CREATE UNIQUE INDEX idx_verification_checks_ref
+    ON verification_checks(provider_ref) WHERE provider_ref != '';
+
+UPDATE claims SET status = 'needs_info' WHERE status = 'pending_review';
+
+DROP TABLE IF EXISTS review_queue;
+DROP TABLE IF EXISTS screening;
+`,
 }
 
 // Store is seqpald's persistent state. Every financial fact the UI shows is

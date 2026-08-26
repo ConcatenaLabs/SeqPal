@@ -85,8 +85,9 @@ registrar steps are simulated so the flow can be walked end to end.
 
 **Simulated (kept faithful to the intended product):**
 
-- KYC/KYB identity verification: the sanctions screen runs against downloaded
-  lists, but document review is a simulated queue with no vendor call.
+- The identity-verification provider: a check is submitted, nothing is granted
+  while it is open, and the decision arrives on a signed callback. The provider
+  is simulated; the seam it plugs into is the one a real provider will use.
 - The card/fiat payment rail (its settlements are marked `funds_simulated`).
 - The e-signature provider: documents and subscription agreements are signed in
   the holder's own wallet, over the content hash, not through a vendor. The

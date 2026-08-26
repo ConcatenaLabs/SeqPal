@@ -24,7 +24,7 @@ const products = [
     points: [
       'One flow for everyone, no user-type question',
       'KYC / KYB and accreditation in one profile',
-      'Real sanctions screening on a daily schedule; PEP and adverse-media screening simulated',
+      'Documents, watchlists, PEP and adverse media are the verification provider\u2019s, not SeqPal\u2019s',
       'Eligibility categories consumed on-chain, honored by venues that list SeqPal assets',
     ],
     cta: { to: '/id', label: 'Create a SeqPal ID' },

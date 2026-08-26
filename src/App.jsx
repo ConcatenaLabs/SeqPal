@@ -20,7 +20,6 @@ import IdLanding from './pages/id/IdLanding'
 import IdRegister from './pages/id/IdRegister'
 import IdPassport from './pages/id/IdPassport'
 import IdEntities from './pages/id/IdEntities'
-import IdReview from './pages/id/IdReview'
 import Dashboard from './pages/Dashboard'
 import Holdings from './pages/Holdings'
 import IssuanceDetail from './pages/IssuanceDetail'
@@ -44,7 +43,6 @@ const TITLES = {
   '/id/register': 'Register · SeqPal ID',
   '/id/passport': 'Passport · SeqPal ID',
   '/id/entities': 'Companies · SeqPal ID',
-  '/id/review': 'Sanctions review · SeqPal ID',
   '/holdings': 'My holdings · SeqPal ID',
   '/dashboard': 'Issuer Dashboard · SeqPal',
   '/onboarding': 'New issuance · SeqPal',
@@ -115,7 +113,6 @@ export default function App() {
           <Route path="/id/register" element={<IdRegister />} />
           <Route path="/id/passport" element={<IdPassport />} />
           <Route path="/id/entities" element={<IdEntities />} />
-          <Route path="/id/review" element={<IdReview />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/holdings" element={<Holdings />} />
           <Route path="/actions/:id" element={<ActionClaim />} />

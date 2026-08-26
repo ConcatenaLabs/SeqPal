@@ -180,7 +180,7 @@ func newM2Harness(t *testing.T) *m2Harness {
 		rl:     newRateLimiter(),
 		chalRL: newWindowLimiter(challengesPerKeyPerHour, challengesGlobalPerHour, time.Hour),
 		catMu:  newKeyedMutex(),
-		screen: newScreener(""),
+		idv:    &testIDV{},
 	}
 	return &m2Harness{t: t, s: s, h: s.handler(), oa: oa}
 }
@@ -343,9 +343,10 @@ func TestIDVerifyStampsCategories(t *testing.T) {
 	if r.code != 200 {
 		t.Fatalf("verify: %d %s", r.code, r.errMsg())
 	}
-	if got, _ := r.body["status"].(string); got != "verified" {
-		t.Fatalf("status = %q, want verified", got)
+	if got, _ := r.body["status"].(string); got != "submitted" {
+		t.Fatalf("status = %q, want submitted", got)
 	}
+	h.adjudicate(aid, idvClear)
 	if cats := h.oa.userCategories(aid); len(cats) != 1 || cats[0] != "j:DE:ret" {
 		t.Fatalf("policy server categories = %v, want [j:DE:ret]", cats)
 	}
@@ -374,97 +375,51 @@ func TestIDVerifyStampsCategories(t *testing.T) {
 	}
 }
 
-// --- sanctions hit -> pending review -> auto-review confirm -> freeze ---------
+// --- what a provider's decision does -----------------------------------------
 
-func TestSanctionsHitFreezes(t *testing.T) {
-	h := newM2Harness(t)
-	// The OFAC SDN fixture confirm persona.
-	session, aid, _ := h.registerPersona(vecPriv, "OFAC SDN TEST PERSONA CONFIRM", "DE")
+// A provider refusal is final and binding: the identity is refused, the OpenAMP
+// account frozen, and nothing left stamped. There is no SeqPal reviewer to
+// appeal to, which is the point -- adjudication belongs to the provider.
+func TestAProviderRefusalFreezesAndRefuses(t *testing.T) {
+	h := newHarness(t)
+	session, aid, _ := h.register(vecPriv, "Refused Rachel")
+	if v := h.do("POST", "/api/id/verify", session, map[string]any{
+		"residence": "DE", "base_eligibility": "ret",
+	}); v.code != 200 {
+		t.Fatalf("verify: %d %s", v.code, v.raw)
+	}
+	h.adjudicate(aid, idvReject)
 
-	r := h.do("POST", "/api/id/verify", session, map[string]any{"residence": "DE", "base_eligibility": "ret"})
-	if r.code != 200 {
-		t.Fatalf("verify: %d %s", r.code, r.errMsg())
-	}
-	if got, _ := r.body["status"].(string); got != "pending_review" {
-		t.Fatalf("status = %q, want pending_review", got)
-	}
-	if len(h.oa.userCategories(aid)) != 0 {
-		t.Fatalf("no categories should be stamped on a flagged ID")
-	}
-	// The SIMULATED auto-reviewer confirms the deterministic persona (delay 0).
-	h.s.runAutoReview(0)
-	if !h.oa.frozen(aid) {
-		t.Fatalf("confirmed sanctions hit must freeze the AID")
-	}
 	claims, _ := h.s.st.ClaimsByAID(aid)
 	if claims == nil || claims.Status != "refused" {
 		t.Fatalf("claims status = %v, want refused", claims)
 	}
-}
-
-func TestSanctionsFalsePositiveClears(t *testing.T) {
-	h := newM2Harness(t)
-	session, aid, _ := h.registerPersona(vecPriv, "SEQPAL EU TEST FALSE POSITIVE CLEAR", "FR")
-
-	r := h.do("POST", "/api/id/verify", session, map[string]any{"residence": "FR", "base_eligibility": "ret"})
-	if got, _ := r.body["status"].(string); got != "pending_review" {
-		t.Fatalf("status = %q, want pending_review (%s)", got, r.raw)
-	}
-	h.s.runAutoReview(0)
-	if h.oa.frozen(aid) {
-		t.Fatalf("a cleared false positive must not freeze")
-	}
-	if cats := h.oa.userCategories(aid); len(cats) != 1 || cats[0] != "j:FR:ret" {
-		t.Fatalf("cleared identity categories = %v, want [j:FR:ret]", cats)
-	}
-	claims, _ := h.s.st.ClaimsByAID(aid)
-	if claims == nil || claims.Status != "verified" {
-		t.Fatalf("claims status = %v, want verified", claims)
+	if eligibilityLive(claims, time.Now().Unix()) {
+		t.Fatal("a refused identity must not be eligible for anything")
 	}
 }
 
-func dup(n int) string {
-	b := make([]byte, n)
-	for i := range b {
-		b[i] = 'a'
-	}
-	return string(b)
-}
-
-// A confirmed sanctions match has to bind whatever kind of SeqPal ID it lands
-// on. The freeze it used to do first is a policy-server action, and a SeqPal ID
-// that is only a wallet has no account there -- so the call failed, the function
-// returned on the error, and the claims were never refused. The identity stayed
-// verified and eligible, which is the one outcome a sanctions control must never
-// produce.
-func TestASanctionsConfirmationRefusesAWalletBackedID(t *testing.T) {
+// The same, for a SeqPal ID that is only a wallet. A refusal used to freeze the
+// OpenAMP account FIRST and return on any error from that call -- and such an ID
+// has no account there, so the call failed every time and the function returned
+// before it refused the claims. The identity stayed verified. A provider-driven
+// refusal would have failed open in exactly the same way.
+func TestAProviderRefusalBindsAWalletBackedID(t *testing.T) {
 	h := newHarness(t)
 	h.s.cfg.nodeURL = newWalletNode(t, true).URL
-	h.s.screen = newScreener("")
 	session, aid := walletSession(t, h, testPKH)
-	if v := h.do("POST", "/api/id/verify", session, map[string]any{
-		"residence": "AE", "screening_name": "Wallet Wendy", "base_eligibility": "ret",
-	}); v.code != 200 {
-		t.Fatalf("verify: %d %s", v.code, v.raw)
-	}
+	h.verifyIdentity(session, aid, map[string]any{
+		"residence": "AE", "base_eligibility": "ret",
+	})
 	if c, _ := h.s.st.ClaimsByAID(aid); c == nil || c.Status != "verified" {
 		t.Fatalf("the holder must start verified, got %v", c)
 	}
 
-	item := &ReviewItem{
-		ID: mustID(), AID: aid, List: "OFAC SDN", MatchedEntry: "WENDY, Wallet",
-		State: "pending", CreatedAt: time.Now().Unix(),
-	}
-	if err := h.s.st.InsertReview(item); err != nil {
-		t.Fatal(err)
-	}
-	if err := h.s.decideReview(item, "confirm", "auditor", ""); err != nil {
-		t.Fatalf("confirming a match must not fail on an account the policy server never had: %v", err)
-	}
+	h.adjudicate(aid, idvReject)
 
 	c, _ := h.s.st.ClaimsByAID(aid)
 	if c == nil || c.Status != "refused" {
-		t.Fatalf("a confirmed match must refuse the identity, got %v", c)
+		t.Fatalf("a refusal must refuse the identity, got %v", c)
 	}
 	if eligibilityLive(c, time.Now().Unix()) {
 		t.Fatal("a refused identity must not be eligible for anything")
@@ -472,221 +427,59 @@ func TestASanctionsConfirmationRefusesAWalletBackedID(t *testing.T) {
 }
 
 // The claims record carries this platform's signature over what it attests. A
-// verification that could not be signed is not recorded: the direct path has
-// always refused one, and the review-cleared path used to store it unsigned,
-// which is the same claim with nothing standing behind it.
-func TestAClearedReviewNeverRecordsAnUnsignedVerification(t *testing.T) {
+// verification it could not sign is not recorded as one.
+func TestAClearedVerificationIsAlwaysSigned(t *testing.T) {
 	h := newHarness(t)
 	h.s.cfg.nodeURL = newWalletNode(t, true).URL
-	h.s.screen = newScreener("")
 	session, aid := walletSession(t, h, testPKH)
-	if v := h.do("POST", "/api/id/verify", session, map[string]any{
-		"residence": "AE", "screening_name": "Wallet Wendy", "base_eligibility": "ret",
-	}); v.code != 200 {
-		t.Fatalf("verify: %d %s", v.code, v.raw)
-	}
+	h.verifyIdentity(session, aid, map[string]any{
+		"residence": "AE", "base_eligibility": "ret",
+	})
 	c, _ := h.s.st.ClaimsByAID(aid)
-	if c == nil || c.ClaimsSig == "" {
-		t.Fatalf("a verified record must carry the platform signature, got %v", c)
+	if c == nil || c.Status != "verified" {
+		t.Fatalf("expected a verified record, got %v", c)
 	}
-
-	// Park it in review, then clear it: the record that comes out the other side
-	// must be signed too.
-	c.Status = "in_review"
-	c.ClaimsSig = ""
-	if err := h.s.st.UpsertClaims(c); err != nil {
-		t.Fatal(err)
-	}
-	if err := h.s.finalizeAfterClear(aid); err != nil {
-		t.Fatalf("clearing a review must complete: %v", err)
-	}
-	out, _ := h.s.st.ClaimsByAID(aid)
-	if out == nil || out.Status != "verified" {
-		t.Fatalf("a cleared review must verify, got %v", out)
-	}
-	if out.ClaimsSig == "" {
+	if c.ClaimsSig == "" {
 		t.Fatal("a verification recorded with no signature attests nothing")
 	}
 }
 
-// The rescreen sweep is what catches a holder who was clean at verification and
-// appears on a list later. It had no test at all, and two ways to lose a hit:
-// the identity stayed verified if parking it failed, and -- worse -- the match
-// was recorded as SEEN before the review item existed, so an insert that failed
-// made the hit invisible to every later sweep. A dropped sanctions hit is not
-// something to find out about from an audit.
-func TestARescreenHitParksTheIdentityAndIsNeverDropped(t *testing.T) {
+// A refusal cannot be submitted away. Verification runs on details the holder
+// declares, so without this an identity the provider refused could simply submit
+// again under a different name and be cleared.
+func TestARefusalCannotBeSubmittedAway(t *testing.T) {
 	h := newHarness(t)
 	h.s.cfg.nodeURL = newWalletNode(t, true).URL
-	h.s.screen = newScreener("")
 	session, aid := walletSession(t, h, testPKH)
 	if v := h.do("POST", "/api/id/verify", session, map[string]any{
-		"residence": "AE", "screening_name": "Wallet Wendy", "base_eligibility": "ret",
+		"residence": "AE", "base_eligibility": "ret",
 	}); v.code != 200 {
 		t.Fatalf("verify: %d %s", v.code, v.raw)
 	}
 
-	// The holder appears on a list after they were verified.
-	h.s.screen.mu.Lock()
-	h.s.screen.names["ofac_sdn"][normalizeName("Wallet Wendy")] = true
-	h.s.screen.mu.Unlock()
-
-	h.s.rescreenAll()
-
-	c, _ := h.s.st.ClaimsByAID(aid)
-	if c == nil || c.Status != "pending_review" {
-		t.Fatalf("a new hit must park the identity, got %v", c)
-	}
-	if eligibilityLive(c, time.Now().Unix()) {
-		t.Fatal("a parked identity must not still be eligible")
-	}
-	reviews, err := h.s.st.PendingReviewsByAID(aid)
-	if err != nil || len(reviews) == 0 {
-		t.Fatalf("the hit must be queued for a human: %v %v", reviews, err)
+	// While it is with the provider, submitting again is refused too: it is not a
+	// decision to re-run, it is one that has not arrived.
+	if again := h.do("POST", "/api/id/verify", session, map[string]any{
+		"residence": "AE", "screening_name": "Someone Else Entirely",
+	}); again.code != 409 {
+		t.Fatalf("re-submitting a check in flight must be refused, got %d %s", again.code, again.raw)
 	}
 
-	// And the hit is on record only now that it is queued, so a sweep that could
-	// not queue it would find it again rather than treat it as old news.
-	seen, err := h.s.screeningWas(aid, "ofac_sdn")
-	if err != nil || !seen {
-		t.Fatalf("a queued hit must be recorded as seen: %v %v", seen, err)
-	}
-}
-
-// The EU consolidated list is a 118-column semicolon file with a header row.
-// Field 8 is the classification code -- the literal word "person" on nearly
-// every row -- and that is the field this parsed for as long as it was set, so
-// screening against the EU list matched nobody who was not called "person".
-func TestTheEUListParsesNamesAndNotClassifications(t *testing.T) {
-	sample := "fileGenerationDate;Entity_LogicalId;Entity_EU_ReferenceNumber;Entity_UnitedNationId;" +
-		"Entity_DesignationDate;Entity_DesignationDetails;Entity_Remark;Entity_SubjectType;" +
-		"Entity_SubjectType_ClassificationCode;Entity_Regulation_Type;Entity_Regulation_OrganisationType;" +
-		"Entity_Regulation_PublicationDate;Entity_Regulation_EntryIntoForceDate;Entity_Regulation_NumberTitle;" +
-		"Entity_Regulation_Programme;Entity_Regulation_PublicationUrl;NameAlias_LastName;NameAlias_FirstName;" +
-		"NameAlias_MiddleName;NameAlias_WholeName\n" +
-		"2026-08-26;13;EU.27.28;;2003-06-27;;;person;person;;;;;;;;Al-Tikriti;Saddam;;Saddam Hussein Al-Tikriti\n" +
-		"2026-08-26;14;EU.27.29;;2003-06-27;;;person;person;;;;;;;;;;;Abu Ali\n"
-
-	names := parseSanctions("eu_consolidated", []byte(sample))
-	if len(names) != 2 {
-		t.Fatalf("expected the two names, got %v", names)
-	}
-	for _, want := range []string{"Saddam Hussein Al-Tikriti", "Abu Ali"} {
-		found := false
-		for _, n := range names {
-			if n == want {
-				found = true
-			}
-		}
-		if !found {
-			t.Fatalf("%q missing from %v", want, names)
-		}
-	}
-	for _, n := range names {
-		if n == "person" || n == "NameAlias_WholeName" {
-			t.Fatalf("the parser returned %q, which is not a name", n)
-		}
-	}
-}
-
-// Screening runs over the name a holder declares, so an identity parked by a
-// match could submit verification again under a different name and be verified
-// -- while the review item that parked it was still sitting in the queue.
-// Confirmed against the live service before this was written: parked, then
-// verified with a clean name, categories and all.
-func TestAMatchCannotBeReVerifiedAway(t *testing.T) {
-	h := newHarness(t)
-	h.s.cfg.nodeURL = newWalletNode(t, true).URL
-	h.s.screen = newScreener("")
-	session, aid := walletSession(t, h, testPKH)
-
-	h.s.screen.mu.Lock()
-	h.s.screen.names["ofac_sdn"][normalizeName("Listed Larry")] = true
-	h.s.screen.mu.Unlock()
-
-	if v := h.do("POST", "/api/id/verify", session, map[string]any{
-		"residence": "AE", "screening_name": "Listed Larry", "base_eligibility": "ret",
-	}); v.code != 200 {
-		t.Fatalf("verify: %d %s", v.code, v.raw)
-	}
-	c, _ := h.s.st.ClaimsByAID(aid)
-	if c == nil || c.Status != "pending_review" {
-		t.Fatalf("a match must park the identity, got %v", c)
-	}
-
-	again := h.do("POST", "/api/id/verify", session, map[string]any{
-		"residence": "AE", "screening_name": "Someone Else Entirely", "base_eligibility": "ret",
-	})
-	if again.code != 409 {
-		t.Fatalf("re-verifying over a live match must be refused, got %d %s", again.code, again.raw)
-	}
-	after, _ := h.s.st.ClaimsByAID(aid)
-	if after.Status != "pending_review" || eligibilityLive(after, time.Now().Unix()) {
-		t.Fatalf("the identity must stay parked and ineligible, got %v", after)
-	}
-
-	// The same holds once a reviewer has refused it.
-	after.Status = "refused"
-	if err := h.s.st.UpsertClaims(after); err != nil {
-		t.Fatal(err)
-	}
+	h.adjudicate(aid, idvReject)
 	third := h.do("POST", "/api/id/verify", session, map[string]any{
-		"residence": "AE", "screening_name": "Someone Else Entirely", "base_eligibility": "ret",
+		"residence": "AE", "screening_name": "Someone Else Entirely",
 	})
 	if third.code != 409 {
-		t.Fatalf("re-verifying a refused identity must be refused, got %d %s", third.code, third.raw)
+		t.Fatalf("re-submitting after a refusal must be refused, got %d %s", third.code, third.raw)
+	}
+	if c, _ := h.s.st.ClaimsByAID(aid); c.Status != "refused" {
+		t.Fatalf("the identity must stay refused, got %v", c)
 	}
 }
 
-// An instance whose sanctions lists have not loaded finds no match against
-// anybody. Screening is the whole of what verification decides, so answering
-// "clean" from a fixture is not a degraded answer -- it is the wrong one, and
-// it grants eligibility. On the live service the process listened 29 seconds
-// before its lists finished loading, and a listed name verified inside that
-// window.
-func TestVerificationWaitsForTheRealLists(t *testing.T) {
-	h := newHarness(t)
-	h.s.cfg.nodeURL = newWalletNode(t, true).URL
-	h.s.screen = newScreener("")
-	session, aid := walletSession(t, h, testPKH)
-
-	// An instance configured to keep the lists somewhere, which has not got them.
-	h.s.screen.mu.Lock()
-	h.s.screen.loaded = false
-	h.s.screen.mu.Unlock()
-
-	res := h.do("POST", "/api/id/verify", session, map[string]any{
-		"residence": "AE", "screening_name": "Wallet Wendy", "base_eligibility": "ret",
-	})
-	if res.code != 503 {
-		t.Fatalf("verification must wait for the lists, got %d %s", res.code, res.raw)
-	}
-	if c, _ := h.s.st.ClaimsByAID(aid); c != nil && eligibilityLive(c, time.Now().Unix()) {
-		t.Fatal("nothing may be granted while the lists are missing")
-	}
-
-	// Once they are there it proceeds as normal.
-	h.s.screen.mu.Lock()
-	h.s.screen.loaded = true
-	h.s.screen.mu.Unlock()
-	if ok := h.do("POST", "/api/id/verify", session, map[string]any{
-		"residence": "AE", "screening_name": "Wallet Wendy", "base_eligibility": "ret",
-	}); ok.code != 200 {
-		t.Fatalf("verify: %d %s", ok.code, ok.raw)
-	}
-}
-
-// Verifying a company is a compliance decision like verifying a person, and it
-// hands out a treasury enclave. It did neither of the two things that makes it
-// one: it never screened the company's name, and it never asked whether the
-// person doing it was verified. So a listed company could be approved while a
-// listed person could not get past verification, and a person parked or refused
-// could route around their own refusal -- make a company, verify the company,
-// hold assets in the company's treasury.
 func TestVerifyingACompanyIsAComplianceDecision(t *testing.T) {
 	h := newHarness(t)
 	h.s.cfg.nodeURL = newWalletNode(t, true).URL
-	h.s.screen = newScreener("")
 	session, aid := walletSession(t, h, testPKH)
 
 	ent := h.do("POST", "/api/entities", session, map[string]any{
@@ -704,27 +497,29 @@ func TestVerifyingACompanyIsAComplianceDecision(t *testing.T) {
 		t.Fatalf("an unverified controller must be refused, got %d %s", res.code, res.raw)
 	}
 
-	if v := h.do("POST", "/api/id/verify", session, map[string]any{
+	h.verifyIdentity(session, aid, map[string]any{
 		"residence": "AE", "screening_name": "Wallet Wendy", "base_eligibility": "ret",
-	}); v.code != 200 {
-		t.Fatalf("verify: %d %s", v.code, v.raw)
-	}
+	})
 
-	// And a company on a list is not approved, whoever controls it.
-	h.s.screen.mu.Lock()
-	h.s.screen.names["eu_consolidated"][normalizeName("Listed Holdings SA")] = true
-	h.s.screen.mu.Unlock()
-
+	// A verified controller submits the company, and it goes to the provider like
+	// everything else: nothing about it counts as verified until they decide.
 	res = h.do("POST", "/api/id/entities/"+entityID+"/verify", session, map[string]any{})
-	if res.code != 409 {
-		t.Fatalf("a listed company must not be approved, got %d %s", res.code, res.raw)
+	if res.code != 200 {
+		t.Fatalf("a verified controller may submit a company: %d %s", res.code, res.raw)
 	}
-	if reviews, _ := h.s.st.PendingReviewsByAID(aid); len(reviews) == 0 {
-		t.Fatal("a company that matches a list must be put in front of a reviewer")
+	if got, _ := res.body["status"].(string); got != "submitted" {
+		t.Fatalf("entity verification status = %q, want submitted", got)
 	}
-	// Nothing was provisioned for it.
-	if k, _ := h.s.st.EnclaveKeyByRef(enclaveEntityTreasury, entityID); k != nil {
-		t.Fatal("a refused KYB must not leave a treasury enclave behind")
+	check, _ := h.s.st.LatestVerificationCheck(aid)
+	if check == nil || check.Kind != "business" || check.EntityID != entityID {
+		t.Fatalf("the company's check is %+v, want a business check for %s", check, entityID)
+	}
+
+	// And a company the provider refuses does not become verified.
+	h.adjudicate(aid, idvReject)
+	done, _ := h.s.st.LatestVerificationCheck(aid)
+	if done.Status != "complete" || done.Result != string(idvReject) {
+		t.Fatalf("the refusal was not recorded on the check: %+v", done)
 	}
 }
 
@@ -783,7 +578,6 @@ func TestADeployIsRefusedWhenItsMatrixAdmitsAFloorJurisdiction(t *testing.T) {
 	h := newHarness(t)
 	h.s.cfg.damp = true
 	h.s.cfg.nodeURL = newWalletNode(t, true).URL
-	h.s.screen = newScreener("")
 	session, aid := walletSession(t, h, testPKH)
 	iss := seedIssuanceOfKind(t, h.s, aid, "network")
 	if err := h.s.st.UpdateIssuanceFields(iss.ID, map[string]any{"status": "draft"}); err != nil {
@@ -820,5 +614,25 @@ func TestADeployIsRefusedWhenItsMatrixAdmitsAFloorJurisdiction(t *testing.T) {
 	})
 	if res.code == 422 {
 		t.Fatalf("excluding a floor jurisdiction was refused as admitting it: %s", res.raw)
+	}
+}
+
+func dup(n int) string {
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = 'a'
+	}
+	return string(b)
+}
+
+// adjudicate delivers a provider decision for this harness.
+func (h *m2Harness) adjudicate(aid string, decision idvDecision) {
+	h.t.Helper()
+	check, err := h.s.st.LatestVerificationCheck(aid)
+	if err != nil || check == nil {
+		h.t.Fatalf("no verification check for %s: %v", aid, err)
+	}
+	if err := h.s.applyAdjudication(check, decision, ""); err != nil {
+		h.t.Fatalf("adjudicate %s as %s: %v", aid, decision, err)
 	}
 }

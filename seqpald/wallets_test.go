@@ -284,13 +284,10 @@ func TestOneEnclavePerAccountIsEnforcedInTheSchema(t *testing.T) {
 func TestTheTwoAccountIdsOfAnAttachedWallet(t *testing.T) {
 	h := newHarness(t)
 	h.s.cfg.nodeURL = newWalletNode(t, true).URL
-	h.s.screen = newScreener("")
 	session, aid := walletSession(t, h, testPKH)
-	if v := h.do("POST", "/api/id/verify", session, map[string]any{
+	h.verifyIdentity(session, aid, map[string]any{
 		"residence": "AE", "screening_name": "Wallet Wendy", "base_eligibility": "ret",
-	}); v.code != 200 {
-		t.Fatalf("verify: %d %s", v.code, v.raw)
-	}
+	})
 	before := h.do("GET", "/api/id/passport", session, nil)
 	beforeCats, _ := before.body["categories"].([]any)
 	if len(beforeCats) == 0 {
@@ -340,7 +337,6 @@ func TestTheTwoAccountIdsOfAnAttachedWallet(t *testing.T) {
 func TestDeliveryNamesTheAccountThePolicyServerHolds(t *testing.T) {
 	h := newHarness(t)
 	h.s.cfg.nodeURL = newWalletNode(t, true).URL
-	h.s.screen = newScreener("")
 	_, aid := walletSession(t, h, testPKH)
 
 	// No OpenAMP account: there is nothing to deliver to, and the resolver says
@@ -363,7 +359,6 @@ func TestDeliveryNamesTheAccountThePolicyServerHolds(t *testing.T) {
 func TestThePassportCarriesBothIds(t *testing.T) {
 	h := newHarness(t)
 	h.s.cfg.nodeURL = newWalletNode(t, true).URL
-	h.s.screen = newScreener("")
 	session, aid := walletSession(t, h, testPKH)
 
 	p := h.do("GET", "/api/id/passport", session, nil)
@@ -455,7 +450,6 @@ func TestNoPayloadNamesASeqPalIdToThePolicyServer(t *testing.T) {
 func TestTheRegisterCanBeMatchedToIdentities(t *testing.T) {
 	h := newHarness(t)
 	h.s.cfg.nodeURL = newWalletNode(t, true).URL
-	h.s.screen = newScreener("")
 	session, aid := walletSession(t, h, testPKH)
 
 	xonly := xonlyHex(t, vecPriv)

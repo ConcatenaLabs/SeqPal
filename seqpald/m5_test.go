@@ -1265,7 +1265,7 @@ func newM5Harness(t *testing.T, opts m5opts) *m5h {
 		catMu:   newKeyedMutex(),
 		closeMu: newKeyedMutex(),
 		escrow:  newEscrowState(),
-		screen:  newScreener(""),
+		idv:     &testIDV{},
 	}
 	h.s = s
 	h.h = s.handler()

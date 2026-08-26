@@ -11,7 +11,7 @@ export const REAL = [
   'Policy co-signed transfers and their real refusals',
   'The register and cap table, read from the chain in atoms',
   'The hash-chained transparency log and its on-chain anchors',
-  'Sanctions screening against the public OFAC, EU, and UN lists',
+  'Identity verification performed by a provider, with their decision \u2014 clear, refused, or more needed \u2014 delivered on a signed callback and applied here. SeqPal runs no watchlist of its own',
   'terms_hash committed on chain, and the content-addressed document set',
   'Document e-signatures over the real document hash, recorded with what checks them: a BIP340 signature under the tag by an OpenAMP key, or an ordinary signed message and the wallet address it verifies for',
   'The RFSA filing number, its public lookup, the deploy gate, and the filing hash: recorded in SeqPal\u2019s append-only hash-chained audit log and timestamped against Bitcoin by the log-head anchor made at the same moment. The hash itself is not written on chain',
@@ -39,14 +39,9 @@ export const REAL = [
 
 export const SIMULATED = [
   {
-    element: 'KYC and KYB document review, selfie, PEP, adverse media',
-    real: 'A server-side review queue with pending, approved, rejected, and needs-info states, deterministic refusal personas, and a signed claims record. The sanctions part is real.',
-    label: 'Screening: simulated review, real refusals',
-  },
-  {
-    element: 'Sanctions vendor',
-    real: 'The OFAC SDN and consolidated, EU consolidated, and UN Security Council list data and the daily cron are real. Only the commercial vendor relationship is absent.',
-    label: 'Real data, no commercial vendor',
+    element: 'The identity-verification provider itself',
+    real: 'The whole seam a real provider plugs into: a check is submitted, nothing is granted while it is open, and the decision arrives on a signed callback that is authenticated, idempotent, and the single place a verification outcome takes effect. The simulated provider decides deterministically and delivers over that same callback, so what runs in the demo is the path a real provider will run.',
+    label: 'Simulated provider, real seam',
   },
   {
     element: 'E-signature provider',
