@@ -722,3 +722,28 @@ func TestM7CategoryExpiry_ExpiredAccreditationRefusesTransfer(t *testing.T) {
 		t.Fatalf("transfer to a lapsed-accreditation holder was still allowed (no real refusal)")
 	}
 }
+
+// Every rules change comes through applyRulesMutation, so that is where the one
+// shape no amendment ever intends is refused: replacing a live rule set with an
+// empty one. A caller that could not read the current rules and started from
+// nothing would otherwise publish an asset with no allowed categories, no
+// denies, no caps and no primary AIDs, and record it as an anchored amendment.
+func TestRulesAreNeverReplacedWithNothing(t *testing.T) {
+	if isEmptyRules(json.RawMessage(`{}`)) != true {
+		t.Fatal("an object with no keys is an empty rule set")
+	}
+	if isEmptyRules(json.RawMessage(``)) != true {
+		t.Fatal("absent rules are an empty rule set")
+	}
+	if isEmptyRules(json.RawMessage(`null`)) != true {
+		t.Fatal("null rules are an empty rule set")
+	}
+	if isEmptyRules(json.RawMessage(`{"allowed_categories":["j:AE:ret"]}`)) != false {
+		t.Fatal("a rule set with rules in it is not empty")
+	}
+	// Unreadable is not empty: this check must never be what decides that rules
+	// nobody could parse are safe to throw away.
+	if isEmptyRules(json.RawMessage(`{"broken`)) != false {
+		t.Fatal("an unreadable rule set must not count as empty")
+	}
+}

@@ -649,9 +649,21 @@ func (s *server) maybeStampVesting(iss *Issuance, sub *Subscription, investor *A
 	if err := s.callOpenAMP("GET", "/v1/assets/"+iss.AssetID, "", nil, &asset); err != nil {
 		return
 	}
+	// The rules read back are the ones about to be REPUBLISHED with one entry
+	// added, so a set that could not be read is not a set to start from. Treated
+	// as empty, this would post rules consisting of the vesting entry alone --
+	// wiping the allowed categories, the denies, the holder caps and the primary
+	// AIDs, and recording that as an anchored amendment. An asset with no rules
+	// at all is a different thing, and starting from empty is right for it.
 	var rules map[string]any
 	if len(asset.Rules) > 0 {
-		_ = json.Unmarshal(asset.Rules, &rules)
+		if err := json.Unmarshal(asset.Rules, &rules); err != nil || rules == nil {
+			s.st.Audit(sub.InvestorAID, "vesting.stamp_failed", map[string]any{
+				"issuance_id": iss.ID,
+				"error":       "the asset's published rules could not be read; nothing was republished",
+			})
+			return
+		}
 	}
 	if rules == nil {
 		rules = map[string]any{}
