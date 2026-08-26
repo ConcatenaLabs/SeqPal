@@ -195,6 +195,19 @@ function DescriptorProof({ descriptor, onDone, onBack }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [descriptor])
 
+  const renew = async () => {
+    setErr(null)
+    setSig('')
+    setStep('loading')
+    try {
+      setChal(await walletChallenge(descriptor))
+    } catch (e) {
+      setErr(e.message)
+    } finally {
+      setStep('sign')
+    }
+  }
+
   const submit = async () => {
     setErr(null)
     setBusy(true)
@@ -327,6 +340,14 @@ function DescriptorProof({ descriptor, onDone, onBack }) {
         </>
       )}
       <ErrorNote>{err}</ErrorNote>
+      {/* A challenge that ran out mid-signing is the likeliest failure here, and
+          going back to re-paste the descriptor to get another one is a poor way
+          to spend it. */}
+      {err && (
+        <button onClick={renew} className="btn-outline w-full text-sm">
+          Get a fresh challenge and try again
+        </button>
+      )}
       <div className="flex gap-3">
         <button
           onClick={submit}

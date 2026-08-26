@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // A SeqPal ID backed by a WALLET DESCRIPTOR rather than an OpenAMP enclave key.
@@ -197,6 +198,12 @@ func (s *server) verifyWalletMessage(address, signature, message string) error {
 // always reach: every wallet has it, and a Sign tab that opens on whatever
 // address was last used still lets them type the index.
 const walletProofIndex = 0
+
+// How long a wallet challenge stays good for. The enclave flow's two minutes is
+// right when a browser extension signs the moment it is asked; this one sends a
+// person to another application to find a signing screen, paste, sign and come
+// back, which two minutes does not cover and never did.
+const walletChallengeTTL = 20 * time.Minute
 
 // walletDescriptors canonicalises what the holder pasted and returns two forms
 // of it: the one to SHOW them, in the script type their own wallet uses, and the

@@ -46,7 +46,7 @@ func (s *server) handleWalletChallenge(w http.ResponseWriter, r *http.Request) {
 	id := walletIDFor(verifyDesc)
 	// The challenge is keyed by the account id, not by a key: a wallet account
 	// has no enclave key to key it on.
-	challenge, exp, err := s.st.CreateChallenge(id, challengeTTL)
+	challenge, exp, err := s.st.CreateChallenge(id, walletChallengeTTL)
 	if err != nil {
 		writeErr(w, 500, "could not issue a challenge")
 		return
@@ -89,7 +89,10 @@ func (s *server) authenticateWallet(req *walletAuthReq) (desc, id, address strin
 		return "", "", "", err
 	}
 	id = walletIDFor(verifyDesc)
-	if err = s.st.ConsumeChallenge(req.Challenge, id); err != nil {
+	// Check the challenge is live, but do not spend it until the signature has
+	// actually verified: this exchange sends the holder to another application
+	// and back, and a mistyped paste must not cost them the challenge.
+	if err = s.st.PeekChallenge(req.Challenge, id); err != nil {
 		return "", "", "", err
 	}
 	// The signature is checked against the LEGACY form of the same key, because
@@ -101,6 +104,10 @@ func (s *server) authenticateWallet(req *walletAuthReq) (desc, id, address strin
 		return "", "", "", err
 	}
 	if err = s.verifyWalletMessage(address, req.Sig, req.Challenge); err != nil {
+		return "", "", "", err
+	}
+	// Verified: now it is spent, so the same signature cannot be replayed.
+	if err = s.st.ConsumeChallenge(req.Challenge, id); err != nil {
 		return "", "", "", err
 	}
 	return desc, id, address, nil

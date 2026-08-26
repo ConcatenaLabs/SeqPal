@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 // A node stub answering only the three pure RPCs a wallet sign-in needs. The
@@ -217,5 +218,67 @@ func TestBothDescriptorFormsAreTheSameAccount(t *testing.T) {
 	if a.body["account_id"] != b.body["account_id"] {
 		t.Fatalf("pkh and wpkh of one key must be ONE account: %v vs %v",
 			a.body["account_id"], b.body["account_id"])
+	}
+}
+
+// A flow that sends someone to another application and back must survive a bad
+// paste. Burning the challenge on a signature that did not verify makes one
+// mistake cost the whole exchange, which is what happened live.
+func TestABadSignatureDoesNotBurnTheChallenge(t *testing.T) {
+	h := newHarness(t)
+	bad := newWalletNode(t, false)
+	h.s.cfg.nodeURL = bad.URL
+
+	ch := h.do("POST", "/api/auth/wallet/challenge", "", map[string]any{"descriptor": testPKH})
+	if ch.code != 200 {
+		t.Fatalf("challenge: %d %s", ch.code, ch.raw)
+	}
+	first := h.do("POST", "/api/auth/wallet/register", "", map[string]any{
+		"descriptor": testPKH, "challenge": ch.body["challenge"], "sig": "wrong", "display_name": "W",
+	})
+	if first.code != 401 {
+		t.Fatalf("a bad signature must be refused, got %d %s", first.code, first.raw)
+	}
+	if msg, _ := first.body["error"].(string); strings.Contains(msg, "already used") {
+		t.Fatalf("the challenge must not be spent by a failed attempt, got %q", msg)
+	}
+
+	// Same challenge, this time with a signature that verifies.
+	h.s.cfg.nodeURL = newWalletNode(t, true).URL
+	second := h.do("POST", "/api/auth/wallet/register", "", map[string]any{
+		"descriptor": testPKH, "challenge": ch.body["challenge"], "sig": "right", "display_name": "W",
+	})
+	if second.code != 200 {
+		t.Fatalf("retrying the same challenge with a good signature must work, got %d %s",
+			second.code, second.raw)
+	}
+}
+
+// Once it has worked, it is spent: the same signature must not be replayable.
+func TestAVerifiedChallengeIsSpent(t *testing.T) {
+	h := newHarness(t)
+	h.s.cfg.nodeURL = newWalletNode(t, true).URL
+	ch := h.do("POST", "/api/auth/wallet/challenge", "", map[string]any{"descriptor": testPKH})
+	body := map[string]any{
+		"descriptor": testPKH, "challenge": ch.body["challenge"], "sig": "right", "display_name": "W",
+	}
+	if first := h.do("POST", "/api/auth/wallet/register", "", body); first.code != 200 {
+		t.Fatalf("register: %d %s", first.code, first.raw)
+	}
+	replay := h.do("POST", "/api/auth/wallet/login", "", body)
+	if replay.code == 200 {
+		t.Fatal("a spent challenge must not be replayable")
+	}
+}
+
+// The window has to cover leaving the page, finding a signing screen, signing
+// and coming back. Two minutes did not.
+func TestWalletChallengeWindowIsLongEnoughToLeaveThePage(t *testing.T) {
+	if walletChallengeTTL <= challengeTTL {
+		t.Fatalf("the wallet window (%s) must be longer than the enclave one (%s): one is a click, "+
+			"the other is a trip to another application", walletChallengeTTL, challengeTTL)
+	}
+	if walletChallengeTTL < 10*time.Minute {
+		t.Fatalf("%s is not long enough for an out-of-band signature", walletChallengeTTL)
 	}
 }
