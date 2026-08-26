@@ -1084,6 +1084,15 @@ UPDATE claims SET status = 'needs_info' WHERE status = 'pending_review';
 DROP TABLE IF EXISTS review_queue;
 DROP TABLE IF EXISTS screening;
 `,
+	// Verification costs money. The provider charges per check, whether it clears
+	// or refuses, so the fee is owed by the ACCOUNT rather than against an
+	// issuance -- the same invoice machinery, with an owner that is a person
+	// instead of an offering.
+	`
+ALTER TABLE fee_invoices ADD COLUMN aid TEXT NOT NULL DEFAULT '';
+ALTER TABLE fee_invoices ADD COLUMN subject TEXT NOT NULL DEFAULT '';
+CREATE INDEX idx_fee_invoices_aid_kind ON fee_invoices(aid, kind, subject) WHERE aid != '';
+`,
 }
 
 // Store is seqpald's persistent state. Every financial fact the UI shows is

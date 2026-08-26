@@ -69,6 +69,15 @@ func (s *Store) LatestVerificationCheck(aid string) (*VerificationCheck, error) 
          WHERE aid = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`, aid))
 }
 
+// LatestVerificationCheckForEntity is the business check for one entity. An
+// account can have several businesses with the provider at once, so the
+// account's latest check is not the answer for any particular one of them.
+func (s *Store) LatestVerificationCheckForEntity(entityID string) (*VerificationCheck, error) {
+	return scanVerificationCheck(s.db.QueryRow(
+		`SELECT `+verificationCheckCols+` FROM verification_checks
+         WHERE entity_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`, entityID))
+}
+
 func (s *Store) CompleteVerificationCheck(id, result, reason string, decidedAt int64) error {
 	_, err := s.db.Exec(
 		`UPDATE verification_checks SET status = 'complete', result = ?, reason = ?, decided_at = ?

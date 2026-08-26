@@ -72,6 +72,13 @@ func (s *server) handleIDVerify(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Paid before submitted, because the provider bills for the check the moment
+	// it is created. Nothing has been written yet at this point, so an unpaid
+	// caller leaves exactly as they arrived.
+	if !s.requireVerificationFee(w, acct.AID, "identity", "") {
+		return
+	}
+
 	// The investor must be a registered openampd user before any category can be
 	// stamped; the server-recomputed AID must equal the local AID or we would be
 	// stamping an account we do not control.
@@ -255,8 +262,15 @@ func (s *server) handleIDPassport(w http.ResponseWriter, r *http.Request) {
 		if link, _ := s.st.UBOLinkByEntity(e.ID); link != nil {
 			ent["treasury_aid"] = link.TreasuryAID
 			ent["ubo_signed"] = link.Sig != ""
-			ent["verified"] = true
 		}
+		// Verified is the provider's word, not ours. The treasury key and the UBO
+		// link both exist from the moment the check is SUBMITTED -- the control
+		// statement names the treasury, so it cannot be signed before it exists --
+		// and calling that verified would show a business as cleared while its
+		// check is still with the provider, or after they refused it.
+		check, _ := s.st.LatestVerificationCheckForEntity(e.ID)
+		ent["verification"] = verificationView(check)
+		ent["verified"] = check != nil && check.Result == string(idvClear)
 		linked = append(linked, ent)
 	}
 
@@ -313,23 +327,33 @@ type entityVerifyReq struct {
 	KYBProfile json.RawMessage `json:"kyb_profile"` // simulated KYB questionnaire payload
 }
 
-func (s *server) handleEntityVerify(w http.ResponseWriter, r *http.Request) {
-	acct := principal(r)
-	id := r.PathValue("id")
+// ownedEntity resolves one of the caller's own businesses, writing the refusal
+// itself if it is missing or somebody else's.
+func (s *server) ownedEntity(w http.ResponseWriter, acct *Account, id string) *Entity {
 	e, err := s.st.EntityByID(id)
 	if err != nil {
 		writeErr(w, 500, "store error")
-		return
+		return nil
 	}
 	if e == nil {
 		writeErr(w, 404, "unknown entity")
-		return
+		return nil
 	}
 	if e.OwnerAID != acct.AID {
-		s.st.Audit(acct.AID, "entity.verify.refused", map[string]any{"entity_id": id, "reason": "not owner"})
+		s.st.Audit(acct.AID, "entity.access.refused", map[string]any{"entity_id": id, "reason": "not owner"})
 		writeErr(w, 403, "that entity belongs to another account")
+		return nil
+	}
+	return e
+}
+
+func (s *server) handleEntityVerify(w http.ResponseWriter, r *http.Request) {
+	acct := principal(r)
+	e := s.ownedEntity(w, acct, r.PathValue("id"))
+	if e == nil {
 		return
 	}
+	id := e.ID
 	var req entityVerifyReq
 	_ = readJSON(r, &req)
 
@@ -348,6 +372,12 @@ func (s *server) handleEntityVerify(w http.ResponseWriter, r *http.Request) {
 		})
 		writeErr(w, 403, "an entity is verified by the person who controls it, and this SeqPal ID "+
 			"is not verified. Verify your own identity first")
+		return
+	}
+
+	// Paid before anything is provisioned, for the same reason as an identity
+	// check: the provider bills per business.
+	if !s.requireVerificationFee(w, acct.AID, "business", e.ID) {
 		return
 	}
 

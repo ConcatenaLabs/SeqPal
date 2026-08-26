@@ -107,7 +107,25 @@ func (s *server) handlePayFee(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{"invoice": inv, "already_paid": true})
 		return
 	}
-	rail := strings.ToLower(strings.TrimSpace(req.Rail))
+	s.payInvoiceOnRail(w, acct, inv, req.Rail, map[string]any{"issuance_id": iss.ID})
+}
+
+// payInvoiceOnRail collects one fee invoice on the payer's chosen rail, whatever
+// the invoice is for. Fiat starts a SIMULATED checkout; on-chain returns a deposit
+// address the deposit watcher credits when the payment confirms. ctx names the
+// thing being paid for, and is recorded in the audit entry.
+func (s *server) payInvoiceOnRail(w http.ResponseWriter, acct *Account, inv *FeeInvoice, wanted string, ctx map[string]any) {
+	audit := func(event string, extra map[string]any) {
+		fields := map[string]any{"invoice": inv.ID}
+		for k, v := range ctx {
+			fields[k] = v
+		}
+		for k, v := range extra {
+			fields[k] = v
+		}
+		s.st.Audit(acct.AID, event, fields)
+	}
+	rail := strings.ToLower(strings.TrimSpace(wanted))
 	switch rail {
 	case "card", "bank":
 		pay, err := s.startFiatFeePayment(inv.ID, rail, inv.AmountUSD)
@@ -116,7 +134,7 @@ func (s *server) handlePayFee(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		_ = s.st.UpdateFeeInvoiceFields(inv.ID, map[string]any{"rail": rail, "funds_simulated": 1, "ccy": "USD", "amount": inv.Amount})
-		s.st.Audit(acct.AID, "fee.pay.fiat", map[string]any{"issuance_id": iss.ID, "invoice": inv.ID, "rail": rail, "simulated": true})
+		audit("fee.pay.fiat", map[string]any{"rail": rail, "simulated": true})
 		writeJSON(w, 200, map[string]any{"invoice": inv, "checkout": fiatView(pay), "funds_simulated": true})
 
 	case "usdx":
@@ -127,7 +145,7 @@ func (s *server) handlePayFee(w http.ResponseWriter, r *http.Request) {
 		}
 		amount := usdToAtoms(inv.AmountUSD)
 		_ = s.st.UpdateFeeInvoiceFields(inv.ID, map[string]any{"rail": "usdx", "address": addr, "amount": amount, "ccy": "USDX"})
-		s.st.Audit(acct.AID, "fee.pay.usdx", map[string]any{"issuance_id": iss.ID, "invoice": inv.ID, "address": addr, "amount": amount})
+		audit("fee.pay.usdx", map[string]any{"address": addr, "amount": amount})
 		writeJSON(w, 200, map[string]any{"invoice_id": inv.ID, "rail": "usdx", "deposit_address": addr, "pay_amount": amount, "pay_ccy": "USDX", "confs_required": s.cfg.escrowConfs})
 
 	case "btc":
@@ -147,7 +165,7 @@ func (s *server) handlePayFee(w http.ResponseWriter, r *http.Request) {
 		}
 		amount := uint64(math.Ceil(inv.AmountUSD / btcUSD * 1e8))
 		_ = s.st.UpdateFeeInvoiceFields(inv.ID, map[string]any{"rail": "btc", "address": addr, "amount": amount, "ccy": "BTC"})
-		s.st.Audit(acct.AID, "fee.pay.btc", map[string]any{"issuance_id": iss.ID, "invoice": inv.ID, "address": addr, "amount": amount})
+		audit("fee.pay.btc", map[string]any{"address": addr, "amount": amount})
 		writeJSON(w, 200, map[string]any{"invoice_id": inv.ID, "rail": "btc", "deposit_address": addr, "pay_amount": amount, "pay_ccy": "BTC", "confs_required": s.cfg.escrowConfs})
 
 	default:
@@ -161,12 +179,41 @@ func (s *server) onFiatFeeSettled(p *FiatPayment) {
 	if err != nil || inv == nil || inv.State == "paid" {
 		return
 	}
-	_ = s.st.UpdateFeeInvoiceFields(inv.ID, map[string]any{"state": "paid", "txid": p.Receipt, "paid_at": time.Now().Unix()})
-	_ = s.st.InsertLedger(&LedgerEntry{
-		IssuanceID: inv.IssuanceID, Kind: "setup_fee", Rail: inv.Rail,
-		Amount: p.AmountMinor, Ccy: p.Ccy, Txid: p.Receipt, FundsSimulated: true,
+	s.recordFeePaid(inv, p.Receipt, p.AmountMinor, p.Ccy, true)
+}
+
+// recordFeePaid marks one fee invoice paid and books it.
+//
+// The escrow ledger is per-offering: every row belongs to an issuance, and the
+// readers group by it. A verification fee belongs to a person and to no
+// offering, so it is not written there -- an orphan row with an empty issuance
+// id would be in the books without being in anybody's books. Its record is the
+// invoice itself, which carries the rail, the amount and the settling txid, and
+// the audit entry below.
+func (s *server) recordFeePaid(inv *FeeInvoice, txid string, amount uint64, ccy string, simulated bool) {
+	_ = s.st.UpdateFeeInvoiceFields(inv.ID, map[string]any{
+		"state": "paid", "txid": txid, "paid_at": time.Now().Unix(),
 	})
-	s.st.Audit("", "fee.paid", map[string]any{"issuance_id": inv.IssuanceID, "invoice": inv.ID, "rail": inv.Rail, "simulated": true})
+	if inv.IssuanceID != "" {
+		_ = s.st.InsertLedger(&LedgerEntry{
+			IssuanceID: inv.IssuanceID, Kind: inv.Kind + "_fee", Rail: inv.Rail,
+			Amount: amount, Ccy: ccy, Txid: txid, FundsSimulated: simulated,
+		})
+	}
+	fields := map[string]any{
+		"invoice": inv.ID, "kind": inv.Kind, "rail": inv.Rail,
+		"amount": amount, "ccy": ccy, "simulated": simulated,
+	}
+	if inv.IssuanceID != "" {
+		fields["issuance_id"] = inv.IssuanceID
+	}
+	if inv.Subject != "" {
+		fields["entity_id"] = inv.Subject
+	}
+	if txid != "" {
+		fields["txid"] = txid
+	}
+	s.st.Audit(inv.AID, "fee.paid", fields)
 }
 
 // onFeeDepositConfirmed marks an on-chain fee invoice paid when its deposit
@@ -175,12 +222,7 @@ func (s *server) onFeeDepositConfirmed(inv *FeeInvoice, txid string, atoms uint6
 	if inv.State == "paid" {
 		return
 	}
-	_ = s.st.UpdateFeeInvoiceFields(inv.ID, map[string]any{"state": "paid", "txid": txid, "paid_at": time.Now().Unix()})
-	_ = s.st.InsertLedger(&LedgerEntry{
-		IssuanceID: inv.IssuanceID, Kind: "setup_fee", Rail: inv.Rail,
-		Amount: atoms, Ccy: inv.Ccy, Txid: txid, FundsSimulated: false,
-	})
-	s.st.Audit("", "fee.paid", map[string]any{"issuance_id": inv.IssuanceID, "invoice": inv.ID, "rail": inv.Rail, "txid": txid})
+	s.recordFeePaid(inv, txid, atoms, inv.Ccy, false)
 }
 
 // --- issuer payout mandates --------------------------------------------------

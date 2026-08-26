@@ -157,12 +157,18 @@ export const compileIssuance = (id, body) =>
 // Returns { status: "submitted", aid, check_id, provider }.
 export const idVerify = (body) => req('/id/verify', { method: 'POST', body })
 
+// Verification costs money: the provider bills SeqPal per check, so the check is
+// not submitted until the account has paid for it.
+export const verificationFees = () => req('/id/fees')
+export const payVerificationFee = (body) => req('/id/fees/pay', { method: 'POST', body })
+
 // The passport: { aid, enclave_key, status, categories[], valid_until,
-// screening[], lists_screened[], frozen, entities[], accepted{assets,venues} }.
+// verification{}, frozen, entities[], accepted{assets,venues} }.
 export const idPassport = () => req('/id/passport')
 
-// KYB review for a linked corporate entity: provisions the entity treasury
-// enclave and records the UBO link. Returns { entity, treasury_aid, ubo_link }.
+// Submit a linked corporate entity for business verification: provisions the
+// entity treasury enclave, records the UBO link, and sends the check to the
+// provider. Returns { entity, treasury_aid, ubo_link, status, check_id }.
 export const verifyEntity = (id, body) =>
   req(`/id/entities/${encodeURIComponent(id)}/verify`, { method: 'POST', body })
 
