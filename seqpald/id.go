@@ -274,8 +274,8 @@ func (s *server) handleIDPassport(w http.ResponseWriter, r *http.Request) {
 	// report zero categories for a holder who is verified -- which is how the
 	// passport came to show "Verified" and "Categories carried: 0" at once.
 	var user openampUser
-	if s.hasEnclave(acct) {
-		_ = s.callOpenAMP("GET", "/v1/users/"+acct.AID, "", nil, &user)
+	if oaid := s.enclaveAIDOf(acct); oaid != "" {
+		_ = s.callOpenAMP("GET", "/v1/users/"+oaid, "", nil, &user)
 	} else {
 		user.Categories = projectCategories(claims, time.Now().Unix())
 	}
@@ -487,7 +487,7 @@ func (s *server) handleEligibility(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var user openampUser
-	if err := s.callOpenAMP("GET", "/v1/users/"+aid, "", nil, &user); err != nil {
+	if err := s.callOpenAMP("GET", "/v1/users/"+s.openampAIDFor(aid), "", nil, &user); err != nil {
 		writeJSON(w, 200, map[string]any{"aid": aid, "asset": asset, "eligible": false,
 			"reasons": []string{"this AID is not registered with the policy server"}})
 		return

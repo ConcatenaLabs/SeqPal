@@ -54,7 +54,7 @@ func (s *server) handleConsoleFreeze(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.callOpenAMP("POST", "/v1/issuer/freeze", s.cfg.issuerToken,
-		map[string]any{"aid": holder, "frozen": req.Frozen}, nil); err != nil {
+		map[string]any{"aid": s.openampAIDFor(holder), "frozen": req.Frozen}, nil); err != nil {
 		writeErr(w, 502, "the policy server rejected the freeze: %v", err)
 		return
 	}
@@ -267,7 +267,7 @@ func (s *server) doClawbackBuild(iss *Issuance, holderAID, reason, byAID, contex
 		} `json:"to_sign"`
 	}
 	if err := s.callOpenAMP("POST", "/v1/issuer/clawback", s.cfg.issuerToken,
-		map[string]any{"asset": iss.AssetID, "holder_aid": holderAID, "reason": reason}, &built); err != nil {
+		map[string]any{"asset": iss.AssetID, "holder_aid": s.openampAIDFor(holderAID), "reason": reason}, &built); err != nil {
 		return nil, nil, err
 	}
 	if built.ID == "" {
@@ -489,7 +489,7 @@ func (s *server) enclaveBalance(aid, assetID string) (uint64, error) {
 	var out struct {
 		Atoms uint64 `json:"atoms"`
 	}
-	if err := s.callOpenAMP("GET", "/v1/users/"+aid+"/balance?asset="+assetID, "", nil, &out); err != nil {
+	if err := s.callOpenAMP("GET", "/v1/users/"+s.openampAIDFor(aid)+"/balance?asset="+assetID, "", nil, &out); err != nil {
 		return 0, err
 	}
 	return out.Atoms, nil

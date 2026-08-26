@@ -388,7 +388,7 @@ func (s *server) handleListMyTransfers(w http.ResponseWriter, r *http.Request) {
 // /complete is authoritative.
 func (s *server) recipientPreflight(aid, asset string) map[string]any {
 	var user openampUser
-	if err := s.callOpenAMP("GET", "/v1/users/"+aid, "", nil, &user); err != nil {
+	if err := s.callOpenAMP("GET", "/v1/users/"+s.openampAIDFor(aid), "", nil, &user); err != nil {
 		return map[string]any{"eligible": false, "reasons": []string{"the beneficiary is not registered with the policy server"}}
 	}
 	rules, ok, err := s.assetRules(asset)

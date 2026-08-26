@@ -591,7 +591,7 @@ func (s *server) deliveryAlreadyDone(iss *Issuance, sub *Subscription) bool {
 	var bal struct {
 		Atoms uint64 `json:"atoms"`
 	}
-	if err := s.callOpenAMP("GET", "/v1/users/"+sub.InvestorAID+"/balance?asset="+iss.AssetID, "", nil, &bal); err != nil {
+	if err := s.callOpenAMP("GET", "/v1/users/"+s.openampAIDFor(sub.InvestorAID)+"/balance?asset="+iss.AssetID, "", nil, &bal); err != nil {
 		return false
 	}
 	return bal.Atoms >= sub.TokenAtoms

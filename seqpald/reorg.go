@@ -68,7 +68,7 @@ func (s *server) watchBtcReorgs() {
 func (s *server) freezeForReorg(sub *Subscription, confs int64) {
 	reason := "native-BTC deposit reorged out post-delivery"
 	if err := s.callOpenAMP("POST", "/v1/issuer/freeze", s.cfg.issuerToken,
-		map[string]any{"aid": sub.InvestorAID, "frozen": true}, nil); err != nil {
+		map[string]any{"aid": s.openampAIDFor(sub.InvestorAID), "frozen": true}, nil); err != nil {
 		log.Printf("reorg watch: freeze %s: %v", sub.InvestorAID, err)
 		return
 	}
@@ -98,7 +98,7 @@ func (s *server) clearReorgHold(sub *Subscription, confs int64) {
 		return
 	}
 	if err := s.callOpenAMP("POST", "/v1/issuer/freeze", s.cfg.issuerToken,
-		map[string]any{"aid": sub.InvestorAID, "frozen": false}, nil); err != nil {
+		map[string]any{"aid": s.openampAIDFor(sub.InvestorAID), "frozen": false}, nil); err != nil {
 		log.Printf("reorg watch: unfreeze %s: %v", sub.InvestorAID, err)
 		return
 	}

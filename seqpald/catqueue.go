@@ -128,7 +128,8 @@ func (s *server) stampCategories(aid string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read account: %w", err)
 	}
-	if acct == nil || !s.hasEnclave(acct) {
+	oaid := s.enclaveAIDOf(acct)
+	if acct == nil || oaid == "" {
 		claims, err := s.st.ClaimsByAID(aid)
 		if err != nil {
 			return nil, fmt.Errorf("read claims: %w", err)
@@ -139,7 +140,10 @@ func (s *server) stampCategories(aid string) ([]string, error) {
 		}
 		return list, nil
 	}
-	return s.writeCategories(aid)
+	// The claims are filed under the SeqPal account id; the policy server knows
+	// this ID by the account its enclave key derives, which is a different id
+	// whenever the ID was founded as a wallet.
+	return s.writeCategoriesFor(aid, oaid)
 }
 
 // freezeAtPolicyServer freezes an OpenAMP account, and reports whether there was
@@ -152,11 +156,14 @@ func (s *server) freezeAtPolicyServer(aid string) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("read account: %w", err)
 	}
-	if acct == nil || !s.hasEnclave(acct) {
+	oaid := s.enclaveAIDOf(acct)
+	if acct == nil || oaid == "" {
 		return false, nil
 	}
+	// The freeze names the account the POLICY SERVER holds, which is the one the
+	// enclave key derives rather than the SeqPal id the claims are filed under.
 	if err := s.callOpenAMP("POST", "/v1/issuer/freeze", s.cfg.issuerToken,
-		map[string]any{"aid": aid, "frozen": true}, nil); err != nil {
+		map[string]any{"aid": oaid, "frozen": true}, nil); err != nil {
 		return false, err
 	}
 	return true, nil

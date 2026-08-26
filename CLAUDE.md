@@ -81,6 +81,14 @@ rule that catches something that actually breaks.
   verified under a different one), and verifying a COMPANY is the same decision: the
   controller must be eligible, and the company's own name is screened, because most of the EU
   list is enterprises.
+- **A SeqPal ID has TWO account ids, and openampd knows only one of them.** `accounts.aid` is
+  the id the ID was founded with and never changes; the policy server knows the account the
+  enclave key derives. They coincide only for an ID founded ON an enclave. Never pass
+  `acct.AID` to openampd -- go through `enclaveAIDOf` / `openampAIDFor` (`seqpald/wallets.go`),
+  which resolve it and return "" when there is no OpenAMP account, meaning "nothing to ask
+  about". Getting this wrong is silent: openampd answers about an account it has never heard
+  of, and "no categories, not registered, no address" is exactly what a holder with nothing
+  looks like. `writeCategoriesFor(claimsAID, enclaveAID)` takes both for this reason.
 - **A compliance action must bind every kind of SeqPal ID.** The policy server only knows
   accounts with an OpenAMP key, so `callOpenAMP` fails for an ID that is only a wallet -- and
   a caller that returns on that error has skipped whatever came after it. A confirmed sanctions

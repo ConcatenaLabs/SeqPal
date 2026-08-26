@@ -271,3 +271,61 @@ func TestOneEnclavePerAccountIsEnforcedInTheSchema(t *testing.T) {
 		}
 	}
 }
+
+// An ID founded as a wallet keeps its SeqPal account id forever, and the policy
+// server knows it by the account its enclave key derives -- a different id. Every
+// question asked of openampd about "this holder" has to name the second one.
+//
+// Confirmed against the live service before this was written: a verified holder
+// attached an OpenAMP account and their passport went to zero categories,
+// because the passport asked openampd about an account it had never heard of.
+func TestTheTwoAccountIdsOfAnAttachedWallet(t *testing.T) {
+	h := newHarness(t)
+	h.s.cfg.nodeURL = newWalletNode(t, true).URL
+	h.s.screen = newScreener("")
+	session, aid := walletSession(t, h, testPKH)
+	if v := h.do("POST", "/api/id/verify", session, map[string]any{
+		"residence": "AE", "screening_name": "Wallet Wendy", "base_eligibility": "ret",
+	}); v.code != 200 {
+		t.Fatalf("verify: %d %s", v.code, v.raw)
+	}
+	before := h.do("GET", "/api/id/passport", session, nil)
+	beforeCats, _ := before.body["categories"].([]any)
+	if len(beforeCats) == 0 {
+		t.Fatalf("a verified wallet-backed ID must carry categories: %s", before.raw)
+	}
+
+	// Attach an OpenAMP account, exactly as the browser does.
+	xonly := xonlyHex(t, vecPriv)
+	enclaveAID := aidFor([]string{xonly})
+	if enclaveAID == aid {
+		t.Fatal("this test needs the two ids to differ")
+	}
+	ch := h.do("POST", "/api/auth/challenge", "", map[string]any{"xonly": xonly})
+	if ch.code != 200 {
+		t.Fatalf("challenge: %d %s", ch.code, ch.raw)
+	}
+	challenge, _ := ch.body["challenge"].(string)
+	if challenge == "" {
+		t.Fatalf("no challenge in %s", ch.raw)
+	}
+	att := h.do("POST", "/api/auth/attach-enclave", session, map[string]any{
+		"xonly": xonly, "challenge": challenge,
+		"sig": signChallengeHex(t, vecPriv, challenge),
+	})
+	if att.code != 200 {
+		t.Fatalf("attach: %d %s", att.code, att.raw)
+	}
+
+	if got := h.s.enclaveAIDFor(aid); got != enclaveAID {
+		t.Fatalf("the policy-server id for this ID is %q, want %q", got, enclaveAID)
+	}
+
+	// The credential the holder already had must still be there afterwards.
+	after := h.do("GET", "/api/id/passport", session, nil)
+	afterCats, _ := after.body["categories"].([]any)
+	if len(afterCats) != len(beforeCats) {
+		t.Fatalf("attaching an OpenAMP account lost the categories: %d -> %d\n%s",
+			len(beforeCats), len(afterCats), after.raw)
+	}
+}

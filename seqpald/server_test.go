@@ -38,6 +38,8 @@ type fakeOpenAMP struct {
 	// Which accounts have actually been registered, so a probe about an account
 	// nobody registered answers the way the real policy server does.
 	registered sync.Map
+	// aid -> []string, the categories the policy server holds for that account.
+	categories sync.Map
 }
 
 func newFakeOpenAMP(t *testing.T) *fakeOpenAMP {
@@ -81,6 +83,41 @@ func newFakeOpenAMP(t *testing.T) *fakeOpenAMP {
 			"txid":          fmt.Sprintf("%064x", 1000+n),
 			"contract_hash": fmt.Sprintf("%064x", 2000+n),
 		})
+	})
+
+	// The categories a registered account carries, which is what the policy
+	// server is authoritative for. Without these two the stub 404s every read of
+	// an account and stores no write, so a test could not tell a category that
+	// was written to the wrong account id from one that was never written.
+	mux.HandleFunc("GET /v1/users/{aid}", func(w http.ResponseWriter, r *http.Request) {
+		aid := r.PathValue("aid")
+		if _, ok := f.registered.Load(aid); !ok {
+			writeJSON(w, 404, map[string]any{"error": "no such user"})
+			return
+		}
+		cats := []string{}
+		if v, ok := f.categories.Load(aid); ok {
+			cats = append(cats, v.([]string)...)
+		}
+		writeJSON(w, 200, map[string]any{"aid": aid, "categories": cats, "frozen": false})
+	})
+
+	mux.HandleFunc("POST /v1/issuer/categories", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-issuer-token" {
+			writeJSON(w, 401, map[string]any{"error": "bad issuer token"})
+			return
+		}
+		var req struct {
+			AID        string   `json:"aid"`
+			Categories []string `json:"categories"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		if _, ok := f.registered.Load(req.AID); !ok {
+			writeJSON(w, 404, map[string]any{"error": "no such user"})
+			return
+		}
+		f.categories.Store(req.AID, append([]string{}, req.Categories...))
+		writeJSON(w, 200, map[string]any{"ok": true})
 	})
 
 	// An account the policy server has never been told about has no address, and
@@ -142,6 +179,9 @@ func newHarness(t *testing.T) *harness {
 		http:   &http.Client{Timeout: 5 * time.Second},
 		rl:     newRateLimiter(),
 		chalRL: newWindowLimiter(challengesPerKeyPerHour, challengesGlobalPerHour, time.Hour),
+		// As production builds it. Without this a category write panics on a nil
+		// mutex, which is a way for a test suite to never reach the write at all.
+		catMu: newKeyedMutex(),
 	}
 	return &harness{t: t, s: s, h: s.handler(), oa: oa}
 }
