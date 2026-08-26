@@ -207,7 +207,7 @@ func (s *server) handleDRMint(w http.ResponseWriter, r *http.Request) {
 			Idempotent  bool   `json:"idempotent"`
 		}
 		code, err := s.callOpenAMPStatus("POST", "/v1/issuer/reissue", s.cfg.issuerToken,
-			map[string]any{"asset": iss.AssetID, "target_aid": target, "atoms": req.Atoms, "request_id": requestID}, &out)
+			map[string]any{"asset": iss.AssetID, "target_aid": s.openampAIDFor(target), "atoms": req.Atoms, "request_id": requestID}, &out)
 		if err != nil {
 			if code == http.StatusNotImplemented {
 				_ = s.st.UpdateDROpFields(op.ID, map[string]any{"state": "failed", "error": err.Error()})

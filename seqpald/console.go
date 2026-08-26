@@ -413,7 +413,7 @@ func (s *server) doClawback(iss *Issuance, holderAID, reason, byAID, context str
 		Atoms uint64 `json:"atoms"`
 	}
 	err := s.callOpenAMP("POST", "/v1/issuer/clawback", s.cfg.issuerToken,
-		map[string]any{"asset": iss.AssetID, "holder_aid": holderAID, "reason": reason}, &out)
+		map[string]any{"asset": iss.AssetID, "holder_aid": s.openampAIDFor(holderAID), "reason": reason}, &out)
 	if err != nil {
 		// The public log entry precedes signing, so a post-broadcast failure is still
 		// recoverable without re-sweeping.
