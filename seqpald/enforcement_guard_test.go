@@ -103,3 +103,40 @@ func TestClosingABearerIssuanceIsRefused(t *testing.T) {
 		t.Fatalf("the refusal must describe the token, not the missing machinery: %q", msg)
 	}
 }
+
+// A freely-tradable token is supervised by a key that signs its freezes, as a
+// BIP340 signature over the message the node computes. An ordinary wallet signs
+// classic messages and cannot produce one, so an ID with no OpenAMP account has
+// nothing to put in the asset id -- which commits to that key at issuance.
+// Unrefused, the deploy reached the node and failed there, about a malformed
+// operational key, after the terms were already written.
+func TestAWalletBackedIDCannotIssueASupervisedToken(t *testing.T) {
+	h := newHarness(t)
+	h.s.cfg.nodeURL = newWalletNode(t, true).URL
+	h.s.screen = newScreener("")
+	session, aid := walletSession(t, h, testPKH)
+
+	iss := seedIssuanceOfKind(t, h.s, aid, "bearer")
+	if err := h.s.st.UpdateIssuanceFields(iss.ID, map[string]any{"status": "draft"}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, kind := range []string{"bearer", "serviced"} {
+		res := h.do("POST", "/api/deploy", session, map[string]any{
+			"issuance_id": iss.ID, "enforcement": kind,
+			"supply": 1000, "precision": 0,
+		})
+		if res.code != 403 {
+			t.Fatalf("%s: must be refused for an ID with no OpenAMP account, got %d %s",
+				kind, res.code, res.raw)
+		}
+		msg, _ := res.body["error"].(string)
+		if !strings.Contains(msg, "no OpenAMP account attached") {
+			t.Fatalf("%s: the refusal must name what is missing: %q", kind, msg)
+		}
+		// And it must point at the option that does work.
+		if !strings.Contains(msg, "network-enforced") {
+			t.Fatalf("%s: the refusal must name the option that needs nothing: %q", kind, msg)
+		}
+	}
+}

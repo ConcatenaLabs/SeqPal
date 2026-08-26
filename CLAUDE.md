@@ -53,8 +53,10 @@ rule that catches something that actually breaks.
   OpenAMP account, identified by a public `pkh(...)` descriptor and proved with an ordinary
   signed message (`seqpald/wallet_identity.go`). Never add a fourth that makes a key here.
 - `accounts.identity` is `aid` (an OpenAMP enclave account) or `xpub` (a descriptor-backed
-  wallet). An `xpub` account is refused every OpenAMP path by `requireEnclave`, and a serviced
-  deploy by `handleDeploy`; supervised, OpenDAMP, corporate actions and claims are deliberately
+  wallet). An `xpub` account is refused every OpenAMP path by `requireEnclave`, and BOTH a
+  serviced and a bearer deploy by `handleDeploy` -- serviced mints into an enclave, and bearer
+  is supervised by a key that must sign a BIP340 freeze message, which an ordinary wallet
+  cannot produce. Only `network` is issuable without one; supervised, OpenDAMP, corporate actions and claims are deliberately
   NOT behind that gate. `POST /api/auth/attach-enclave` upgrades one in place, keeping its id.
   The node does the descriptor work (`getdescriptorinfo`, `deriveaddresses`, `verifymessage`
   are pure functions needing no wallet), so there is no bespoke key handling in seqpald.

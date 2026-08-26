@@ -214,7 +214,21 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	if enforcement == "serviced" && !s.hasEnclave(acct) {
 		refuse(403, "a policy-co-signed (serviced) issuance mints into an OpenAMP enclave, and this "+
 			"SeqPal ID is a wallet with no OpenAMP account attached. Attach one, or issue this as "+
-			"freely-tradable or network-enforced, neither of which needs an enclave")
+			"network-enforced, which does not need one")
+		return
+	}
+	// A freely-tradable token is supervised by an OPERATIONAL key, and the asset
+	// id commits to it at issuance: it is the key that will sign a court-ordered
+	// freeze, as a BIP340 signature over the message the node computes. An
+	// ordinary wallet cannot make one -- it signs classic messages -- so an ID
+	// with no OpenAMP account has no key to put there. Refused here, because the
+	// alternative is an unreadable failure from the node about a malformed
+	// operational key, after the terms are already written.
+	if enforcement == "bearer" && !s.hasEnclave(acct) {
+		refuse(403, "a freely-tradable token is supervised by a key that signs its freezes, and "+
+			"this SeqPal ID is a wallet with no OpenAMP account attached to supply one. Attach "+
+			"one, or issue this as network-enforced, whose rules the chain enforces without a "+
+			"supervision key")
 		return
 	}
 	if enforcement == "network" && !s.cfg.damp {
