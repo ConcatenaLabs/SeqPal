@@ -42,6 +42,14 @@ func (s *server) handleClose(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 409, "this issuance is not live on chain")
 		return
 	}
+	// One close at a time for this issuance. Unlike the deploy, this is not a
+	// repair: the settlement state machine below already held under concurrent
+	// closes when it was tested without this lock, because every settlement
+	// claims its row before it moves anything. It is here because each
+	// settlement still reads its state and then acts on it, because what it acts
+	// on is a delivery and a payment, and because the analogous servicing path
+	// (a distribution run) has taken exactly this lock all along.
+	defer s.st.LockIssuance(iss.ID)()
 	// Closing IS the delivery, and for a token whose rules the network enforces the
 	// delivery is a transfer out of the issuer's own wallet into each investor's own
 	// holding address. This platform holds no such account and can sign no such
