@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import WhitelistAccess from '../../components/WhitelistAccess'
 import { Icon } from '../../components/icons'
 import { Badge } from '../../components/ui'
 import { useStore } from '../../lib/store'
@@ -146,6 +147,21 @@ export default function InvestorPortal() {
                 </>
               ) : (
                 <>
+                  {/* A token whose rules the network enforces is not sold here:
+                      it is acquired by being on its published holder list. This
+                      is where a verified holder asks to be, since it is the only
+                      page about that token they can reach. */}
+                  {offering.enforcement === 'network' && (
+                    <div className="mt-6">
+                      <WhitelistAccess
+                        iss={{
+                          id: offering.issuance_id,
+                          enforcement: offering.enforcement,
+                          ticker: offering.ticker,
+                        }}
+                      />
+                    </div>
+                  )}
                   <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
                     <div className="rounded-xl border border-ink-900/10 bg-white p-4">
                       <div className="text-xs text-ink-700/60">Price</div>
