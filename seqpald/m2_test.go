@@ -140,15 +140,6 @@ func (f *stubOA) userCategories(aid string) []string {
 	return nil
 }
 
-func (f *stubOA) frozen(aid string) bool {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if u, ok := f.users[aid]; ok {
-		return u.Frozen
-	}
-	return false
-}
-
 // --- M2 harness --------------------------------------------------------------
 
 type m2Harness struct {

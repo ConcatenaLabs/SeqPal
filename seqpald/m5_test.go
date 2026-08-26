@@ -783,12 +783,6 @@ func (f *m5Stub) pendingClawCount() int {
 	return len(f.pendingClaw)
 }
 
-func (f *m5Stub) logLen() int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return len(f.clawbackLog)
-}
-
 func (f *m5Stub) userCategories(aid string) []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -1142,12 +1136,6 @@ func (n *fakeNode) credit(address string, atoms uint64, confs int64, asset strin
 	defer n.mu.Unlock()
 	n.txN++
 	n.deposits[address] = nodeDeposit{txid: fmt.Sprintf("%064x", 1000+n.txN), atoms: atoms, confs: confs, asset: asset}
-}
-
-func (n *fakeNode) markInvalid(addr string) {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	n.invalid[addr] = true
 }
 
 func (n *fakeNode) sendCount() int {

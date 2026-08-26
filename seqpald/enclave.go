@@ -45,12 +45,6 @@ func (s *server) createEnclave(kind, refID string) (*EnclaveKey, error) {
 
 // --- small shared utilities --------------------------------------------------
 
-type statusErr int
-
-func (e statusErr) Error() string { return fmt.Sprintf("http status %d", int(e)) }
-
-func errStatus(code int) error { return statusErr(code) }
-
 func readAllLimited(r io.Reader, max int64) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(r, max))
 }
