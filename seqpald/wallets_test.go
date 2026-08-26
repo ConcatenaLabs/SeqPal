@@ -354,3 +354,42 @@ func TestDeliveryNamesTheAccountThePolicyServerHolds(t *testing.T) {
 		t.Fatalf("a foreign id was rewritten to %q", got)
 	}
 }
+
+// The passport carries both ids, because they are the same string only for an
+// ID founded on an OpenAMP account. Labelling the SeqPal id as the AID sends a
+// holder to a venue quoting an account the policy server does not have.
+func TestThePassportCarriesBothIds(t *testing.T) {
+	h := newHarness(t)
+	h.s.cfg.nodeURL = newWalletNode(t, true).URL
+	h.s.screen = newScreener("")
+	session, aid := walletSession(t, h, testPKH)
+
+	p := h.do("GET", "/api/id/passport", session, nil)
+	if p.code != 200 {
+		t.Fatalf("passport: %d %s", p.code, p.raw)
+	}
+	if got, _ := p.body["aid"].(string); got != aid {
+		t.Fatalf("the SeqPal account id is %q, want %q", got, aid)
+	}
+	if got, _ := p.body["enclave_aid"].(string); got != "" {
+		t.Fatalf("an ID with no OpenAMP account reports one: %q", got)
+	}
+
+	// Attach one: the second id appears, and it is NOT the first.
+	xonly := xonlyHex(t, vecPriv)
+	ch := h.do("POST", "/api/auth/challenge", "", map[string]any{"xonly": xonly})
+	challenge, _ := ch.body["challenge"].(string)
+	if att := h.do("POST", "/api/auth/attach-enclave", session, map[string]any{
+		"xonly": xonly, "challenge": challenge, "sig": signChallengeHex(t, vecPriv, challenge),
+	}); att.code != 200 {
+		t.Fatalf("attach: %d %s", att.code, att.raw)
+	}
+	p = h.do("GET", "/api/id/passport", session, nil)
+	enclaveAID, _ := p.body["enclave_aid"].(string)
+	if enclaveAID == "" || enclaveAID == aid {
+		t.Fatalf("after attaching, the OpenAMP account id is %q (SeqPal id %q)", enclaveAID, aid)
+	}
+	if enclaveAID != aidFor([]string{xonly}) {
+		t.Fatalf("the OpenAMP account id is not the one this key derives: %q", enclaveAID)
+	}
+}
