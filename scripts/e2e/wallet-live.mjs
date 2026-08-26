@@ -14,7 +14,7 @@
 // question of the form "can this holder actually finish", asked of the live
 // service rather than of a comment.
 import { randomBytes } from 'node:crypto'
-import { Client, must, BASE } from './lib/drill.mjs'
+import { Client, must, BASE, verifyIdentity } from './lib/drill.mjs'
 import { computeAID, signChallenge, signWalletMessage, xonlyOf } from './lib/wallet-signer.mjs'
 import { walletFromSeed } from './lib/hd.mjs'
 
@@ -52,19 +52,22 @@ const passport = must(await call('GET', '/id/passport'), 'passport')
 if (passport.has_enclave !== false) throw new Error('the passport claims an OpenAMP account')
 console.log('has_enclave    ', passport.has_enclave)
 
-// 3. Verification is what unlocks the KYC-gated parts, and it must not need the
-//    policy server to stamp an account that does not exist.
-must(await call('POST', '/id/verify', { residence: 'AE', name: 'Wallet Live Proof' }), 'verify')
-const after = must(await call('GET', '/id/passport'), 'passport after verify')
+// 3. Verification costs money before it costs anything else: the provider bills
+//    per check, so an unpaid check is refused and nothing is submitted.
+const unpaid = await call('POST', '/id/verify', { residence: 'AE', screening_name: 'Wallet Live Proof' })
+if (unpaid.status !== 402) {
+  throw new Error(`verifying without paying must be refused 402, got ${unpaid.status}`)
+}
+console.log('unpaid verify  ', 'refused, and quotes the invoice')
+
+// 4. Paid, submitted, and decided by the provider in their own time. It must not
+//    need the policy server to stamp an account that does not exist.
+const after = await verifyIdentity(client, { residence: 'AE', name: 'Wallet Live Proof' })
 if (!after.categories || after.categories.length === 0) {
   throw new Error('verification recorded no eligibility for a wallet-backed ID')
 }
-console.log(
-  'categories     ',
-  after.categories.map((c) => (typeof c === 'string' ? c : c.token || c.code || JSON.stringify(c))).join(', '),
-)
 
-// 4. What such an ID cannot do must be refused in words that name the missing
+// 5. What such an ID cannot do must be refused in words that name the missing
 //    piece, not fail somewhere downstream.
 const transfer = await call('POST', '/transfers', { asset: 'x'.repeat(64), to_aid: aid, atoms: 1 })
 if (transfer.status !== 403) throw new Error(`an OpenAMP transfer must be refused 403, got ${transfer.status}`)
@@ -73,7 +76,7 @@ if (!/no OpenAMP account/i.test(transfer.data?.error || '')) {
 }
 console.log('transfer       ', 'refused, and says why')
 
-// 5. A payout mandate: two phases, and phase one has to say what to sign in a
+// 6. A payout mandate: two phases, and phase one has to say what to sign in a
 //    form this wallet can sign.
 const addr = ch.address
 const prep = must(await call('POST', '/mandates/investor', { chain: 'sequentia', address: addr }), 'mandate prepare')

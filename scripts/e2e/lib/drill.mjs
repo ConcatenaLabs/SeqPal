@@ -103,9 +103,24 @@ export async function signIn(client, key, name) {
   return me.aid || (me.account && me.account.aid)
 }
 
-// Verify the identity through the auto path (no sanctions hit, deterministic
-// simulated review approval). Idempotent: re-verifying refreshes the record.
+// Verify the identity: pay for the check, submit it, then wait for the decision.
+// The provider bills per check, so an unpaid check is refused and nothing is
+// submitted; and the decision is theirs, so it arrives after the submission
+// rather than with it. The simulated provider clears any name that does not ask
+// to be refused.
 export async function verifyIdentity(client, { residence, name }) {
+  const fees = must(await client.call('GET', '/id/fees'), `verification fee (${name})`)
+  if (fees.identity?.state !== 'paid') {
+    must(
+      await client.call('POST', '/id/fees/pay', { kind: 'identity', rail: 'card' }),
+      `pay the verification fee (${name})`,
+    )
+    await waitFor(
+      `the verification fee to settle (${name})`,
+      async () => (await client.call('GET', '/id/fees')).data?.identity?.state === 'paid',
+      { timeoutMs: 120000, intervalMs: 2000 },
+    )
+  }
   must(
     await client.call('POST', '/id/verify', {
       residence,
@@ -114,6 +129,20 @@ export async function verifyIdentity(client, { residence, name }) {
     }),
     `id verify (${name}, ${residence})`,
   )
+  const decided = await waitFor(
+    `the provider's decision (${name})`,
+    async () => {
+      const p = (await client.call('GET', '/id/passport')).data
+      return p?.status && p.status !== 'submitted' ? p : null
+    },
+    { timeoutMs: 120000, intervalMs: 2000 },
+  )
+  if (decided.status !== 'verified') {
+    console.error(`FAIL id verify (${name}): the provider answered ${decided.status}`)
+    process.exit(1)
+  }
+  console.log(`ok   provider cleared (${name})`)
+  return decided
 }
 
 // The bearer attestation + deploy flow, as the browser runs it. Returns the
