@@ -507,3 +507,47 @@ func TestAClearedReviewNeverRecordsAnUnsignedVerification(t *testing.T) {
 		t.Fatal("a verification recorded with no signature attests nothing")
 	}
 }
+
+// The rescreen sweep is what catches a holder who was clean at verification and
+// appears on a list later. It had no test at all, and two ways to lose a hit:
+// the identity stayed verified if parking it failed, and -- worse -- the match
+// was recorded as SEEN before the review item existed, so an insert that failed
+// made the hit invisible to every later sweep. A dropped sanctions hit is not
+// something to find out about from an audit.
+func TestARescreenHitParksTheIdentityAndIsNeverDropped(t *testing.T) {
+	h := newHarness(t)
+	h.s.cfg.nodeURL = newWalletNode(t, true).URL
+	h.s.screen = newScreener("")
+	session, aid := walletSession(t, h, testPKH)
+	if v := h.do("POST", "/api/id/verify", session, map[string]any{
+		"residence": "AE", "screening_name": "Wallet Wendy", "base_eligibility": "ret",
+	}); v.code != 200 {
+		t.Fatalf("verify: %d %s", v.code, v.raw)
+	}
+
+	// The holder appears on a list after they were verified.
+	h.s.screen.mu.Lock()
+	h.s.screen.names["ofac_sdn"][normalizeName("Wallet Wendy")] = true
+	h.s.screen.mu.Unlock()
+
+	h.s.rescreenAll()
+
+	c, _ := h.s.st.ClaimsByAID(aid)
+	if c == nil || c.Status != "pending_review" {
+		t.Fatalf("a new hit must park the identity, got %v", c)
+	}
+	if eligibilityLive(c, time.Now().Unix()) {
+		t.Fatal("a parked identity must not still be eligible")
+	}
+	reviews, err := h.s.st.PendingReviewsByAID(aid)
+	if err != nil || len(reviews) == 0 {
+		t.Fatalf("the hit must be queued for a human: %v %v", reviews, err)
+	}
+
+	// And the hit is on record only now that it is queued, so a sweep that could
+	// not queue it would find it again rather than treat it as old news.
+	seen, err := h.s.screeningWas(aid, "ofac_sdn")
+	if err != nil || !seen {
+		t.Fatalf("a queued hit must be recorded as seen: %v %v", seen, err)
+	}
+}

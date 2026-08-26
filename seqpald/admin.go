@@ -249,23 +249,39 @@ func (s *server) rescreenAll() {
 		var newHits []ScreeningResult
 		for _, r := range results {
 			prev, _ := s.screeningWas(c.AID, r.List)
-			_ = s.st.UpsertScreening(c.AID, r)
 			if r.Matched && !prev {
+				// Recorded below, once there is a review item for it. Writing it
+				// here marked the hit as already seen, so a review item that
+				// failed to insert made the match invisible to every later sweep:
+				// a sanctions hit dropped, permanently and silently.
 				newHits = append(newHits, r)
+				continue
 			}
+			_ = s.st.UpsertScreening(c.AID, r)
 		}
 		if len(newHits) == 0 || c.Status != "verified" {
 			continue
 		}
+		// Park the identity first. Its eligibility is what a new hit has to stop,
+		// and leaving it verified while the review sits in a queue is the failure
+		// this sweep exists to prevent.
 		c.Status = "pending_review"
-		_ = s.st.UpsertClaims(c)
+		if err := s.st.UpsertClaims(c); err != nil {
+			log.Printf("rescreen: park %s for review: %v", c.AID, err)
+			continue
+		}
 		for _, h := range newHits {
 			id, _ := randHex(12)
-			_ = s.st.InsertReview(&ReviewItem{
+			if err := s.st.InsertReview(&ReviewItem{
 				ID: id, AID: c.AID, List: h.List, MatchedEntry: h.MatchedEntry,
 				State: "pending", Disposition: s.screen.disposition(h.List, h.MatchedEntry),
 				CreatedAt: time.Now().Unix(),
-			})
+			}); err != nil {
+				// The hit stays unrecorded, so the next sweep finds it again.
+				log.Printf("rescreen: queue %s hit on %s: %v", c.AID, h.List, err)
+				continue
+			}
+			_ = s.st.UpsertScreening(c.AID, h)
 		}
 		if _, err := s.stampCategories(c.AID); err != nil {
 			log.Printf("rescreen: strip categories for %s: %v", c.AID, err)
