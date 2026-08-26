@@ -1238,9 +1238,9 @@ func newM5Harness(t *testing.T, opts m5opts) *m5h {
 		// Tests state the fee they want outright rather than deriving it from
 		// a structure, so the harness overrides the published schedule. Zero
 		// (the default) waives it, which is what most of these want.
-		setupFeeOverrideUSD: opts.setupFeeUSD,
-		escrowFeeBps:        bps,
-		fiatSettle:          0,
+		setupFeeOverrideUSD:  opts.setupFeeUSD,
+		escrowFeeOverrideBps: bps,
+		fiatSettle:           0,
 	}
 	h := &m5h{t: t, oa: oa, seq: seq, price: price}
 	if opts.withBTC {
@@ -1945,7 +1945,7 @@ func TestM5ReleaseReconcilesLostWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = h.s.st.UpdateSettlementFields(subID, map[string]any{"delivery_txid": "reconciled", "state": "releasing"})
-	net := depAtoms - depAtoms*uint64(h.s.cfg.escrowFeeBps)/10000
+	net := depAtoms - depAtoms*uint64(h.s.cfg.escrowFeeOverrideBps)/10000
 	h.seq.seedSend("seq-issuer-payout", net, "seqpal-rel-"+subID, "deadbeefcafe")
 
 	before := h.seq.sendCount()
@@ -1983,9 +1983,13 @@ func TestM5CloseRefundsOnDeliveryFailure(t *testing.T) {
 	if h.seq.sendCount() != 1 {
 		t.Fatalf("refund sends = %d, want 1", h.seq.sendCount())
 	}
+	// The escrow fee is payable whether or not the offering closes -- the funds
+	// were held either way -- so the refund is the deposit net of it.
+	fee := depAtoms * 50 / 10000
 	send, _ := h.seq.lastSend()
-	if send.address != "seq-refund-addr" || send.atoms != depAtoms {
-		t.Fatalf("refund send = %+v, want full deposit %d to seq-refund-addr", send, depAtoms)
+	if send.address != "seq-refund-addr" || send.atoms != depAtoms-fee {
+		t.Fatalf("refund send = %+v, want the deposit net of the escrow fee (%d) to seq-refund-addr",
+			send, depAtoms-fee)
 	}
 	sub, _ := h.s.st.SubscriptionByID(subID)
 	if sub.State != "refunded" {

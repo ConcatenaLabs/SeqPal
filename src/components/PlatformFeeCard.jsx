@@ -15,7 +15,11 @@ export default function PlatformFeeCard({ iss }) {
   const setup = (data?.invoices || []).find((i) => i.kind === 'setup')
   const paid = setup?.state === 'paid'
   const feeUsd = data?.setup_fee_usd ?? 0
-  const escrowBps = data?.escrow_fee_bps ?? 0
+  // The escrow fee is a schedule, not a rate: the server states it so this does
+  // not have to restate it, and a deployment charging a flat rate instead says
+  // so rather than being described as the published one.
+  const escrow = data?.escrow_fee_published
+  const escrowOverrideBps = data?.escrow_fee_override_bps
 
   return (
     <div className="card p-6">
@@ -34,7 +38,12 @@ export default function PlatformFeeCard({ iss }) {
       </div>
       <p className="mt-2 text-xs leading-relaxed text-ink-700/70">
         The setup fee is collected before deploy: an unpaid fee blocks the mint. A separate escrow
-        fee of {escrowBps} bps accrues on real escrow balances and is deducted at release, not here.
+        fee is charged separately on real escrow balances and deducted at release, not here:{' '}
+        {typeof escrowOverrideBps === 'number'
+          ? `${escrowOverrideBps} bps of the funds held, which is what this deployment charges instead of the published schedule.`
+          : escrow
+            ? `${escrow.rate_per_month_bps / 100}% a month accrued daily, with a $${escrow.minimum_usd.toLocaleString()} minimum and a ${escrow.cap_bps / 100}% cap.`
+            : 'on the published schedule.'}
       </p>
 
       {paid ? (

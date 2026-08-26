@@ -1209,7 +1209,8 @@ func TestM10DividendClaimPaymentIdempotency(t *testing.T) {
 }
 
 // ===========================================================================
-// W-6: escrow fee accrual at deposit confirmation
+// The escrow fee: the clock starts at deposit confirmation, the amount is fixed
+// when the funds leave, and nothing moves it afterwards
 // ===========================================================================
 
 func TestM10EscrowFeeAccrual(t *testing.T) {
@@ -1242,21 +1243,28 @@ func TestM10EscrowFeeAccrual(t *testing.T) {
 	if got.State != "in_escrow" {
 		t.Fatalf("subscription state = %q, want in_escrow", got.State)
 	}
-	// Accrued exactly once: 100000 * 50 / 10000 = 500.
-	fee, ok, err := h.s.st.AccruedEscrowFee(sub.ID)
-	if err != nil || !ok || fee != 500 {
-		t.Fatalf("accrued fee = %d ok=%v err=%v, want 500 at deposit confirmation", fee, ok, err)
+	// What starts at deposit confirmation is the CLOCK. The fee is charged for
+	// time, so its amount is not knowable yet and nothing is booked.
+	if got.EscrowFrom == 0 {
+		t.Fatalf("the escrow clock did not start at deposit confirmation")
 	}
-	h.s.watchDeposits()
-	h.s.watchDeposits()
-	if n := countLedgerRows(t, h.m5h, sub.ID, "escrow_fee"); n != 1 {
-		t.Fatalf("accrual rows = %d, want exactly 1 after replayed ticks", n)
+	if _, ok, _ := h.s.st.AccruedEscrowFee(sub.ID); ok {
+		t.Fatalf("a fee was booked before the funds left escrow")
 	}
-	assertAuditedM10(t, h.m5h, invAID, "escrow.fee_accrued")
+	assertAuditedM10(t, h.m5h, invAID, "escrow.clock_started")
 
-	// CLOSE consumes the ACCRUED figure, not a recomputation: change the bps
-	// after accrual; the release must still deduct 500.
-	h.s.cfg.escrowFeeBps = 500 // would be 5000 atoms if recomputed
+	// A replayed tick must not restart the clock, which would undercharge for
+	// the time already held.
+	started := got.EscrowFrom
+	h.s.watchDeposits()
+	h.s.watchDeposits()
+	if again, _ := h.s.st.SubscriptionByID(sub.ID); again.EscrowFrom != started {
+		t.Fatalf("a replayed tick restarted the escrow clock: %d -> %d", started, again.EscrowFrom)
+	}
+
+	// CLOSE charges it, once. Changing the rate afterwards must not move a fee
+	// that has already been charged.
+	h.s.cfg.escrowFeeOverrideBps = 50
 	if err := h.s.st.UpsertMandate(&PayoutMandate{IssuanceID: issID, Chain: "sequentia", Address: "mandate-addr-1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -1268,8 +1276,15 @@ func TestM10EscrowFeeAccrual(t *testing.T) {
 	}
 	st, _ := h.s.st.SettlementByID(sub.ID)
 	if st.FeeAtoms != 500 {
-		t.Fatalf("settlement fee_atoms = %d, want the accrued 500 (never recomputed)", st.FeeAtoms)
+		t.Fatalf("settlement fee_atoms = %d, want 500 (100000 at 50 bps)", st.FeeAtoms)
 	}
+	assertAuditedM10(t, h.m5h, invAID, "escrow.fee_charged")
+	// Fixed: a rate change now cannot reprice what was already charged.
+	h.s.cfg.escrowFeeOverrideBps = 500 // would be 5000 atoms if recomputed
+	if fee, ok, _ := h.s.st.AccruedEscrowFee(sub.ID); !ok || fee != 500 {
+		t.Fatalf("the charged fee moved to %d (ok=%v) when the rate changed", fee, ok)
+	}
+	h.s.cfg.escrowFeeOverrideBps = 50
 	if n := h.seq.sendsMatching("mandate-addr-1", 99500, "seqpal-rel-"+sub.ID); n != 1 {
 		t.Fatalf("release did not pay deposited-minus-accrued: %d matching sends", n)
 	}
@@ -1287,13 +1302,8 @@ func TestM10EscrowFeeAccrual(t *testing.T) {
 	if err := h.s.st.InsertSubscription(sub2); err != nil {
 		t.Fatal(err)
 	}
-	h.s.cfg.escrowFeeBps = 50
 	h.seq.credit("dep-addr-2", 200000, 2, m5USDX)
 	h.s.watchDeposits()
-	fee2, ok2, _ := h.s.st.AccruedEscrowFee(sub2.ID)
-	if !ok2 || fee2 != 1000 {
-		t.Fatalf("sub2 accrued = %d ok=%v, want 1000", fee2, ok2)
-	}
 	got2, _ := h.s.st.SubscriptionByID(sub2.ID)
 	if _, err := h.s.st.CreateSettlementIfAbsent(sub2.ID, issID); err != nil {
 		t.Fatal(err)

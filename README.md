@@ -87,6 +87,19 @@ registrar steps are simulated so the flow can be walked end to end.
   submitted; submitting without paying is refused with a 402. They are payable on
   the same rails as every other fee, and one paid check covers a resubmission the
   provider asks for. A fee of zero charges nothing and the gate simply opens.
+- The Escrow and Settlement Fee is charged for TIME, and it is the published
+  schedule: 0.25% a month on the funds held, accrued daily, with a $5,000
+  minimum and a cap of 3% of the funds, which over a typical four-month window
+  is about 1% of the raise. The minimum and the cap belong to the OFFERING, so
+  two investors in one raise share one fee between them, apportioned by what
+  each accrued. Because it is charged for time, its amount is not knowable when
+  the money arrives -- only when it leaves -- so the clock starts at deposit
+  confirmation and the amount is fixed at release and never recomputed. It is
+  payable whether or not the offering closes, so a refund withholds it too. A
+  fee larger than the funds it comes out of takes what is there and records the
+  rest as owed rather than pretending it was smaller.
+  `SEQPALD_ESCROW_FEE_BPS` overrides the schedule with a flat rate where a
+  deployment needs that; unset, the platform charges what it publishes.
 - Escrow and settlement. Subscriptions fund a segregated per-offering escrow in
   USDX on Sequentia or in native tBTC on Bitcoin testnet4 (the BTC rail is on
   only when `SEQPALD_BTC_RPC_URL` is set). At closing the tokens leave the

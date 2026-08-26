@@ -3,8 +3,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // Closing v1: two transactions per subscription (delivery + release), not atomic
@@ -306,22 +308,75 @@ func escrowFeeSplit(sub *Subscription, bps int64) (fee, net uint64) {
 	return fee, net
 }
 
-// escrowFeeFor is the W-6 fee source of truth at settlement time: the fee that
-// ACCRUED when the deposit confirmed (moneywatch wrote it to the ledger), never
-// a recomputation, so a bps change between deposit and close cannot move an
-// already-due fee. accrued=false means no accrual row exists (a fiat-funded
-// subscription, or one deposited before W-6), and the legacy split computes it.
+// escrowFeeFor is the fee source of truth at settlement time.
+//
+// The published fee is charged for TIME, so it cannot be fixed when the money
+// arrives -- only when it leaves. It is fixed THEN, though: the first call
+// writes the amount to the ledger, and every later call returns that, so a
+// retry, a reconcile, or a refund that follows a failed release all charge the
+// figure that was already charged rather than a bigger one computed later.
+//
+// accrued reports that the figure is the recorded one, which is what the
+// settlement rows say about themselves.
 func (s *server) escrowFeeFor(sub *Subscription) (fee, net uint64, accrued bool) {
 	if f, ok, err := s.st.AccruedEscrowFee(sub.ID); err == nil && ok {
-		net = sub.DepositedAtoms
-		if net > f {
-			return f, net - f, true
-		}
-		// Defensive, like escrowFeeSplit: never a negative release.
-		return 0, sub.DepositedAtoms, true
+		return f, minusFee(sub.DepositedAtoms, f), true
 	}
-	f, n := escrowFeeSplit(sub, s.cfg.escrowFeeBps)
-	return f, n, false
+	// A deployment can override the published schedule with a flat rate, which
+	// is what the tests do and what a deployment charging its own way would.
+	if s.cfg.escrowFeeOverrideBps >= 0 {
+		f, n := escrowFeeSplit(sub, s.cfg.escrowFeeOverrideBps)
+		s.recordEscrowFee(sub, f, f, 0)
+		return f, n, true
+	}
+	share, err := s.publishedEscrowFeeFor(sub, time.Now().Unix())
+	if err != nil {
+		log.Printf("closing: price the escrow fee for %s: %v", sub.ID, err)
+		return 0, sub.DepositedAtoms, false
+	}
+	s.recordEscrowFee(sub, share.Fee, share.Owed, share.Days)
+	return share.Fee, minusFee(sub.DepositedAtoms, share.Fee), true
+}
+
+// minusFee is what is left to release, and never less than nothing.
+func minusFee(deposited, fee uint64) uint64 {
+	if deposited > fee {
+		return deposited - fee
+	}
+	return 0
+}
+
+// recordEscrowFee writes the fee to the ledger, which both books it and fixes
+// it: every later read of this subscription's fee returns this figure.
+//
+// owed is the published fee before it was clamped to the funds actually held.
+// The two differ only when a raise is smaller than the fee it owes -- which the
+// $5,000 minimum makes possible -- and the books say so rather than recording a
+// smaller fee than was charged for.
+func (s *server) recordEscrowFee(sub *Subscription, fee, owed uint64, days int64) {
+	if fee == 0 && owed == 0 {
+		return
+	}
+	if fee > 0 {
+		if err := s.st.InsertLedger(&LedgerEntry{
+			SubscriptionID: sub.ID, IssuanceID: sub.IssuanceID, Kind: "escrow_fee", Rail: sub.Rail,
+			Amount: fee, Ccy: sub.PayCcy, FundsSimulated: sub.FundsSimulated,
+		}); err != nil {
+			log.Printf("closing: book the escrow fee for %s: %v", sub.ID, err)
+			return
+		}
+	}
+	detail := map[string]any{
+		"issuance_id": sub.IssuanceID, "sub": sub.ID, "fee_atoms": fee,
+		"deposited": sub.DepositedAtoms, "days_held": days, "ccy": sub.PayCcy,
+	}
+	if owed > fee {
+		detail["owed_atoms"] = owed
+		detail["shortfall_atoms"] = owed - fee
+		detail["note"] = "the published fee is larger than the funds it comes out of, " +
+			"so what was taken is all there was; the difference is owed and unpaid"
+	}
+	s.st.Audit(sub.InvestorAID, "escrow.fee_charged", detail)
 }
 
 // atomicEligible reports whether a subscription can settle as one atomic DvP tx:
@@ -720,14 +775,17 @@ func (s *server) maybeStampVesting(iss *Issuance, sub *Subscription, investor *A
 // refund) and marks the subscription refunded.
 func (s *server) refundSubscription(iss *Issuance, sub *Subscription, st *Settlement, reason string) map[string]any {
 	refMarker := "seqpal-ref-" + sub.ID
-	// W-6: the escrow fee accrued at deposit confirmation is due regardless of
-	// outcome, so it is WITHHELD from the refund. Its ledger row (written at
-	// accrual) is the record of the withholding; the refund row carries the net.
-	feeWithheld := uint64(0)
-	refundAtoms := sub.DepositedAtoms
-	if f, ok, err := s.st.AccruedEscrowFee(sub.ID); err == nil && ok && f < refundAtoms {
-		feeWithheld = f
-		refundAtoms -= f
+	// The escrow fee is payable whether or not the offering closes -- the funds
+	// were held either way -- so it is charged here too and WITHHELD from the
+	// refund. escrowFeeFor charges it if it has not been charged already and
+	// returns what was charged if it has, so a refund after a failed release
+	// withholds that same figure rather than a second one. Its ledger row is the
+	// record of the withholding; the refund row carries the net.
+	feeWithheld, refundAtoms, _ := s.escrowFeeFor(sub)
+	if feeWithheld >= sub.DepositedAtoms {
+		// Nothing left to refund. Never send a negative, and never send the fee
+		// back as though it were the investor's.
+		feeWithheld, refundAtoms = sub.DepositedAtoms, 0
 	}
 	// Reconcile before any retry: if a prior attempt already broadcast the refund
 	// (state "refunding" but no recorded txid), find it by its comment and record it
