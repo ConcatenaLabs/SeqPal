@@ -50,7 +50,7 @@ type config struct {
 	// nobody chases leaves its holder stuck at "submitted".
 	idvGrace     time.Duration
 	idvReconcile time.Duration
-	adminAIDs    map[string]bool // AIDs allowed to use the manual-review surface
+	adminAIDs    map[string]bool // AIDs allowed to run the stranded-key re-delivery runbook
 
 	// Chain-derived compile inputs. Tip height comes from the node RPC when
 	// configured, else assumedTip. The M3 chain watcher uses the same node RPC.
@@ -195,7 +195,7 @@ func main() {
 	flag.StringVar(&cfg.webroot, "webroot", env("SEQPALD_WEBROOT", ""), "built SPA directory to serve at / (empty = API only)")
 	flag.StringVar(&devOrigins, "devorigins", env("SEQPALD_DEV_ORIGINS", ""), "comma-separated extra CORS origins for local development")
 	var adminAIDs string
-	flag.StringVar(&adminAIDs, "adminaids", env("SEQPALD_ADMIN_AIDS", ""), "comma-separated AIDs allowed to use the manual-review surface")
+	flag.StringVar(&adminAIDs, "adminaids", env("SEQPALD_ADMIN_AIDS", ""), "comma-separated AIDs allowed to run the stranded-key re-delivery runbook")
 	flag.Int64Var(&cfg.blocksPerDay, "blocksperday", envInt("SEQPALD_BLOCKS_PER_DAY", 1440), "assumed Sequentia blocks per day for lockup height conversion (60-second spacing: 1440)")
 	flag.Int64Var(&cfg.assumedTip, "tipheight", envInt("SEQPALD_TIP_HEIGHT", 0), "fallback tip height when no node RPC is configured")
 	flag.StringVar(&cfg.nodeURL, "nodeurl", env("SEQPALD_NODE_URL", ""), "Sequentia node JSON-RPC URL for the chain watcher and tip height (optional)")
