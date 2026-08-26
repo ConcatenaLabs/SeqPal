@@ -8,8 +8,9 @@ export default function IdFooter() {
           Seq<span className="text-btc">Pal</span> ID
         </div>
         <p className="mt-2 max-w-2xl text-xs leading-relaxed text-ink-700/70">
-          A consolidated KYC/KYB and accreditation passport. Verified once, it whitelists
-          you for every SeqPal-issued asset your profile is eligible to hold. SeqPal is the
+          A consolidated KYC/KYB and accreditation passport. Verified once, it admits you to
+          every serviced asset your profile is eligible to hold, and is what you present to be
+          admitted to the rest. SeqPal is the
           data controller for your SeqPal ID record; KYC and screening vendors act as
           processors. Personal data is handled under the applicable data-protection regime
           (GDPR / UK GDPR and equivalents); you may exercise access, rectification, and
