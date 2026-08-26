@@ -43,3 +43,32 @@ func publishedPrice(t *testing.T, src, item string) float64 {
 	}
 	return v
 }
+
+// The sanctions floor is drawn in the browser and enforced here. A country the
+// issuer's screen shows as blocked that this server would admit is the UI
+// telling them something the platform will not do -- and the other way round is
+// a deploy refused for a reason nothing on screen explains.
+func TestTheSanctionsFloorIsTheOneTheIssuerIsShown(t *testing.T) {
+	raw, err := os.ReadFile("../src/data/jurisdictions.js")
+	if err != nil {
+		t.Fatalf("read the jurisdiction table: %v", err)
+	}
+	re := regexp.MustCompile(`code: '([A-Z]{2})'[^}]*tier: 'blocked'`)
+	shown := map[string]bool{}
+	for _, m := range re.FindAllStringSubmatch(string(raw), -1) {
+		shown[m[1]] = true
+	}
+	if len(shown) == 0 {
+		t.Fatal("no blocked jurisdictions found; if that table was restructured, this test has to follow it")
+	}
+	for code := range shown {
+		if !sanctionsFloor[code] {
+			t.Errorf("%s is shown to the issuer as blocked and this server would admit it", code)
+		}
+	}
+	for code := range sanctionsFloor {
+		if !shown[code] {
+			t.Errorf("%s is refused by this server and the issuer is never shown it as blocked", code)
+		}
+	}
+}
