@@ -397,6 +397,59 @@ func TestAProviderRefusalFreezesAndRefuses(t *testing.T) {
 	if eligibilityLive(claims, time.Now().Unix()) {
 		t.Fatal("a refused identity must not be eligible for anything")
 	}
+	// And the policy server was actually told. This assertion is the point of the
+	// test's name and was missing: the stub had no freeze route, so the call
+	// errored every time and the error was swallowed.
+	if frozen, _ := h.oa.frozen.Load(aid); frozen != true {
+		t.Fatalf("a refused identity must be frozen at the policy server, got %v", frozen)
+	}
+	if cats, _ := h.oa.categories.Load(aid); len(cats.([]string)) != 0 {
+		t.Fatalf("a refused identity must be left carrying nothing, got %v", cats)
+	}
+}
+
+// A refusal the policy server never heard is a refusal it does not enforce, so
+// the check stays undecided until it has been. Anything else leaves a holder who
+// was verified before this check still carrying live categories there.
+func TestARefusalThePolicyServerNeverHeardIsNotFinished(t *testing.T) {
+	h := newHarness(t)
+	session, aid, _ := h.register(vecPriv, "Refused Rachel")
+	if v := h.do("POST", "/api/id/verify", session, map[string]any{
+		"residence": "DE", "base_eligibility": "ret",
+	}); v.code != 200 {
+		t.Fatalf("verify: %d %s", v.code, v.raw)
+	}
+	h.oa.freezeFail.Store(true)
+
+	check, _ := h.s.st.LatestVerificationCheck(aid)
+	if err := h.s.applyAdjudication(check, idvReject, ""); err == nil {
+		t.Fatal("a refusal that could not be enforced must not report success")
+	}
+	if c, _ := h.s.st.ClaimsByAID(aid); c.Status != "refused" {
+		t.Fatalf("the claims refuse regardless, since they can only restrict, got %v", c.Status)
+	}
+	if again, _ := h.s.st.LatestVerificationCheck(aid); again.Status != "submitted" {
+		t.Fatalf("the check must stay open for another attempt, got %v", again.Status)
+	}
+
+	// Brought back, the reconciler finishes it.
+	h.oa.freezeFail.Store(false)
+	h.s.cfg.idvGrace = 0
+	h.s.idv = &rejectingIDV{}
+	h.s.reconcileVerifications()
+	if frozen, _ := h.oa.frozen.Load(aid); frozen != true {
+		t.Fatalf("the retry must reach the policy server, got %v", frozen)
+	}
+	if done, _ := h.s.st.LatestVerificationCheck(aid); done.Status != "complete" || done.Result != string(idvReject) {
+		t.Fatalf("the check must finish as the refusal it was, got %+v", done)
+	}
+}
+
+// rejectingIDV answers every poll with the refusal the provider had made.
+type rejectingIDV struct{ testIDV }
+
+func (p *rejectingIDV) PollCheck(*VerificationCheck) (idvDecision, string, bool, error) {
+	return idvReject, "", true, nil
 }
 
 // The same, for a SeqPal ID that is only a wallet. A refusal used to freeze the

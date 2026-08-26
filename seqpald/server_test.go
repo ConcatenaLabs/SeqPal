@@ -40,6 +40,14 @@ type fakeOpenAMP struct {
 	registered sync.Map
 	// aid -> []string, the categories the policy server holds for that account.
 	categories sync.Map
+	// aid -> bool, whether the policy server has the account frozen. Without
+	// this the stub answered no route for a freeze at all, so every freeze
+	// errored and a test could not tell an account that was frozen from one
+	// where the call never landed.
+	frozen sync.Map
+	// When set, the freeze route fails, standing in for a policy server that
+	// cannot be reached.
+	freezeFail atomic.Bool
 }
 
 func newFakeOpenAMP(t *testing.T) *fakeOpenAMP {
@@ -99,7 +107,26 @@ func newFakeOpenAMP(t *testing.T) *fakeOpenAMP {
 		if v, ok := f.categories.Load(aid); ok {
 			cats = append(cats, v.([]string)...)
 		}
-		writeJSON(w, 200, map[string]any{"aid": aid, "categories": cats, "frozen": false})
+		isFrozen, _ := f.frozen.Load(aid)
+		writeJSON(w, 200, map[string]any{"aid": aid, "categories": cats, "frozen": isFrozen == true})
+	})
+
+	mux.HandleFunc("POST /v1/issuer/freeze", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-issuer-token" {
+			writeJSON(w, 401, map[string]any{"error": "bad issuer token"})
+			return
+		}
+		if f.freezeFail.Load() {
+			writeJSON(w, 503, map[string]any{"error": "the policy server is unreachable"})
+			return
+		}
+		var req struct {
+			AID    string `json:"aid"`
+			Frozen bool   `json:"frozen"`
+		}
+		json.NewDecoder(r.Body).Decode(&req)
+		f.frozen.Store(req.AID, req.Frozen)
+		writeJSON(w, 200, map[string]any{"ok": true})
 	})
 
 	mux.HandleFunc("POST /v1/issuer/categories", func(w http.ResponseWriter, r *http.Request) {
