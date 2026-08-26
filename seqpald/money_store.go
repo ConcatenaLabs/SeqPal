@@ -348,7 +348,10 @@ type FeeInvoice struct {
 	// Which check the fee buys: empty for the account holder's own identity, the
 	// entity id for one of their businesses. An account can own several
 	// businesses, and the provider charges for each.
-	Subject   string  `json:"subject,omitempty"`
+	Subject string `json:"subject,omitempty"`
+	// The check this invoice bought, once it has bought one. An invoice with a
+	// check against it is spent: it paid for that check and pays for no other.
+	CheckID   string  `json:"check_id,omitempty"`
 	Kind      string  `json:"kind"` // setup | escrow | kyc | kyb
 	Rail      string  `json:"rail,omitempty"`
 	AmountUSD float64 `json:"amount_usd"`
@@ -369,10 +372,10 @@ type FeeInvoice struct {
 func (s *Store) InsertFeeInvoice(f *FeeInvoice) error {
 	f.CreatedAt = time.Now().Unix()
 	_, err := s.db.Exec(
-		`INSERT INTO fee_invoices (id, issuance_id, aid, subject, kind, rail, amount_usd, amount, ccy, state, txid, address, quotes, funds_simulated, created_at, paid_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)`,
+		`INSERT INTO fee_invoices (id, issuance_id, aid, subject, kind, rail, amount_usd, amount, ccy, state, txid, address, quotes, check_id, funds_simulated, created_at, paid_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)`,
 		f.ID, f.IssuanceID, f.AID, f.Subject, f.Kind, f.Rail, f.AmountUSD, f.Amount, f.Ccy, f.State, f.Txid,
-		f.Address, encodeQuotes(f.Quotes), boolInt(f.FundsSimulated), f.CreatedAt)
+		f.Address, encodeQuotes(f.Quotes), f.CheckID, boolInt(f.FundsSimulated), f.CreatedAt)
 	return err
 }
 
@@ -426,7 +429,7 @@ func (s *Store) UnpaidOnchainFees() ([]*FeeInvoice, error) {
 	return out, rows.Err()
 }
 
-const feeInvoiceSelect = `SELECT id, issuance_id, aid, subject, kind, rail, amount_usd, amount, ccy, state, txid, address, quotes, funds_simulated, created_at, paid_at FROM fee_invoices`
+const feeInvoiceSelect = `SELECT id, issuance_id, aid, subject, kind, rail, amount_usd, amount, ccy, state, txid, address, quotes, check_id, funds_simulated, created_at, paid_at FROM fee_invoices`
 
 func scanFeeInvoice(row *sql.Row) (*FeeInvoice, error) {
 	f, err := scanFeeInvoiceInto(row)
@@ -441,7 +444,7 @@ func scanFeeInvoiceInto(sc scanner) (*FeeInvoice, error) {
 	var sim int
 	var quotes string
 	err := sc.Scan(&f.ID, &f.IssuanceID, &f.AID, &f.Subject, &f.Kind, &f.Rail, &f.AmountUSD, &f.Amount, &f.Ccy,
-		&f.State, &f.Txid, &f.Address, &quotes, &sim, &f.CreatedAt, &f.PaidAt)
+		&f.State, &f.Txid, &f.Address, &quotes, &f.CheckID, &sim, &f.CreatedAt, &f.PaidAt)
 	if err != nil {
 		return nil, err
 	}
@@ -695,11 +698,11 @@ func (s *Store) updateFields(table, keyCol, keyVal string, fields map[string]any
 	return err
 }
 
-// AccountFee is the verification fee an account owes for one check, or nil if it
-// has never been raised.
+// AccountFee is the UNSPENT verification fee an account holds for one check, or
+// nil if it has none: never raised, or already spent on the check it bought.
 func (s *Store) AccountFee(aid, kind, subject string) (*FeeInvoice, error) {
 	f, err := scanFeeInvoice(s.db.QueryRow(
-		feeInvoiceSelect+` WHERE aid = ? AND kind = ? AND subject = ?
+		feeInvoiceSelect+` WHERE aid = ? AND kind = ? AND subject = ? AND check_id = ''
          ORDER BY (state = 'paid') DESC, rowid ASC LIMIT 1`,
 		aid, kind, subject))
 	if err == sql.ErrNoRows {
@@ -744,4 +747,10 @@ func (s *Store) SetFeeQuote(inv *FeeInvoice, rail string, q FeeQuote) error {
 		"rail": rail, "address": q.Address, "amount": q.Amount, "ccy": q.Ccy,
 		"quotes": encodeQuotes(inv.Quotes),
 	})
+}
+
+// SpendFeeInvoice records the check an invoice bought. It pays for no other, so
+// the next check raises a fresh one.
+func (s *Store) SpendFeeInvoice(invoiceID, checkID string) error {
+	return s.UpdateFeeInvoiceFields(invoiceID, map[string]any{"check_id": checkID})
 }

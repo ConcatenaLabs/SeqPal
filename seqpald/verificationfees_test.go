@@ -46,32 +46,49 @@ func TestAVerificationIsNotSubmittedUntilItIsPaidFor(t *testing.T) {
 	}
 	h.s.settleFiatDue()
 
+	// Paid, and recorded as what was actually charged. The invoice used to keep
+	// its own zero, so a fee paid on a fiat rail was booked at nothing.
+	settled := h.do("GET", "/api/id/fees", session, nil)
+	paid, _ := settled.body["identity"].(map[string]any)
+	if paid == nil || paid["state"] != "paid" || paid["rail"] != "card" {
+		t.Fatalf("the paid fee must be recorded on the invoice, got %v", settled.body["identity"])
+	}
+	invoiceID, _ := paid["id"].(string)
+	stored, err := h.s.st.FeeInvoiceByID(invoiceID)
+	if err != nil || stored == nil {
+		t.Fatalf("read the invoice back: %v", err)
+	}
+	if stored.Amount != 2500 || stored.Ccy != "USD" {
+		t.Fatalf("the invoice must record the amount charged, got %d %s", stored.Amount, stored.Ccy)
+	}
+
 	if v := h.do("POST", "/api/id/verify", session, body); v.code != 200 {
 		t.Fatalf("verify after paying = %d, want 200 (%s)", v.code, v.raw)
 	}
-	if check, _ := h.s.st.LatestVerificationCheck(aid); check == nil {
+	check, _ := h.s.st.LatestVerificationCheck(aid)
+	if check == nil {
 		t.Fatalf("a paid verification must reach the provider")
 	}
 
-	// The fee bought one check, and it stays bought: the provider asking for a
+	// The fee bought THAT check and no other: it is spent, and the next one
+	// would be quoted again.
+	if spent, _ := h.s.st.FeeInvoiceByID(invoiceID); spent.CheckID != check.ID {
+		t.Fatalf("the invoice must record the check it bought, got %q", spent.CheckID)
+	}
+	after := h.do("GET", "/api/id/fees", session, nil)
+	if q, _ := after.body["identity"].(map[string]any); q["state"] != "unpaid" {
+		t.Fatalf("a spent fee must not keep reading as paid, got %v", after.body["identity"])
+	}
+
+	// It stays bought for the check it bought, though: the provider asking for a
 	// better photo is the same check continuing, not a second applicant.
 	h.adjudicate(aid, idvResubmit)
 	if v := h.do("POST", "/api/id/verify", session, body); v.code != 200 {
 		t.Fatalf("resubmitting after a resubmission request = %d, want 200 (%s)", v.code, v.raw)
 	}
 
-	// It is booked where an account's fee belongs -- on the invoice, not as a row
-	// in an offering's escrow ledger.
-	after := h.do("GET", "/api/id/fees", session, nil)
-	paid, _ := after.body["identity"].(map[string]any)
-	if paid == nil || paid["state"] != "paid" || paid["rail"] != "card" {
-		t.Fatalf("the paid fee must be recorded on the invoice, got %v", after.body["identity"])
-	}
-	// Including what was actually charged. The invoice used to keep its own
-	// zero, so a fee paid on a fiat rail was booked at nothing.
-	if paid["amount"] != float64(2500) || paid["ccy"] != "USD" {
-		t.Fatalf("the invoice must record the amount charged, got %v %v", paid["amount"], paid["ccy"])
-	}
+	// A verification fee belongs to a person and to no offering, so it is not in
+	// an offering's escrow ledger.
 	if entries, err := h.s.st.LedgerByIssuance(""); err != nil {
 		t.Fatal(err)
 	} else if len(entries) != 0 {
@@ -157,5 +174,65 @@ func TestEachBusinessIsChargedForItsOwnCheck(t *testing.T) {
 		"kind": "business", "entity_id": first, "rail": "card",
 	}); r.code != 403 {
 		t.Fatalf("paying for another account's business = %d, want 403 (%s)", r.code, r.raw)
+	}
+}
+
+// A business refusal is the provider's and it is final, exactly as for a person.
+// And the endpoint that submits a business is also where the UBO signature is
+// recorded, so signing must not buy a second check on a fee that bought one.
+func TestABusinessCheckIsBoughtOnceAndRefusedFinally(t *testing.T) {
+	h := newHarness(t)
+	h.s.cfg.nodeURL = newWalletNode(t, true).URL
+	h.s.cfg.kybFeeUSD = 150
+	session, aid := walletSession(t, h, testPKH)
+	h.verifyIdentity(session, aid, map[string]any{
+		"residence": "AE", "screening_name": "Wallet Wendy", "base_eligibility": "ret",
+	})
+	r := h.do("POST", "/api/entities", session, map[string]any{"name": "First Holdings", "jurisdiction": "AE"})
+	if r.code != 200 {
+		t.Fatalf("create entity: %d %s", r.code, r.raw)
+	}
+	entity := r.body["entity"].(map[string]any)["id"].(string)
+
+	pay := h.do("POST", "/api/id/fees/pay", session, map[string]any{
+		"kind": "business", "entity_id": entity, "rail": "card",
+	})
+	if pay.code != 200 {
+		t.Fatalf("fees/pay: %d %s", pay.code, pay.errMsg())
+	}
+	h.s.settleFiatDue()
+	if v := h.do("POST", "/api/id/entities/"+entity+"/verify", session, map[string]any{}); v.code != 200 {
+		t.Fatalf("verify the paid business = %d, want 200 (%s)", v.code, v.raw)
+	}
+	first, _ := h.s.st.LatestVerificationCheckForEntity(entity)
+
+	// Calling again while it is with the provider records the UBO link and
+	// nothing else: no second check, and nothing further charged.
+	again := h.do("POST", "/api/id/entities/"+entity+"/verify", session, map[string]any{})
+	if again.code != 200 {
+		t.Fatalf("recording the UBO link = %d, want 200 (%s)", again.code, again.raw)
+	}
+	if again.body["check_id"] != first.ID {
+		t.Fatalf("that must not buy a second check, got %v want %v", again.body["check_id"], first.ID)
+	}
+
+	// Refused, and that is the end of it. The refusal is about the COMPANY: the
+	// person who controls it asked for the check and is not the subject of it.
+	if err := h.s.applyAdjudication(first, idvReject, "no"); err != nil {
+		t.Fatal(err)
+	}
+	if c, _ := h.s.st.ClaimsByAID(aid); c.Status != "verified" {
+		t.Fatalf("refusing a company must not refuse the person who controls it, got %v", c.Status)
+	}
+	refused := h.do("POST", "/api/id/entities/"+entity+"/verify", session, map[string]any{})
+	if refused.code != 409 {
+		t.Fatalf("submitting over a refused business = %d, want 409 (%s)", refused.code, refused.raw)
+	}
+	if p := h.do("GET", "/api/id/passport", session, nil); p.code == 200 {
+		for _, e := range p.body["entities"].([]any) {
+			if m := e.(map[string]any); m["id"] == entity && m["verified"] != false {
+				t.Fatalf("a refused business must not read as verified, got %v", m)
+			}
+		}
 	}
 }

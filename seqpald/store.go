@@ -1122,6 +1122,18 @@ UPDATE fee_invoices SET quotes = '{"' || rail || '":{"address":"' || address ||
   '","amount":' || amount || ',"ccy":"' || ccy || '"}}'
   WHERE address != '' AND rail != '';
 `,
+	// One paid fee buys ONE check. The provider bills per check, so an invoice
+	// that stays satisfied forever would let a holder re-verify as often as they
+	// liked on a single payment and run up a bill this fee exists to recoup.
+	// Spending an invoice records the check it bought; the gate then looks for an
+	// unspent one, and there can only ever be one of those per subject.
+	`
+ALTER TABLE fee_invoices ADD COLUMN check_id TEXT NOT NULL DEFAULT '';
+DROP INDEX IF EXISTS idx_fee_invoices_account;
+CREATE UNIQUE INDEX idx_fee_invoices_unspent ON fee_invoices(aid, kind, subject)
+  WHERE aid != '' AND check_id = '';
+CREATE INDEX idx_fee_invoices_account ON fee_invoices(aid, kind, subject) WHERE aid != '';
+`,
 }
 
 // Store is seqpald's persistent state. Every financial fact the UI shows is
