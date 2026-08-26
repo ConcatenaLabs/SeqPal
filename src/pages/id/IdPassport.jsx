@@ -160,8 +160,8 @@ export default function IdPassport() {
       {notVerified && (
         <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3.5 text-sm text-amber-900">
           <span>
-            This identity carries no eligibility categories yet. Run verification to have the
-            policy server stamp them onto your AID.
+            This identity carries no eligibility categories yet. Run verification to be granted
+            them.
           </span>
           <Link to="/id/register" className="btn-primary shrink-0">
             Verify now
@@ -238,7 +238,7 @@ export default function IdPassport() {
         {/* Linked entities */}
         <Section
           title="Linked companies (KYB)"
-          sub="Corporate entities added to this personal ID, each with its own treasury enclave once verified."
+          sub="Corporate entities added to this personal ID, each with its own treasury once verified."
         >
           {p.entities?.length ? (
             <div className="space-y-2">

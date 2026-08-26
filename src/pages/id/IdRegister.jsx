@@ -148,8 +148,8 @@ function VerifyStep({ account, onVerified }) {
             <div>
               <h3 className="font-bold text-ink-900">Verified</h3>
               <p className="text-sm text-ink-700/80">
-                Your eligibility categories are stamped on your AID and the policy server now
-                enforces them on every transfer.
+                Your eligibility categories are recorded on your SeqPal ID. Where a token's
+                transfers are serviced here, the policy server now enforces them on every one.
               </p>
             </div>
           </div>
