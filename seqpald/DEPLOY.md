@@ -108,7 +108,7 @@ native-BTC escrow rail is off unless `SEQPALD_BTC_RPC_URL` is set.
 | `SEQPALD_ESCROW_CONFS` (`-escrowconfs`) | `1` | confirmations before a deposit becomes `in_escrow`. Below 1 is refused: nothing here is final at 0-conf, and a deposit that has not confirmed has not arrived |
 | `SEQPALD_ATOMIC_CLOSE` (`-atomicclose`) | `1` | settle USDX subscriptions as one atomic delivery-versus-payment transaction; falls back to the two-transaction close when the policy server has no payment leg |
 | `SEQPALD_DAMP` | unset | `1`/`true`: network-enforced (OpenDAMP) deploys allowed; see above |
-| `SEQPALD_SETUP_FEE_USD` | `500` | platform setup fee invoiced in USDX |
+| `SEQPALD_SETUP_FEE_USD` | unset | OVERRIDE of the published setup price, not the price. Unset, an offering is charged what `src/data/pricing.js` quotes for its structure and terms. Set, that amount instead; zero waives the fee |
 | `SEQPALD_ESCROW_FEE_BPS` | `50` | escrow and settlement fee, basis points of the released payment |
 | `SEQPALD_KYC_FEE_USD` | `20` | identity verification fee, collected before the check is submitted to the provider. The default is the published price in `src/data/pricing.js`; zero charges nothing |
 | `SEQPALD_KYB_FEE_USD` | `150` | business verification fee, charged per business for the same reason. Also the published price; zero charges nothing |

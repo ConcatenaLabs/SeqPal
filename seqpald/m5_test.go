@@ -1235,9 +1235,12 @@ func newM5Harness(t *testing.T, opts m5opts) *m5h {
 		priceURL:     price.URL,
 		usdxAsset:    m5USDX,
 		escrowConfs:  confs,
-		setupFeeUSD:  opts.setupFeeUSD,
-		escrowFeeBps: bps,
-		fiatSettle:   0,
+		// Tests state the fee they want outright rather than deriving it from
+		// a structure, so the harness overrides the published schedule. Zero
+		// (the default) waives it, which is what most of these want.
+		setupFeeOverrideUSD: opts.setupFeeUSD,
+		escrowFeeBps:        bps,
+		fiatSettle:          0,
 	}
 	h := &m5h{t: t, oa: oa, seq: seq, price: price}
 	if opts.withBTC {
@@ -2174,7 +2177,8 @@ func TestM5UnpaidSetupFeeBlocksDeploy(t *testing.T) {
 		t.Fatalf("fees/pay: %d %s", pay.code, pay.errMsg())
 	}
 	h.s.settleFiatDue()
-	if paid, _ := h.s.setupFeePaid(issID); !paid {
+	iss, _ := h.s.st.IssuanceByID(issID)
+	if paid, _ := h.s.setupFeePaid(iss); !paid {
 		t.Fatalf("setup fee did not settle to paid")
 	}
 

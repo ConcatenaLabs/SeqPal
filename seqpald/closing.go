@@ -94,7 +94,7 @@ func (s *server) handleClose(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// The setup fee must be paid before closing pays anything out.
-	if paid, err := s.setupFeePaid(iss.ID); err != nil {
+	if paid, err := s.setupFeePaid(iss); err != nil {
 		writeErr(w, 500, "store error")
 		return
 	} else if !paid {

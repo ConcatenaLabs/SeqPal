@@ -1959,14 +1959,16 @@ export function Step7Checkout({ data, update, onDeployed }) {
   // before we navigate to the new issuance page.
   const { createIssuance, patchIssuance, deployIssuance, xonly, account, hasKey, signBearerStmt } =
     useStore()
-  // What this deployment actually charges, rather than what was true wherever
-  // the note was written. null until it is known, so nothing is asserted early.
-  const [setupFeeUsd, setSetupFeeUsd] = useState(null)
+  // The platform charges the published schedule, which is the figure computed
+  // below from this issuer's own answers. A deployment can override it -- and
+  // zero waives it -- so the note says so rather than asserting an amount that
+  // is wrong wherever it was configured differently. undefined until known.
+  const [feeOverride, setFeeOverride] = useState(undefined)
   useEffect(() => {
     let cancelled = false
     health()
-      .then((h) => !cancelled && setSetupFeeUsd(typeof h.setup_fee_usd === 'number' ? h.setup_fee_usd : null))
-      .catch(() => !cancelled && setSetupFeeUsd(null))
+      .then((h) => !cancelled && setFeeOverride(h.setup_fee_override_usd ?? null))
+      .catch(() => !cancelled && setFeeOverride(undefined))
     return () => {
       cancelled = true
     }
@@ -2289,11 +2291,11 @@ export function Step7Checkout({ data, update, onDeployed }) {
             </p>
           </div>
           <DemoNote className="mt-5">
-            {setupFeeUsd === 0
-              ? 'No setup fee is charged on this deployment, so the deploy below runs straight away.'
-              : setupFeeUsd > 0
-                ? `The setup fee is $${setupFeeUsd.toLocaleString()} and the deploy is refused until it is paid.`
-                : 'The deploy below is real and mints on the Sequentia testnet.'}{' '}
+            {feeOverride === 0
+              ? 'This deployment waives the setup fee, so the deploy below runs without it.'
+              : feeOverride > 0
+                ? `This deployment overrides the published schedule and charges $${feeOverride.toLocaleString()}; the deploy is refused until it is paid.`
+                : 'The setup fee above is what the deploy is refused for until it is paid.'}{' '}
             The deploy below is real and mints on the Sequentia testnet.
           </DemoNote>
           {err && (

@@ -72,10 +72,14 @@ registrar steps are simulated so the flow can be walked end to end.
 - The setup fee is a real gate: it is invoiced in USDX, seqpald's chain watcher
   confirms that the amount owed has arrived -- a short payment leaves the
   invoice unpaid -- and `POST /api/deploy` is refused with a 402 until it
-  has. What it costs is configuration (`SEQPALD_SETUP_FEE_USD`), and a fee of
-  zero marks itself paid, so a deployment can charge nothing without the gate
-  being any less real. `GET /api/health` reports the configured amount, which is
-  what the checkout screen shows rather than asserting one.
+  has. What it costs is the PUBLISHED price for that offering: the schedule on
+  the pricing page, applied to the issuance's own committed terms -- its
+  structure, whether it is public, the target raise, whether debt is secured --
+  which is the same arithmetic, from the same answers, that the checkout screen
+  showed the issuer. A test holds the two together, so neither moves alone.
+  `SEQPALD_SETUP_FEE_USD` overrides that schedule where a deployment needs to
+  (zero waives the fee, and marks itself paid); unset, which is the normal case,
+  the platform charges what it publishes.
 - Verification fees are the same kind of gate, on the account rather than on an
   offering. The identity-verification provider bills per check whether it clears
   or refuses, so an identity check (`SEQPALD_KYC_FEE_USD`) and each business

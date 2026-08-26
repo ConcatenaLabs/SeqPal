@@ -154,6 +154,14 @@ rule that catches something that actually breaks.
   account there, so a failure always means unreachable, never wallet-backed. Never downgrade
   either to a log line: a refused holder who was verified before still carries live categories
   at openampd until that freeze lands.
+- **The platform charges what it PUBLISHES.** A fee's price comes from `src/data/pricing.js`,
+  and a test binds the two so neither moves alone. The setup fee is priced per offering by
+  `publishedSetupFeeUSD` from that issuance's own committed terms -- structure, `is_public`,
+  `raise`, `unit`, `fields.collateral` -- which is the same arithmetic, on the same answers,
+  that the checkout screen showed the issuer. `SEQPALD_SETUP_FEE_USD` is an OVERRIDE and not
+  the price: unset (negative) means charge the schedule, and it is unset in production. A
+  structure with no published price is an error, never a free deploy. This is how the box came
+  to charge nothing for a setup the page priced in the thousands.
 - **A DEPLOY mints, so it takes `st.LockIssuance` before it asks whether it already
   happened.** The idempotency key is read before the mint and written after it, so two deploys
   in flight together are both told "no prior deploy" and the chain keeps both assets: five
