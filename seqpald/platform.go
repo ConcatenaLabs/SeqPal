@@ -133,18 +133,20 @@ func (s *server) payInvoiceOnRail(w http.ResponseWriter, acct *Account, inv *Fee
 			writeErr(w, 500, "could not start the simulated checkout")
 			return
 		}
-		_ = s.st.UpdateFeeInvoiceFields(inv.ID, map[string]any{"rail": rail, "funds_simulated": 1, "ccy": "USD", "amount": inv.Amount})
+		// What was actually charged, not the invoice's zero: this row is the
+		// record of the payment, and a fee booked at nothing is not one.
+		_ = s.st.SetFeeQuote(inv, rail, FeeQuote{Amount: pay.AmountMinor, Ccy: pay.Ccy})
+		_ = s.st.UpdateFeeInvoiceFields(inv.ID, map[string]any{"funds_simulated": 1})
 		audit("fee.pay.fiat", map[string]any{"rail": rail, "simulated": true})
 		writeJSON(w, 200, map[string]any{"invoice": inv, "checkout": fiatView(pay), "funds_simulated": true})
 
 	case "usdx":
-		addr, err := s.newUSDXDepositAddress()
+		q, err := s.feeQuoteFor(inv, "usdx", usdToAtoms(inv.AmountUSD), "USDX", s.newUSDXDepositAddress)
 		if err != nil {
 			writeErr(w, 502, "could not derive a fee deposit address: %v", err)
 			return
 		}
-		amount := usdToAtoms(inv.AmountUSD)
-		_ = s.st.UpdateFeeInvoiceFields(inv.ID, map[string]any{"rail": "usdx", "address": addr, "amount": amount, "ccy": "USDX"})
+		addr, amount := q.Address, q.Amount
 		audit("fee.pay.usdx", map[string]any{"address": addr, "amount": amount})
 		writeJSON(w, 200, map[string]any{"invoice_id": inv.ID, "rail": "usdx", "deposit_address": addr, "pay_amount": amount, "pay_ccy": "USDX", "confs_required": s.cfg.escrowConfs})
 
@@ -158,19 +160,47 @@ func (s *server) payInvoiceOnRail(w http.ResponseWriter, acct *Account, inv *Fee
 			writeErr(w, 502, "no BTC/USD rate is available")
 			return
 		}
-		addr, err := s.newBTCDepositAddress()
+		q, err := s.feeQuoteFor(inv, "btc", uint64(math.Ceil(inv.AmountUSD/btcUSD*1e8)), "BTC",
+			s.newBTCDepositAddress)
 		if err != nil {
 			writeErr(w, 502, "could not derive a fee deposit address: %v", err)
 			return
 		}
-		amount := uint64(math.Ceil(inv.AmountUSD / btcUSD * 1e8))
-		_ = s.st.UpdateFeeInvoiceFields(inv.ID, map[string]any{"rail": "btc", "address": addr, "amount": amount, "ccy": "BTC"})
+		addr, amount := q.Address, q.Amount
 		audit("fee.pay.btc", map[string]any{"address": addr, "amount": amount})
 		writeJSON(w, 200, map[string]any{"invoice_id": inv.ID, "rail": "btc", "deposit_address": addr, "pay_amount": amount, "pay_ccy": "BTC", "confs_required": s.cfg.escrowConfs})
 
 	default:
 		writeErr(w, 400, "rail must be one of usdx, btc, card, bank")
 	}
+}
+
+// feeAddressFor returns the deposit address this invoice already has for that
+// rail, deriving one only the first time. Quoting the same rail twice used to
+// burn a fresh address and forget the previous one, so a payer who had already
+// sent to it was never credited; every address this invoice hands out stays
+// watched.
+func (s *server) feeQuoteFor(inv *FeeInvoice, rail string, amount uint64, ccy string,
+	derive func() (string, error)) (FeeQuote, error) {
+	q, ok := inv.Quotes[rail]
+	if !ok || q.Address == "" {
+		addr, err := derive()
+		if err != nil {
+			return FeeQuote{}, err
+		}
+		q = FeeQuote{Address: addr}
+	}
+	// The amount is re-quoted every time -- a BTC price moves -- but the address
+	// does not change, and the watcher credits on the smallest amount this rail
+	// was ever quoted at, so a payer who acted on an earlier quote is not short.
+	if q.Amount == 0 || amount < q.Amount {
+		q.Amount = amount
+	}
+	q.Ccy = ccy
+	if err := s.st.SetFeeQuote(inv, rail, q); err != nil {
+		return FeeQuote{}, err
+	}
+	return q, nil
 }
 
 // onFiatFeeSettled marks a fee invoice paid when its SIMULATED checkout settles.
@@ -218,11 +248,17 @@ func (s *server) recordFeePaid(inv *FeeInvoice, txid string, amount uint64, ccy 
 
 // onFeeDepositConfirmed marks an on-chain fee invoice paid when its deposit
 // address is credited at N confirmations (called by the deposit watcher).
-func (s *server) onFeeDepositConfirmed(inv *FeeInvoice, txid string, atoms uint64) {
+func (s *server) onFeeDepositConfirmed(inv *FeeInvoice, rail string, q FeeQuote, txid string, atoms uint64) {
 	if inv.State == "paid" {
 		return
 	}
-	s.recordFeePaid(inv, txid, atoms, inv.Ccy, false)
+	// Booked on the rail that actually paid, which need not be the last one
+	// quoted: an invoice quoted on two rails is settled by whichever one arrives.
+	inv.Rail, inv.Address, inv.Ccy = rail, q.Address, q.Ccy
+	_ = s.st.UpdateFeeInvoiceFields(inv.ID, map[string]any{
+		"rail": rail, "address": q.Address, "ccy": q.Ccy,
+	})
+	s.recordFeePaid(inv, txid, atoms, q.Ccy, false)
 }
 
 // --- issuer payout mandates --------------------------------------------------

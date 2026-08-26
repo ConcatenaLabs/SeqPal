@@ -324,6 +324,20 @@ func scanFiatInto(sc scanner) (*FiatPayment, error) {
 // FeeInvoice is a SeqPal platform fee owed by an issuer. The setup fee (kind
 // "setup") must be paid before deploy; the escrow fee (kind "escrow") accrues on
 // real balances and is deducted at release. Rail is the issuer's choice.
+// FeeQuote is what one rail was quoted at: where to send, how much, in what.
+type FeeQuote struct {
+	Address string `json:"address"`
+	Amount  uint64 `json:"amount"`
+	Ccy     string `json:"ccy"`
+}
+
+// covers reports whether a confirmed deposit pays this quote. An unquoted
+// amount is covered by anything, which is only ever true of an invoice written
+// before amounts were quoted per rail.
+func (q FeeQuote) covers(atoms uint64) bool {
+	return q.Amount == 0 || atoms >= q.Amount
+}
+
 type FeeInvoice struct {
 	ID string `json:"id"`
 	// Exactly one of these owns the invoice: an issuance for a platform fee, an
@@ -334,27 +348,31 @@ type FeeInvoice struct {
 	// Which check the fee buys: empty for the account holder's own identity, the
 	// entity id for one of their businesses. An account can own several
 	// businesses, and the provider charges for each.
-	Subject        string  `json:"subject,omitempty"`
-	Kind           string  `json:"kind"` // setup | escrow | kyc | kyb
-	Rail           string  `json:"rail,omitempty"`
-	AmountUSD      float64 `json:"amount_usd"`
-	Amount         uint64  `json:"amount,omitempty"` // in rail base units once a rail is chosen
-	Ccy            string  `json:"ccy,omitempty"`
-	State          string  `json:"state"` // unpaid | paid
-	Txid           string  `json:"txid,omitempty"`
-	Address        string  `json:"address,omitempty"` // on-chain fee deposit address
-	FundsSimulated bool    `json:"funds_simulated"`
-	CreatedAt      int64   `json:"created_at"`
-	PaidAt         int64   `json:"paid_at,omitempty"`
+	Subject   string  `json:"subject,omitempty"`
+	Kind      string  `json:"kind"` // setup | escrow | kyc | kyb
+	Rail      string  `json:"rail,omitempty"`
+	AmountUSD float64 `json:"amount_usd"`
+	Amount    uint64  `json:"amount,omitempty"` // in rail base units once a rail is chosen
+	Ccy       string  `json:"ccy,omitempty"`
+	State     string  `json:"state"` // unpaid | paid
+	Txid      string  `json:"txid,omitempty"`
+	Address   string  `json:"address,omitempty"` // on-chain fee deposit address
+	// Every quote this invoice has issued, by rail. An address, an amount and a
+	// currency only mean anything together, and choosing a second rail must not
+	// strand what was sent against the first.
+	Quotes         map[string]FeeQuote `json:"quotes,omitempty"`
+	FundsSimulated bool                `json:"funds_simulated"`
+	CreatedAt      int64               `json:"created_at"`
+	PaidAt         int64               `json:"paid_at,omitempty"`
 }
 
 func (s *Store) InsertFeeInvoice(f *FeeInvoice) error {
 	f.CreatedAt = time.Now().Unix()
 	_, err := s.db.Exec(
-		`INSERT INTO fee_invoices (id, issuance_id, aid, subject, kind, rail, amount_usd, amount, ccy, state, txid, address, funds_simulated, created_at, paid_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)`,
+		`INSERT INTO fee_invoices (id, issuance_id, aid, subject, kind, rail, amount_usd, amount, ccy, state, txid, address, quotes, funds_simulated, created_at, paid_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)`,
 		f.ID, f.IssuanceID, f.AID, f.Subject, f.Kind, f.Rail, f.AmountUSD, f.Amount, f.Ccy, f.State, f.Txid,
-		f.Address, boolInt(f.FundsSimulated), f.CreatedAt)
+		f.Address, encodeQuotes(f.Quotes), boolInt(f.FundsSimulated), f.CreatedAt)
 	return err
 }
 
@@ -392,7 +410,7 @@ func (s *Store) FeeInvoicesByIssuance(issuanceID string) ([]*FeeInvoice, error) 
 // UnpaidOnchainFees returns unpaid fee invoices with an on-chain deposit address
 // (the deposit watcher credits them when a payment confirms).
 func (s *Store) UnpaidOnchainFees() ([]*FeeInvoice, error) {
-	rows, err := s.db.Query(feeInvoiceSelect + ` WHERE state = 'unpaid' AND address != ''`)
+	rows, err := s.db.Query(feeInvoiceSelect + ` WHERE state = 'unpaid' AND (address != '' OR quotes != '')`)
 	if err != nil {
 		return nil, err
 	}
@@ -408,7 +426,7 @@ func (s *Store) UnpaidOnchainFees() ([]*FeeInvoice, error) {
 	return out, rows.Err()
 }
 
-const feeInvoiceSelect = `SELECT id, issuance_id, aid, subject, kind, rail, amount_usd, amount, ccy, state, txid, address, funds_simulated, created_at, paid_at FROM fee_invoices`
+const feeInvoiceSelect = `SELECT id, issuance_id, aid, subject, kind, rail, amount_usd, amount, ccy, state, txid, address, quotes, funds_simulated, created_at, paid_at FROM fee_invoices`
 
 func scanFeeInvoice(row *sql.Row) (*FeeInvoice, error) {
 	f, err := scanFeeInvoiceInto(row)
@@ -421,11 +439,13 @@ func scanFeeInvoice(row *sql.Row) (*FeeInvoice, error) {
 func scanFeeInvoiceInto(sc scanner) (*FeeInvoice, error) {
 	var f FeeInvoice
 	var sim int
+	var quotes string
 	err := sc.Scan(&f.ID, &f.IssuanceID, &f.AID, &f.Subject, &f.Kind, &f.Rail, &f.AmountUSD, &f.Amount, &f.Ccy,
-		&f.State, &f.Txid, &f.Address, &sim, &f.CreatedAt, &f.PaidAt)
+		&f.State, &f.Txid, &f.Address, &quotes, &sim, &f.CreatedAt, &f.PaidAt)
 	if err != nil {
 		return nil, err
 	}
+	f.Quotes = decodeQuotes(quotes)
 	f.FundsSimulated = sim != 0
 	return &f, nil
 }
@@ -679,10 +699,49 @@ func (s *Store) updateFields(table, keyCol, keyVal string, fields map[string]any
 // has never been raised.
 func (s *Store) AccountFee(aid, kind, subject string) (*FeeInvoice, error) {
 	f, err := scanFeeInvoice(s.db.QueryRow(
-		feeInvoiceSelect+` WHERE aid = ? AND kind = ? AND subject = ? ORDER BY created_at DESC LIMIT 1`,
+		feeInvoiceSelect+` WHERE aid = ? AND kind = ? AND subject = ?
+         ORDER BY (state = 'paid') DESC, rowid ASC LIMIT 1`,
 		aid, kind, subject))
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	return f, err
+}
+
+func encodeQuotes(q map[string]FeeQuote) string {
+	if len(q) == 0 {
+		return ""
+	}
+	b, err := json.Marshal(q)
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+// decodeQuotes never fails the read: an invoice whose quotes will not parse
+// still carries its own rail, address and amount, which is what the caller
+// falls back to.
+func decodeQuotes(s string) map[string]FeeQuote {
+	if s == "" {
+		return nil
+	}
+	var q map[string]FeeQuote
+	if err := json.Unmarshal([]byte(s), &q); err != nil {
+		return nil
+	}
+	return q
+}
+
+// SetFeeQuote records the quote one rail was given, keeping every other rail's.
+func (s *Store) SetFeeQuote(inv *FeeInvoice, rail string, q FeeQuote) error {
+	if inv.Quotes == nil {
+		inv.Quotes = map[string]FeeQuote{}
+	}
+	inv.Quotes[rail] = q
+	inv.Rail, inv.Address, inv.Amount, inv.Ccy = rail, q.Address, q.Amount, q.Ccy
+	return s.UpdateFeeInvoiceFields(inv.ID, map[string]any{
+		"rail": rail, "address": q.Address, "amount": q.Amount, "ccy": q.Ccy,
+		"quotes": encodeQuotes(inv.Quotes),
+	})
 }

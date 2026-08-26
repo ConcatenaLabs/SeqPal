@@ -70,7 +70,8 @@ registrar steps are simulated so the flow can be walked end to end.
   transfer is refused with a 501, never silently downgraded. Supervised
   (freely-tradable) assets are always transparent, by consensus.
 - The setup fee is a real gate: it is invoiced in USDX, seqpald's chain watcher
-  confirms the receipt, and `POST /api/deploy` is refused with a 402 until it
+  confirms that the amount owed has arrived -- a short payment leaves the
+  invoice unpaid -- and `POST /api/deploy` is refused with a 402 until it
   has. What it costs is configuration (`SEQPALD_SETUP_FEE_USD`), and a fee of
   zero marks itself paid, so a deployment can charge nothing without the gate
   being any less real. `GET /api/health` reports the configured amount, which is

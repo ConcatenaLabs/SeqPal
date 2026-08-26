@@ -67,6 +67,11 @@ func TestAVerificationIsNotSubmittedUntilItIsPaidFor(t *testing.T) {
 	if paid == nil || paid["state"] != "paid" || paid["rail"] != "card" {
 		t.Fatalf("the paid fee must be recorded on the invoice, got %v", after.body["identity"])
 	}
+	// Including what was actually charged. The invoice used to keep its own
+	// zero, so a fee paid on a fiat rail was booked at nothing.
+	if paid["amount"] != float64(2500) || paid["ccy"] != "USD" {
+		t.Fatalf("the invoice must record the amount charged, got %v %v", paid["amount"], paid["ccy"])
+	}
 	if entries, err := h.s.st.LedgerByIssuance(""); err != nil {
 		t.Fatal(err)
 	} else if len(entries) != 0 {

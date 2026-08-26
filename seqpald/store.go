@@ -1093,6 +1093,35 @@ ALTER TABLE fee_invoices ADD COLUMN aid TEXT NOT NULL DEFAULT '';
 ALTER TABLE fee_invoices ADD COLUMN subject TEXT NOT NULL DEFAULT '';
 CREATE INDEX idx_fee_invoices_aid_kind ON fee_invoices(aid, kind, subject) WHERE aid != '';
 `,
+	// Two things the fee invoices got wrong, both about crediting money.
+	//
+	// An account's invoice is raised on demand, and the page that quotes it polls
+	// -- several cards poll at once -- so two requests could each find no invoice
+	// and each insert one. The holder then pays whichever the quote returned
+	// while the gate reads the other. One invoice per account, per kind, per
+	// subject is the actual rule, so the index says so; the duplicates that
+	// exist are collapsed onto the paid one, or the oldest.
+	//
+	// And a fee quote is per rail: the address, the amount and the currency only
+	// mean anything together. Keeping one of each on the invoice meant choosing a
+	// second rail overwrote the first, so anything already sent to the first
+	// address was never credited and never watched again -- as was anything sent
+	// to the address a second click on the same rail replaced. Every quote this
+	// invoice has ever issued is kept, and every one of them is watched.
+	`
+DELETE FROM fee_invoices WHERE aid != '' AND rowid NOT IN (
+  SELECT (SELECT g.rowid FROM fee_invoices g
+          WHERE g.aid = f.aid AND g.kind = f.kind AND g.subject = f.subject
+          ORDER BY (g.state = 'paid') DESC, g.rowid ASC LIMIT 1)
+  FROM fee_invoices f WHERE f.aid != '' GROUP BY f.aid, f.kind, f.subject
+);
+DROP INDEX IF EXISTS idx_fee_invoices_aid_kind;
+CREATE UNIQUE INDEX idx_fee_invoices_account ON fee_invoices(aid, kind, subject) WHERE aid != '';
+ALTER TABLE fee_invoices ADD COLUMN quotes TEXT NOT NULL DEFAULT '';
+UPDATE fee_invoices SET quotes = '{"' || rail || '":{"address":"' || address ||
+  '","amount":' || amount || ',"ccy":"' || ccy || '"}}'
+  WHERE address != '' AND rail != '';
+`,
 }
 
 // Store is seqpald's persistent state. Every financial fact the UI shows is

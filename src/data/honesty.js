@@ -36,6 +36,7 @@ export const REAL = [
   'The recovery key for a freely-tradable asset: a second Sequentia wallet the issuer names before deploy, whose public half is registered on the asset and whose private half SeqPal never sees',
   'The bearer attestation: a real signature by the issuer’s own key over the two US-exposure statements, recorded before a freely-tradable deploy is accepted',
   'The verification fee gate: the provider bills per check, so an identity or business check is invoiced and collected before it is submitted, and submitting without paying is refused. The money is testnet money; the gate is not',
+  'Fee crediting: an invoice is paid when the amount owed has actually arrived and confirmed at an address it quoted \u2014 a short payment leaves it unpaid \u2014 and every rail it was ever quoted on stays watched, so choosing a second rail never strands what was sent to the first',
 ]
 
 export const SIMULATED = [
