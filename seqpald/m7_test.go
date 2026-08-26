@@ -894,3 +894,27 @@ func TestAMisconfiguredNumberIsRefusedNotObeyed(t *testing.T) {
 	tk := time.NewTicker(interval("SEQPALD_TEST_CADENCE", 30))
 	tk.Stop()
 }
+
+// mulDiv is the money multiplication in this platform, and big.Int.Uint64 is
+// undefined for a value that does not fit. A divisor small enough to leave the
+// product larger than a uint64 is exactly that case, and the answer has to be a
+// defined one -- zero, which every caller reads as "no amount" -- rather than
+// whatever the conversion produced.
+func TestMulDivIsTotal(t *testing.T) {
+	const max = ^uint64(0)
+	for _, tc := range []struct {
+		a, b, c, want uint64
+	}{
+		{1000, 500, 10000, 50},
+		{max, 1, 1, max},
+		{max, 2, 1, 0},           // 2*max does not fit
+		{1 << 40, 1 << 40, 1, 0}, // 2^80 does not fit
+		{1 << 40, 1 << 40, 1 << 40, 1 << 40},
+		{100, 100, 0, 0}, // divide by zero is no amount
+		{0, 12345, 7, 0},
+	} {
+		if got := mulDiv(tc.a, tc.b, tc.c); got != tc.want {
+			t.Fatalf("mulDiv(%d, %d, %d) = %d, want %d", tc.a, tc.b, tc.c, got, tc.want)
+		}
+	}
+}

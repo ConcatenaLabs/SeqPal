@@ -359,12 +359,26 @@ func (s *server) handleSnapshotDistribution(w http.ResponseWriter, r *http.Reque
 // mulDiv computes floor(a * b / c) exactly. The a*b product (pool atoms times a
 // holder balance) can exceed uint64 for large pools, so it is done in big.Int to
 // stay exact; the quotient always fits back in uint64 since it is at most the pool.
+// mulDiv is floor(a*b/c) computed exactly, through big.Int, because the product
+// of two uint64 money figures does not fit in one. It answers 0 for a quotient
+// that has no uint64 value -- a divisor small enough to leave the product
+// larger than the type -- because big.Int.Uint64 is UNDEFINED there, and a
+// defined wrong answer is worth more than an undefined one. Zero is what every
+// caller here reads as "no amount".
+//
+// Every current caller divides by something at least as large as one of its
+// factors (a share by the total held, a rate by 10000 with the rate bounded), so
+// none of them can reach that. This does not depend on their arithmetic staying
+// that way.
 func mulDiv(a, b, c uint64) uint64 {
 	if c == 0 {
 		return 0
 	}
 	prod := new(big.Int).Mul(new(big.Int).SetUint64(a), new(big.Int).SetUint64(b))
 	prod.Div(prod, new(big.Int).SetUint64(c))
+	if !prod.IsUint64() {
+		return 0
+	}
 	return prod.Uint64()
 }
 
