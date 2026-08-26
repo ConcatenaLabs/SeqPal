@@ -56,6 +56,14 @@ func (s *server) handleDREnable(w http.ResponseWriter, r *http.Request) {
 		"A receipt programme needs this platform to hold the receipts and to check each transfer against your rules. This token's rules are enforced by the network instead, and its units sit in holders' own addresses, so there is nothing here to hold or to check and the programme cannot be enabled for it.") {
 		return
 	}
+	if s.refuseForBearer(w, acct.AID, iss, "dr.enable",
+		"This token is freely tradable and already moves without a depository: a receipt programme exists to carry a restricted token where it cannot go itself.") {
+		return
+	}
+	if !s.hasEnclave(acct) {
+		writeErr(w, 403, "a receipt programme is issued from an OpenAMP account and this SeqPal ID has none attached")
+		return
+	}
 	height, mutationID, err := s.applyUSExclusion(iss)
 	if err != nil {
 		writeErr(w, 502, "could not enforce the US-person exclusion category rule: %v", err)

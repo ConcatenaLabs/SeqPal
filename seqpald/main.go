@@ -368,7 +368,7 @@ func (s *server) handler() http.Handler {
 	// checkout, platform fees, payout mandates, and closing.
 	mux.HandleFunc("GET /api/issuances/{id}/offering", s.handleOffering) // public: teaser or gated full view
 	mux.HandleFunc("POST /api/issuances/{id}/gate", s.requireSession(s.handleGate))
-	mux.HandleFunc("POST /api/issuances/{id}/subscribe", s.requireSession(s.requireEnclave(s.handleSubscribe)))
+	mux.HandleFunc("POST /api/issuances/{id}/subscribe", s.requireSession(s.handleSubscribe))
 	mux.HandleFunc("GET /api/subscriptions", s.requireSession(s.handleMySubscriptions))
 	mux.HandleFunc("GET /api/issuances/{id}/subscriptions", s.requireSession(s.handleIssuanceSubscriptions))
 	mux.HandleFunc("GET /api/fiat/{id}", s.requireSession(s.handleFiatStatus))
@@ -376,7 +376,7 @@ func (s *server) handler() http.Handler {
 	mux.HandleFunc("POST /api/issuances/{id}/fees/pay", s.requireSession(s.handlePayFee))
 	mux.HandleFunc("GET /api/issuances/{id}/mandate", s.requireSession(s.handleMandates))
 	mux.HandleFunc("POST /api/issuances/{id}/mandate", s.requireSession(s.handleMandate))
-	mux.HandleFunc("POST /api/issuances/{id}/close", s.requireSession(s.requireEnclave(s.handleClose)))
+	mux.HandleFunc("POST /api/issuances/{id}/close", s.requireSession(s.handleClose))
 	mux.HandleFunc("GET /api/issuances/{id}/settlements", s.requireSession(s.handleSettlements))
 
 	// M7 transfer-agent servicing: investor payout mandates and the distribution
@@ -384,7 +384,7 @@ func (s *server) handler() http.Handler {
 	// net payouts to registered mandate addresses, read runs + per-holder txids).
 	mux.HandleFunc("POST /api/mandates/investor", s.requireSession(s.handleInvestorMandate))
 	mux.HandleFunc("GET /api/mandates/investor", s.requireSession(s.handleInvestorMandateGet))
-	mux.HandleFunc("POST /api/issuances/{id}/distributions", s.requireSession(s.requireEnclave(s.handleCreateDistribution)))
+	mux.HandleFunc("POST /api/issuances/{id}/distributions", s.requireSession(s.handleCreateDistribution))
 	mux.HandleFunc("GET /api/issuances/{id}/distributions", s.requireSession(s.handleListDistributions))
 	mux.HandleFunc("GET /api/issuances/{id}/distributions/{runID}", s.requireSession(s.handleGetDistribution))
 	mux.HandleFunc("POST /api/issuances/{id}/distributions/{runID}/snapshot", s.requireSession(s.requireEnclave(s.handleSnapshotDistribution)))
@@ -418,7 +418,7 @@ func (s *server) handler() http.Handler {
 	// chain-derived supply).
 	mux.HandleFunc("POST /api/issuances/{id}/listing", s.requireSession(s.handleGrantListing))
 	mux.HandleFunc("GET /api/issuances/{id}/dr", s.requireSession(s.handleDRProgram))
-	mux.HandleFunc("POST /api/issuances/{id}/dr/enable", s.requireSession(s.requireEnclave(s.handleDREnable)))
+	mux.HandleFunc("POST /api/issuances/{id}/dr/enable", s.requireSession(s.handleDREnable))
 	mux.HandleFunc("POST /api/issuances/{id}/dr/mint", s.requireSession(s.requireEnclave(s.handleDRMint)))
 	mux.HandleFunc("POST /api/issuances/{id}/dr/redeem", s.requireSession(s.requireEnclave(s.handleDRRedeem)))
 	mux.HandleFunc("GET /api/issuances/{id}/dr/supply", s.requireSession(s.handleDRSupply))

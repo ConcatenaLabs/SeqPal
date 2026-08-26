@@ -51,6 +51,18 @@ func (s *server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 		"This token's rules are enforced by the network, and this platform does not run its initial sale: the tokens are delivered to each investor's own holding address, which only the issuer's own wallet can sign. Subscriptions are open for tokens whose transfers this platform services.") {
 		return
 	}
+	if s.refuseForBearer(w, acct.AID, iss, "subscribe",
+		"This token is freely tradable: it is an ordinary on-chain holding with no escrow enclave to deliver it from, so this platform does not run its sale. Buy it from whoever holds it. Subscriptions are open for tokens whose transfers this platform services.") {
+		return
+	}
+	// Only now is a missing OpenAMP account the actual problem. Asked earlier, it
+	// would answer a question about the investor when the answer is about the
+	// token: a serviced token is delivered into an enclave, and this ID has none.
+	if !s.hasEnclave(acct) {
+		writeErr(w, 403, "this token is delivered into an OpenAMP account and your SeqPal ID has "+
+			"none attached. Attach one, or subscribe to a token whose delivery does not need it")
+		return
+	}
 
 	var req subscribeReq
 	if err := readJSON(r, &req); err != nil {
