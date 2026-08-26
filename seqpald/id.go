@@ -84,7 +84,7 @@ func (s *server) handleIDVerify(w http.ResponseWriter, r *http.Request) {
 	// it is created. Nothing has been written yet at this point, so an unpaid
 	// caller leaves exactly as they arrived. Answering a provider who asked for
 	// more is the same check continuing, and costs nothing further.
-	priorCheck, err := s.st.LatestVerificationCheck(acct.AID)
+	priorCheck, err := s.st.LatestVerificationCheck(acct.AID, "identity")
 	if err != nil {
 		writeErr(w, 500, "store error")
 		return
@@ -244,7 +244,7 @@ func (s *server) handleIDPassport(w http.ResponseWriter, r *http.Request) {
 	} else {
 		user.Categories = projectCategories(claims, time.Now().Unix())
 	}
-	latestCheck, _ := s.st.LatestVerificationCheck(acct.AID)
+	latestCheck, _ := s.st.LatestVerificationCheck(acct.AID, "identity")
 
 	now := time.Now().Unix()
 	validUntil := int64(0)

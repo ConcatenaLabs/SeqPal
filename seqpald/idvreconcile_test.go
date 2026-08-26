@@ -40,7 +40,7 @@ func TestACheckWhoseDecisionWasNeverDeliveredIsChased(t *testing.T) {
 	if c, _ := h.s.st.ClaimsByAID(aid); c.Status != "verified" {
 		t.Fatalf("a chased check must reach its decision, got %v", c.Status)
 	}
-	check, _ := h.s.st.LatestVerificationCheck(aid)
+	check, _ := h.s.st.LatestVerificationCheck(aid, "identity")
 	if check.Status != "complete" || check.Result != string(idvClear) {
 		t.Fatalf("the check must be recorded as decided, got %+v", check)
 	}

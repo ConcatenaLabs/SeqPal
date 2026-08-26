@@ -155,7 +155,7 @@ func (s *server) verificationFeeView(aid, feeKind, subject string, free bool) (m
 // already have.
 func (s *server) handleVerificationFees(w http.ResponseWriter, r *http.Request) {
 	acct := principal(r)
-	priorID, err := s.st.LatestVerificationCheck(acct.AID)
+	priorID, err := s.st.LatestVerificationCheck(acct.AID, "identity")
 	if err != nil {
 		writeErr(w, 500, "store error")
 		return

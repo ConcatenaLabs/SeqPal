@@ -895,7 +895,7 @@ func TestOwnedEscrowEnclave(t *testing.T) {
 // would.
 func (h *owHarness) adjudicate(aid string, decision idvDecision) {
 	h.t.Helper()
-	check, err := h.s.st.LatestVerificationCheck(aid)
+	check, err := h.s.st.LatestVerificationCheck(aid, "identity")
 	if err != nil || check == nil {
 		h.t.Fatalf("no verification check for %s: %v", aid, err)
 	}
