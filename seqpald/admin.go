@@ -236,6 +236,12 @@ func (s *server) screeningCron(refresh, interval time.Duration) {
 }
 
 func (s *server) rescreenAll() {
+	// A sweep against lists that have not loaded finds nothing, and finding
+	// nothing is indistinguishable from everyone being clean.
+	if !s.screen.ready() {
+		log.Print("rescreen: sanctions lists not loaded; skipping this sweep")
+		return
+	}
 	claims, err := s.st.AllClaims()
 	if err != nil {
 		return

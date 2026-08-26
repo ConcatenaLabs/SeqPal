@@ -50,6 +50,17 @@ func (s *server) handleIDVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Screening is the whole of what verification decides. An instance whose
+	// lists have not loaded would find no match against anyone and grant
+	// eligibility to all of them, which is worse than making the holder wait a
+	// few seconds and try again.
+	if !s.screen.ready() {
+		s.st.Audit(acct.AID, "id.verify.deferred", map[string]any{"reason": "sanctions lists not loaded"})
+		writeErr(w, 503, "sanctions screening is still loading on this instance. Nothing is decided "+
+			"about an identity until it can be screened properly; try again in a moment")
+		return
+	}
+
 	// A sanctions match already on this identity is not something re-verifying
 	// can walk past. Screening runs over the name the holder declares, so an
 	// identity parked for review -- or refused after one -- could simply submit
