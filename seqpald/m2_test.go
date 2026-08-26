@@ -587,3 +587,52 @@ func TestTheEUListParsesNamesAndNotClassifications(t *testing.T) {
 		}
 	}
 }
+
+// Screening runs over the name a holder declares, so an identity parked by a
+// match could submit verification again under a different name and be verified
+// -- while the review item that parked it was still sitting in the queue.
+// Confirmed against the live service before this was written: parked, then
+// verified with a clean name, categories and all.
+func TestAMatchCannotBeReVerifiedAway(t *testing.T) {
+	h := newHarness(t)
+	h.s.cfg.nodeURL = newWalletNode(t, true).URL
+	h.s.screen = newScreener("")
+	session, aid := walletSession(t, h, testPKH)
+
+	h.s.screen.mu.Lock()
+	h.s.screen.names["ofac_sdn"][normalizeName("Listed Larry")] = true
+	h.s.screen.mu.Unlock()
+
+	if v := h.do("POST", "/api/id/verify", session, map[string]any{
+		"residence": "AE", "screening_name": "Listed Larry", "base_eligibility": "ret",
+	}); v.code != 200 {
+		t.Fatalf("verify: %d %s", v.code, v.raw)
+	}
+	c, _ := h.s.st.ClaimsByAID(aid)
+	if c == nil || c.Status != "pending_review" {
+		t.Fatalf("a match must park the identity, got %v", c)
+	}
+
+	again := h.do("POST", "/api/id/verify", session, map[string]any{
+		"residence": "AE", "screening_name": "Someone Else Entirely", "base_eligibility": "ret",
+	})
+	if again.code != 409 {
+		t.Fatalf("re-verifying over a live match must be refused, got %d %s", again.code, again.raw)
+	}
+	after, _ := h.s.st.ClaimsByAID(aid)
+	if after.Status != "pending_review" || eligibilityLive(after, time.Now().Unix()) {
+		t.Fatalf("the identity must stay parked and ineligible, got %v", after)
+	}
+
+	// The same holds once a reviewer has refused it.
+	after.Status = "refused"
+	if err := h.s.st.UpsertClaims(after); err != nil {
+		t.Fatal(err)
+	}
+	third := h.do("POST", "/api/id/verify", session, map[string]any{
+		"residence": "AE", "screening_name": "Someone Else Entirely", "base_eligibility": "ret",
+	})
+	if third.code != 409 {
+		t.Fatalf("re-verifying a refused identity must be refused, got %d %s", third.code, third.raw)
+	}
+}

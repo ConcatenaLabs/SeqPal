@@ -160,13 +160,20 @@ export default function IdPassport() {
       {notVerified && (
         <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3.5 text-sm text-amber-900">
           <span>
-            This identity carries no eligibility categories yet. Run verification to be granted
-            them.
+            {p.status === 'pending_review'
+              ? 'A sanctions-list name match was found, so no eligibility has been granted. A reviewer decides whether it is a genuine hit or a false positive, and this page shows the outcome when they do. Running verification again does not move it along.'
+              : p.status === 'refused'
+                ? 'Verification of this identity was refused, so it carries no eligibility. Running it again does not change that; only a reviewer can reopen it.'
+                : p.status === 'needs_info'
+                  ? 'The review needs more from you before it can finish. Continue where you left off.'
+                  : 'This identity carries no eligibility categories yet. Run verification to be granted them.'}
           </span>
-          <Link to="/id/register" className="btn-primary shrink-0">
-            Verify now
-            <Icon.arrowRight width={16} height={16} />
-          </Link>
+          {(p.status === 'unverified' || p.status === 'needs_info' || !p.status) && (
+            <Link to="/id/register" className="btn-primary shrink-0">
+              {p.status === 'needs_info' ? 'Continue' : 'Verify now'}
+              <Icon.arrowRight width={16} height={16} />
+            </Link>
+          )}
         </div>
       )}
 

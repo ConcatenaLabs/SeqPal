@@ -50,6 +50,30 @@ func (s *server) handleIDVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A sanctions match already on this identity is not something re-verifying
+	// can walk past. Screening runs over the name the holder declares, so an
+	// identity parked for review -- or refused after one -- could simply submit
+	// again under a different name and be verified, while the review item it was
+	// parked by sat in the queue. The decision belongs to the reviewer who has
+	// it, and until they make it there is nothing to re-run.
+	if prior, err := s.st.ClaimsByAID(acct.AID); err != nil {
+		writeErr(w, 500, "store error")
+		return
+	} else if prior != nil {
+		switch prior.Status {
+		case "pending_review":
+			s.st.Audit(acct.AID, "id.verify.blocked", map[string]any{"status": prior.Status})
+			writeErr(w, 409, "a name match on this identity is with a reviewer, and verification "+
+				"cannot be re-run while it is. This page shows the outcome when they decide")
+			return
+		case "refused":
+			s.st.Audit(acct.AID, "id.verify.blocked", map[string]any{"status": prior.Status})
+			writeErr(w, 409, "verification of this identity was refused, and running it again does "+
+				"not change that. Only a reviewer can reopen it")
+			return
+		}
+	}
+
 	// The investor must be a registered openampd user before any category can be
 	// stamped; the server-recomputed AID must equal the local AID or we would be
 	// stamping an account we do not control.
