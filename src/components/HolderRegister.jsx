@@ -21,8 +21,13 @@ export default function HolderRegister({ iss }) {
       .issuanceHolders(iss.id)
       .then((res) => {
         if (cancelled) return
+        // A holder's passport shows their SeqPal account id, and the register is
+        // keyed the policy server's way. They are the same string only for an ID
+        // founded on an OpenAMP account, so seqpald maps the ones it knows and a
+        // row shows both rather than one id the holder will not recognise.
+        const seqpalIDs = res.seqpal_ids || {}
         const holders = Object.entries(res.holders || {})
-          .map(([aid, atoms]) => ({ aid, atoms: Number(atoms) || 0 }))
+          .map(([aid, atoms]) => ({ aid, seqpalAID: seqpalIDs[aid] || '', atoms: Number(atoms) || 0 }))
           .filter((h) => h.atoms > 0)
           .sort((a, b) => b.atoms - a.atoms)
         setState({ loading: false, holders, total: Number(res.total_atoms) || 0, height: res.height })
@@ -78,6 +83,11 @@ export default function HolderRegister({ iss }) {
                   <div key={h.aid} className="flex items-center justify-between gap-4 px-4 py-3 text-sm">
                     <div className="min-w-0">
                       <CopyId value={h.aid} label="holder AID" />
+                      {h.seqpalAID && (
+                        <div className="mt-0.5 truncate font-mono text-[11px] text-ink-700/60">
+                          SeqPal ID {h.seqpalAID}
+                        </div>
+                      )}
                       <div className="mt-0.5 text-xs text-ink-700/50">{pct.toFixed(2)}% of supply</div>
                     </div>
                     <div className="text-right">
