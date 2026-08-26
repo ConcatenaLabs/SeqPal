@@ -70,8 +70,12 @@ func (s *server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.Rail = strings.ToLower(strings.TrimSpace(req.Rail))
-	if req.Amount <= 0 {
-		writeErr(w, 400, "amount must be greater than zero")
+	// A number of tokens, and nothing else. A negative one converts to a vast
+	// unsigned value further down and gets refused for being "too large", which
+	// tells the buyer the opposite of what they did wrong; NaN and the infinities
+	// convert to something undefined.
+	if !(req.Amount > 0) || math.IsInf(req.Amount, 0) || math.IsNaN(req.Amount) {
+		writeErr(w, 400, "amount must be a positive number of tokens")
 		return
 	}
 
@@ -135,6 +139,15 @@ func (s *server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 		ta := req.Amount * math.Pow10(iss.Precision)
 		if ta < 1 {
 			writeErr(w, 400, "amount is smaller than one atom at this asset's precision")
+			return
+		}
+		// The whole-token branch checks this through atomsFor; this one checked
+		// nothing, so a fractional amount whose atoms overflow a uint64 -- around
+		// a hundred billion tokens at 8 decimals -- converted to an undefined
+		// value and was ACCEPTED. The subscription, its price and its escrow
+		// expectation were then all built on that number.
+		if ta >= float64(math.MaxUint64) {
+			writeErr(w, 400, "amount is too large for this asset's precision")
 			return
 		}
 		tokenAtoms = uint64(math.Round(ta))

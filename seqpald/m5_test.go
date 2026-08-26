@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -2214,4 +2215,90 @@ func hasRequirement(r resp, kind string) bool {
 
 func hasRequirementBody(r resp, kind string) bool {
 	return hasRequirement(r, kind)
+}
+
+// A subscription amount is a number of tokens the buyer types. Three shapes of
+// it reached arithmetic that had no answer for them.
+//
+// The whole-token branch converts through atomsFor, which refuses an overflow.
+// The FRACTIONAL branch checked only that the amount was at least one atom, so
+// a fractional amount whose atoms overflow a uint64 -- about a hundred billion
+// tokens at 8 decimals -- became an undefined conversion and was accepted: the
+// subscription, its price and its escrow expectation all built on 9.2 quintillion
+// atoms. And a negative amount converts to a vast unsigned value, so it was
+// refused for being "too large", which tells a buyer the opposite of what they
+// did wrong.
+func TestASubscriptionAmountIsANumberOfTokens(t *testing.T) {
+	h := newM5Harness(t, m5opts{escrowConfs: 2})
+	issuerPriv := genPriv(t)
+	issuerSession, _, _ := h.register(issuerPriv, "Issuer", "HN")
+	// A tiny unit price keeps the USD figure under the source-of-funds threshold,
+	// so what is being judged here is the amount rather than the money.
+	issID, _, _ := h.deployLivePrivate(issuerSession, "AMTL", "HN", 0.000000001)
+
+	invPriv := genPriv(t)
+	invSession, _, _ := h.verifiedInvestor(invPriv, "Investor", "HN", "ret")
+
+	for _, tc := range []struct {
+		name   string
+		amount float64
+		want   string
+	}{
+		{"negative", -5, "positive"},
+		{"zero", 0, "positive"},
+		// At this asset's precision no fractional amount can overflow -- one large
+		// enough is past where a float carries a fraction at all -- so the
+		// overflow boundary is asserted directly below, where the precision is
+		// the one most assets use.
+
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			res := h.do("POST", "/api/issuances/"+issID+"/subscribe", invSession, map[string]any{
+				"rail": "usdx", "amount": tc.amount, "refund_address": "seq-refund-addr",
+			})
+			if res.code != 400 {
+				t.Fatalf("amount %v was accepted: %d %s", tc.amount, res.code, res.raw)
+			}
+			if msg := res.errMsg(); !strings.Contains(msg, tc.want) {
+				t.Fatalf("amount %v refused with %q, want it to mention %q", tc.amount, msg, tc.want)
+			}
+		})
+	}
+
+	// And an ordinary fractional amount still works.
+	ok := h.do("POST", "/api/issuances/"+issID+"/subscribe", invSession, map[string]any{
+		"rail": "usdx", "amount": 2.5, "refund_address": "seq-refund-addr",
+	})
+	if ok.code != 200 {
+		t.Fatalf("2.5 tokens was refused: %d %s", ok.code, ok.errMsg())
+	}
+}
+
+// The fractional branch's overflow boundary, at the 8 decimals most assets use.
+// Below it the conversion is exact; at or above it uint64 has no answer and the
+// old code took whatever the conversion happened to produce -- 9.2 quintillion
+// atoms -- and built a subscription on it.
+func TestTheFractionalAmountBoundIsWhereUint64Ends(t *testing.T) {
+	const precision = 8
+	for _, tc := range []struct {
+		amount   float64
+		overflow bool
+	}{
+		{2.5, false},
+		{1_000_000.5, false},
+		{100_000_000_000.5, false},  // 1.00e19 atoms: the largest that still fits
+		{1_000_000_000_000.5, true}, // 1.00e20 atoms
+		{4_500_000_000_000_000.5, true},
+	} {
+		ta := tc.amount * math.Pow10(precision)
+		got := ta >= float64(math.MaxUint64)
+		if got != tc.overflow {
+			t.Fatalf("%.1f tokens -> %g atoms: bound says overflow=%v, want %v",
+				tc.amount, ta, got, tc.overflow)
+		}
+		if !got && uint64(math.Round(ta)) == 9223372036854775808 {
+			t.Fatalf("%.1f tokens passed the bound and still converted to the "+
+				"undefined value", tc.amount)
+		}
+	}
 }
