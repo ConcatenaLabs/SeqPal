@@ -999,9 +999,26 @@ UPDATE account_wallets
    SET descriptor_key = replace(substr(descriptor, 1, instr(descriptor, '(') - 1), 'wpkh', 'pkh')
                         || substr(descriptor, instr(descriptor, '('))
  WHERE kind = 'descriptor' AND descriptor != '';
+-- A checksum belongs to the text it was computed over, so the one carried in
+-- from the other form is wrong for this one. toPKH drops it; this must too, or
+-- a backfilled row is keyed on something no lookup will ever compute.
+UPDATE account_wallets
+   SET descriptor_key = substr(descriptor_key, 1, instr(descriptor_key, '#') - 1)
+ WHERE descriptor_key LIKE '%#%';
 DROP INDEX IF EXISTS idx_account_wallets_desc;
 CREATE UNIQUE INDEX idx_account_wallets_desckey
     ON account_wallets(descriptor_key) WHERE descriptor_key != '';
+`,
+	// The first version of the backfill above carried the checksum across from
+	// the form it converted, and a checksum belongs to the text it was computed
+	// over. A row written that way is keyed on something no lookup will ever
+	// compute, so the wallet is invisible: signing in with it reports it as
+	// unregistered, which is how one wallet becomes two identities. Rows already
+	// written that way are corrected here.
+	`
+UPDATE account_wallets
+   SET descriptor_key = substr(descriptor_key, 1, instr(descriptor_key, '#') - 1)
+ WHERE descriptor_key LIKE '%#%';
 `,
 }
 

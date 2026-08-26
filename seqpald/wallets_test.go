@@ -1,6 +1,7 @@
 package main
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -166,5 +167,69 @@ func TestALinkedWalletResolvesByEitherForm(t *testing.T) {
 	}
 	if got := in.body["account"].(map[string]any)["aid"]; got != aid {
 		t.Fatalf("one wallet is one identity: got %v, want %v", got, aid)
+	}
+}
+
+// The backfill and the Go path must produce the SAME key, or a wallet written
+// by one is invisible to the other: the lookup misses, the wallet reports as
+// unregistered, and registering it makes a second identity. The first version of
+// that migration carried the checksum across from the form it converted, which
+// belongs to different text, and did exactly this on a live database.
+func TestMigratedKeysMatchComputedKeys(t *testing.T) {
+	st, err := openStore(filepath.Join(t.TempDir(), "seqpald.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+
+	// Rows written the way the pre-fix migration wrote them.
+	for i, key := range []string{
+		"pkh([82d3456e/84'/1'/0']tpubABC/0/*)#knvvevmh", // checksum carried across
+		"pkh([82d3456e/84'/1'/0']tpubDEF/0/*)",          // already clean
+	} {
+		if _, err := st.db.Exec(
+			`INSERT INTO account_wallets (id, aid, kind, descriptor, descriptor_key, xonly,
+			  enclave_aid, label, proof, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+			"w"+string(rune('a'+i)), "acct", "descriptor",
+			"wpkh([82d3456e/84'/1'/0']tpub/0/*)#zzzzzzzz", key, "", "", "", "migrated", 1); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Re-running the repair is what a deployment does on the next start.
+	if _, err := st.db.Exec(
+		`UPDATE account_wallets SET descriptor_key = substr(descriptor_key, 1, instr(descriptor_key, '#') - 1)
+		  WHERE descriptor_key LIKE '%#%'`); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := st.db.Query(`SELECT descriptor_key FROM account_wallets`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(k, "#") {
+			t.Fatalf("a stored key must carry no checksum, got %q", k)
+		}
+	}
+
+	// And what the Go path computes carries none either, for either form.
+	for _, d := range []string{
+		"wpkh([82d3456e/84'/1'/0']tpubABC/0/*)#aaaaaaaa",
+		"pkh([82d3456e/84'/1'/0']tpubABC/0/*)#bbbbbbbb",
+	} {
+		got := descriptorKeyOf(&AccountWallet{Kind: "descriptor", Descriptor: d})
+		if strings.Contains(got, "#") {
+			t.Fatalf("computed key must carry no checksum, got %q", got)
+		}
+	}
+	// The two forms of one wallet compute to one key.
+	a := descriptorKeyOf(&AccountWallet{Kind: "descriptor", Descriptor: "wpkh([aa/84h]tpubX/0/*)#aaaaaaaa"})
+	b := descriptorKeyOf(&AccountWallet{Kind: "descriptor", Descriptor: "pkh([aa/84h]tpubX/0/*)#bbbbbbbb"})
+	if a != b {
+		t.Fatalf("one wallet, one key:\n  %s\n  %s", a, b)
 	}
 }
