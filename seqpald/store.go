@@ -986,6 +986,23 @@ INSERT INTO account_wallets (id, aid, kind, descriptor, xonly, enclave_aid, labe
 SELECT lower(hex(randomblob(16))), aid, 'descriptor', descriptor, '', '', 'Original wallet', 'migrated', created_at
   FROM accounts WHERE identity = 'xpub' AND descriptor != '';
 `,
+	// A descriptor names a key AND a script type, and only the key identifies the
+	// wallet. Keyed on the descriptor as written, one wallet answered to the form
+	// it was linked under and not to the other: signing in with the other form
+	// found nothing, and registering then made a SECOND identity for one wallet,
+	// which is the thing linking exists to prevent. The lookup key is the
+	// normalised (pkh) form; the descriptor itself is kept as the holder gave it,
+	// because that is what their wallet shows them.
+	`
+ALTER TABLE account_wallets ADD COLUMN descriptor_key TEXT NOT NULL DEFAULT '';
+UPDATE account_wallets
+   SET descriptor_key = replace(substr(descriptor, 1, instr(descriptor, '(') - 1), 'wpkh', 'pkh')
+                        || substr(descriptor, instr(descriptor, '('))
+ WHERE kind = 'descriptor' AND descriptor != '';
+DROP INDEX IF EXISTS idx_account_wallets_desc;
+CREATE UNIQUE INDEX idx_account_wallets_desckey
+    ON account_wallets(descriptor_key) WHERE descriptor_key != '';
+`,
 }
 
 // Store is seqpald's persistent state. Every financial fact the UI shows is

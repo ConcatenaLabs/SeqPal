@@ -66,6 +66,17 @@ func (s *Store) OpenWhitelistRequest(issuanceID, holdingKey string) (*WhitelistR
 		 ORDER BY created_at DESC LIMIT 1`, issuanceID, holdingKey))
 }
 
+// RecentWhitelistRefusal is the last refusal this holder had on this asset. A
+// refused holder may ask again -- circumstances change, and an issuer's "not
+// yet" is not "never" -- but not immediately and not repeatedly, because every
+// request puts a notice in front of the issuer.
+func (s *Store) RecentWhitelistRefusal(issuanceID, aid string, since int64) (*WhitelistRequest, error) {
+	return scanWhitelistRequest(s.db.QueryRow(
+		`SELECT `+whitelistReqCols+` FROM whitelist_requests
+		 WHERE issuance_id = ? AND aid = ? AND state = 'refused' AND decided_at >= ?
+		 ORDER BY decided_at DESC LIMIT 1`, issuanceID, aid, since))
+}
+
 func (s *Store) WhitelistRequestsByIssuance(issuanceID string) ([]*WhitelistRequest, error) {
 	rows, err := s.db.Query(
 		`SELECT `+whitelistReqCols+` FROM whitelist_requests WHERE issuance_id = ? ORDER BY created_at DESC`,

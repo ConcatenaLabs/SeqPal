@@ -133,3 +133,38 @@ func TestTheLastWalletCannotBeUnlinked(t *testing.T) {
 		t.Fatalf("the refusal must say why: %q", msg)
 	}
 }
+
+// A wallet is one wallet whichever form of its descriptor is presented. Linking
+// it as wpkh and then signing in with its pkh form must land in the SAME ID; if
+// the lookup misses, registration happily makes a second identity for one
+// wallet, which is the thing linking exists to prevent.
+func TestALinkedWalletResolvesByEitherForm(t *testing.T) {
+	h := newHarness(t)
+	h.s.cfg.nodeURL = newWalletNode(t, true).URL
+	session, aid := walletSession(t, h, testPKH)
+
+	secondPKH := strings.Replace(testPKH, "78a58319", "99a58319", 1)
+	secondWPKH := strings.Replace(secondPKH, "pkh(", "wpkh(", 1)
+
+	ask := h.do("POST", "/api/account/wallets", session, map[string]any{"descriptor": secondWPKH})
+	if link := h.do("POST", "/api/account/wallets", session, map[string]any{
+		"descriptor": secondWPKH, "challenge": ask.body["challenge"], "sig": "X",
+	}); link.code != 200 {
+		t.Fatalf("link as wpkh: %d %s", link.code, link.raw)
+	}
+
+	// Now sign in with the OTHER form of the same wallet.
+	ch := h.do("POST", "/api/auth/wallet/challenge", "", map[string]any{"descriptor": secondPKH})
+	if ch.body["registered"] != true {
+		t.Fatalf("a linked wallet must be recognised in either form, got registered=%v", ch.body["registered"])
+	}
+	in := h.do("POST", "/api/auth/wallet/login", "", map[string]any{
+		"descriptor": secondPKH, "challenge": ch.body["challenge"], "sig": "X",
+	})
+	if in.code != 200 {
+		t.Fatalf("sign-in with the other form: %d %s", in.code, in.raw)
+	}
+	if got := in.body["account"].(map[string]any)["aid"]; got != aid {
+		t.Fatalf("one wallet is one identity: got %v, want %v", got, aid)
+	}
+}

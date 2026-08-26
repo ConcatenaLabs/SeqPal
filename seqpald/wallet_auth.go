@@ -55,10 +55,21 @@ func (s *server) handleWalletChallenge(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, "could not issue a challenge")
 		return
 	}
-	existing, err := s.st.AccountByAID(id)
+	// Known already? A wallet LINKED to an ID is known by that ID, not by the id
+	// derived from its own descriptor, so both are asked. Getting this wrong made
+	// a linked wallet look unregistered, and registering it then made a second
+	// identity for one wallet.
+	existing, err := s.st.AccountByDescriptor(desc)
 	if err != nil {
 		writeErr(w, 500, "store error")
 		return
+	}
+	if existing == nil {
+		existing, err = s.st.AccountByAID(id)
+		if err != nil {
+			writeErr(w, 500, "store error")
+			return
+		}
 	}
 	writeJSON(w, 200, map[string]any{
 		"account_id": id,
@@ -127,6 +138,13 @@ func (s *server) handleWalletRegister(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.st.Audit("", "auth.wallet.register.refused", map[string]any{"reason": err.Error()})
 		writeErr(w, 401, "%v", err)
+		return
+	}
+	if existing, err := s.st.AccountByDescriptor(desc); err != nil {
+		writeErr(w, 500, "store error")
+		return
+	} else if existing != nil {
+		writeErr(w, 409, "this wallet is already linked to a SeqPal ID; sign in with it instead")
 		return
 	}
 	if existing, err := s.st.AccountByAID(id); err != nil {
