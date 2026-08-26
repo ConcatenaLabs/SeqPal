@@ -1029,6 +1029,15 @@ UPDATE account_wallets
 CREATE UNIQUE INDEX idx_account_wallets_one_enclave
     ON account_wallets(aid) WHERE kind = 'enclave';
 `,
+	// A document e-signature is anchored so that anyone can check it later, and
+	// the record carried only the signer's x-only key. A SeqPal ID that is only
+	// a wallet has none: it signs an ordinary message, which is checked against
+	// an ADDRESS. Recorded with an empty key, such a signature is a string
+	// nobody can verify -- which is the one thing an anchored signature has to
+	// be. The address it verified against is recorded beside it.
+	`
+ALTER TABLE doc_signatures ADD COLUMN address TEXT NOT NULL DEFAULT '';
+`,
 }
 
 // Store is seqpald's persistent state. Every financial fact the UI shows is

@@ -146,3 +146,59 @@ func TestBothPayoutChecksFailClosed(t *testing.T) {
 			res.code, res.raw)
 	}
 }
+
+// An anchored e-signature exists so anyone can check it later, and the record
+// kept only the signer's x-only key. A SeqPal ID that is only a wallet has no
+// such key: it signs an ordinary message, checked against an ADDRESS. Recorded
+// with an empty key and no address, the signature was a string nobody could
+// verify -- the one thing an anchored signature must not be.
+func TestARecordedSignatureCanBeChecked(t *testing.T) {
+	h := newHarness(t)
+	h.s.cfg.nodeURL = newWalletNode(t, true).URL
+	h.s.screen = newScreener("")
+	session, aid := walletSession(t, h, testPKH)
+	iss := seedIssuanceOfKind(t, h.s, aid, "serviced")
+
+	doc := h.do("POST", "/api/issuances/"+iss.ID+"/documents", session, map[string]any{
+		"kind": "terms", "text": "the terms of this offering",
+	})
+	if doc.code != 200 {
+		t.Fatalf("upload: %d %s", doc.code, doc.raw)
+	}
+	docs, _ := doc.body["documents"].([]any)
+	if len(docs) == 0 {
+		t.Fatalf("no documents in %s", doc.raw)
+	}
+	first, _ := docs[0].(map[string]any)
+	hash, _ := first["hash"].(string)
+	if hash == "" {
+		t.Fatalf("no document hash in %s", doc.raw)
+	}
+
+	// Phase one says what to sign, in the form this wallet can sign.
+	prep := h.do("POST", "/api/documents/"+hash+"/sign", session, map[string]any{"sig": ""})
+	if prep.code != 200 {
+		t.Fatalf("prepare: %d %s", prep.code, prep.raw)
+	}
+	if msg, _ := prep.body["sign_this_message"].(string); msg == "" {
+		t.Fatalf("nothing said what to sign: %s", prep.raw)
+	}
+
+	res := h.do("POST", "/api/documents/"+hash+"/sign", session, map[string]any{
+		"sig": "H1uL0Y2ZwOaKf3wRZ5NnwF0oJp0V1sV+Xu3QW6mV2mYbTGYr9k1J2bV0wq1mM4pV",
+	})
+	if res.code != 200 {
+		t.Fatalf("sign: %d %s", res.code, res.raw)
+	}
+
+	sigs, err := h.s.st.SignaturesByDoc(hash)
+	if err != nil || len(sigs) != 1 {
+		t.Fatalf("signatures: %v %v", sigs, err)
+	}
+	if sigs[0].XOnly == "" && sigs[0].Address == "" {
+		t.Fatal("the record says neither what key nor what address this verifies for")
+	}
+	if sigs[0].Address == "" {
+		t.Fatalf("a wallet signature must record the address it verifies for: %+v", sigs[0])
+	}
+}

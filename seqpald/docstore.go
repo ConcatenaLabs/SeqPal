@@ -263,9 +263,14 @@ func (s *Store) AmendmentCount(issuanceID string) (int, error) {
 // --- document signatures -----------------------------------------------------
 
 type DocSignature struct {
-	DocHash    string `json:"doc_hash"`
-	SignerAID  string `json:"signer_aid"`
+	DocHash   string `json:"doc_hash"`
+	SignerAID string `json:"signer_aid"`
+	// Exactly one of these says what the signature is checked against: an x-only
+	// key for a BIP340 signature over the tagged hash, or the address an
+	// ordinary signed message verifies for. A record with neither cannot be
+	// checked by anyone, which is what an anchored signature is for.
 	XOnly      string `json:"xonly,omitempty"`
+	Address    string `json:"address,omitempty"`
 	Sig        string `json:"sig"`
 	AnchorTxid string `json:"anchor_txid,omitempty"`
 	CreatedAt  int64  `json:"created_at"`
@@ -273,17 +278,18 @@ type DocSignature struct {
 
 func (s *Store) InsertDocSignature(sig *DocSignature) error {
 	_, err := s.db.Exec(
-		`INSERT INTO doc_signatures (doc_hash, signer_aid, xonly, sig, anchor_txid, created_at)
-         VALUES (?,?,?,?,?,?)
+		`INSERT INTO doc_signatures (doc_hash, signer_aid, xonly, address, sig, anchor_txid, created_at)
+         VALUES (?,?,?,?,?,?,?)
          ON CONFLICT(doc_hash, signer_aid) DO UPDATE SET
-            xonly=excluded.xonly, sig=excluded.sig, anchor_txid=excluded.anchor_txid, created_at=excluded.created_at`,
-		sig.DocHash, sig.SignerAID, sig.XOnly, sig.Sig, sig.AnchorTxid, sig.CreatedAt)
+            xonly=excluded.xonly, address=excluded.address, sig=excluded.sig,
+            anchor_txid=excluded.anchor_txid, created_at=excluded.created_at`,
+		sig.DocHash, sig.SignerAID, sig.XOnly, sig.Address, sig.Sig, sig.AnchorTxid, sig.CreatedAt)
 	return err
 }
 
 func (s *Store) SignaturesByDoc(docHash string) ([]*DocSignature, error) {
 	rows, err := s.db.Query(
-		`SELECT doc_hash, signer_aid, xonly, sig, anchor_txid, created_at FROM doc_signatures WHERE doc_hash = ? ORDER BY created_at`, docHash)
+		`SELECT doc_hash, signer_aid, xonly, address, sig, anchor_txid, created_at FROM doc_signatures WHERE doc_hash = ? ORDER BY created_at`, docHash)
 	if err != nil {
 		return nil, err
 	}
@@ -291,7 +297,7 @@ func (s *Store) SignaturesByDoc(docHash string) ([]*DocSignature, error) {
 	out := []*DocSignature{}
 	for rows.Next() {
 		var d DocSignature
-		if err := rows.Scan(&d.DocHash, &d.SignerAID, &d.XOnly, &d.Sig, &d.AnchorTxid, &d.CreatedAt); err != nil {
+		if err := rows.Scan(&d.DocHash, &d.SignerAID, &d.XOnly, &d.Address, &d.Sig, &d.AnchorTxid, &d.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, &d)

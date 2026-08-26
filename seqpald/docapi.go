@@ -376,14 +376,19 @@ func (s *server) handleSignDocument(w http.ResponseWriter, r *http.Request) {
 	// The e-signature is a real BIP340 signature over the tagged document hash by
 	// the signer's enclave key. The e-signature PROVIDER is a labeled simulation;
 	// the signature is cryptographically real.
-	if err := s.verifyAccountStatement(acct, documentTag, msg, strings.TrimSpace(req.Sig)); err != nil {
+	verifiedBy, err := s.verifyAccountStatementBy(acct, documentTag, msg, strings.TrimSpace(req.Sig))
+	if err != nil {
 		s.st.Audit(acct.AID, "document.sign.refused", map[string]any{"doc_hash": hash, "reason": err.Error()})
 		writeErr(w, 400, "the document signature does not verify for this identity's key")
 		return
 	}
 	anchorTxid := s.anchorArtifact("document-signature", hash)
 	if err := s.st.InsertDocSignature(&DocSignature{
-		DocHash: hash, SignerAID: acct.AID, XOnly: acct.XOnly, Sig: strings.TrimSpace(req.Sig),
+		// What the signature is checked against, so it stays checkable: the
+		// account's own key for a tagged signature, or the wallet address an
+		// ordinary signed message verified for.
+		DocHash: hash, SignerAID: acct.AID, XOnly: acct.XOnly, Address: verifiedBy,
+		Sig:        strings.TrimSpace(req.Sig),
 		AnchorTxid: anchorTxid, CreatedAt: time.Now().Unix(),
 	}); err != nil {
 		writeErr(w, 500, "store error")
