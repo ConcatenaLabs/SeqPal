@@ -316,8 +316,8 @@ func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		// The per-transfer confidentiality capability of THIS deployment: whether
 		// a transfer with confidential:true would be accepted here rather than
 		// refused with a 501. Deploys are always transparent mints.
-		"confidential":    s.cfg.confidential,
-		"damp":            s.cfg.damp,
+		"confidential": s.cfg.confidential,
+		"damp":         s.cfg.damp,
 		// The setup fee is a real gate: an unpaid one refuses the deploy with a
 		// 402. What it costs is configuration, and a screen that asserts an amount
 		// (or asserts there is none) is wrong on any deployment configured

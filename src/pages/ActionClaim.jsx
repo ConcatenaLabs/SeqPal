@@ -4,6 +4,7 @@ import { Icon } from '../components/icons'
 import { Badge } from '../components/ui'
 import SignInGate from '../components/SignInGate'
 import * as api from '../lib/api'
+import OfflineSignature from '../components/OfflineSignature'
 import { getBalance } from '../lib/openamp'
 import { useStore } from '../lib/store'
 
@@ -35,6 +36,12 @@ export default function ActionClaim() {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
   const [result, setResult] = useState(null)
+  // The key that controls the outpoints being proven. An OpenAMP account holds
+  // them under its own key; a SeqPal ID that is only a wallet holds a
+  // freely-tradable token under a key of that wallet, and names it here.
+  const [claimKey, setClaimKey] = useState('')
+  const [prep, setPrep] = useState(null)
+  const [sig, setSig] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -92,8 +99,9 @@ export default function ActionClaim() {
       setErr('Enter the Sequentia address the dividend should pay to.')
       return
     }
-    if (!hasKey) {
-      setErr('Connect your Sequentia wallet to sign the holding proof.')
+    const pubkey = (hasKey ? xonly : claimKey.trim().toLowerCase()) || ''
+    if (!pubkey) {
+      setErr('Enter the x-only public key that controls those outpoints.')
       return
     }
     setBusy(true)
@@ -108,14 +116,48 @@ export default function ActionClaim() {
         aid: account.aid,
         ...(isVote ? { choice } : { payout_address: payout.trim() }),
       }
-      const sig = await signHoldingStmt(fields)
-      if (!sig) throw new Error('Connect your Sequentia wallet to sign the holding proof.')
+      if (!hasKey) {
+        // Nothing here can sign: ask seqpald for the exact characters instead.
+        const got = await api.claimAction(id, {
+          pubkey,
+          outpoints: sorted,
+          ...(isVote ? { choice } : { payout_address: payout.trim() }),
+        })
+        if (got.sign_this_message) {
+          setPrep(got)
+          return
+        }
+        setResult(got)
+        return
+      }
+      const signature = await signHoldingStmt(fields)
+      if (!signature) throw new Error('Connect your Sequentia wallet to sign the holding proof.')
       const res = await api.claimAction(id, {
-        pubkey: xonly,
+        pubkey,
         outpoints: sorted,
         ...(isVote ? { choice } : { payout_address: payout.trim() }),
-        sig,
+        sig: signature,
       })
+      setResult(res)
+    } catch (e2) {
+      setErr(e2.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const submitSigned = async () => {
+    setErr(null)
+    setBusy(true)
+    try {
+      const res = await api.claimAction(id, {
+        pubkey: claimKey.trim().toLowerCase(),
+        outpoints: [...outpoints].sort(),
+        ...(isVote ? { choice } : { payout_address: payout.trim() }),
+        sig: sig.trim(),
+      })
+      setSig('')
+      setPrep(null)
       setResult(res)
     } catch (e2) {
       setErr(e2.message)
@@ -253,6 +295,26 @@ export default function ActionClaim() {
               </div>
             )}
 
+            {!hasKey && (
+              <div>
+                <label className="label" htmlFor="claim-key">
+                  The key that controls those outputs (32-byte x-only, hex)
+                </label>
+                <input
+                  id="claim-key"
+                  className="input font-mono text-xs"
+                  spellCheck={false}
+                  placeholder="x-only public key, 64 hex"
+                  value={claimKey}
+                  onChange={(e) => setClaimKey(e.target.value)}
+                />
+                <p className="mt-1.5 text-xs leading-relaxed text-ink-700/60">
+                  The proof is checked against this key and the outputs it controls, so it has to
+                  be the one that actually holds them.
+                </p>
+              </div>
+            )}
+
             <button disabled={busy} className="btn-primary w-full disabled:opacity-60">
               {busy
                 ? 'Signing and submitting…'
@@ -265,6 +327,14 @@ export default function ActionClaim() {
               {isVote ? 'ballot choice' : 'payout address'}. The key never leaves your
               wallet, and SeqPal never sees it.
             </p>
+            <OfflineSignature
+              prep={prep}
+              sig={sig}
+              onSig={setSig}
+              onSubmit={submitSigned}
+              busy={busy}
+              label={isVote ? 'Submit the ballot' : 'Submit the claim'}
+            />
           </form>
         </>
       )}

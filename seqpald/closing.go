@@ -71,19 +71,16 @@ func (s *server) handleClose(w http.ResponseWriter, r *http.Request) {
 	closeHeight := s.tipHeight()
 	stmt, _ := canonicalJSON(map[string]any{"issuance_id": iss.ID, "action": "close"})
 	if strings.TrimSpace(req.Signature) == "" {
-		writeJSON(w, 200, map[string]any{"sign_this": string(stmt), "tag": closeTag,
-			"note": "sign these canonical bytes with your SeqPal ID key, then resubmit with signature to authorize closing"})
+		writeJSON(w, 200, withNote(closeTag, stmt,
+			"sign these canonical bytes with your SeqPal ID key, then resubmit with signature to "+
+				"authorize closing; an ordinary wallet signs sign_this_message as a message instead"))
 		return
 	}
-	signer := strings.TrimSpace(req.SignerXOnly)
-	if signer == "" {
-		signer = acct.XOnly
-	}
-	if signer != acct.XOnly {
+	if named := strings.TrimSpace(req.SignerXOnly); named != "" && !strings.EqualFold(named, acct.XOnly) {
 		writeErr(w, 403, "the closing authorization must be signed by the issuer's own key")
 		return
 	}
-	if err := s.verifyKeyStatement(signer, closeTag, stmt, req.Signature); err != nil {
+	if err := s.verifyAccountStatement(acct, closeTag, stmt, req.Signature); err != nil {
 		writeErr(w, 400, "the closing authorization signature does not verify")
 		return
 	}

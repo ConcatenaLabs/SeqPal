@@ -38,9 +38,9 @@ type AccountWallet struct {
 	// identity, independent of which script type it was presented as. Lookups go
 	// through this, or one wallet answers to one name and not the other.
 	DescriptorKey string `json:"-"`
-	Label      string `json:"label,omitempty"`
-	Proof      string `json:"proof,omitempty"`
-	CreatedAt  int64  `json:"created_at"`
+	Label         string `json:"label,omitempty"`
+	Proof         string `json:"proof,omitempty"`
+	CreatedAt     int64  `json:"created_at"`
 }
 
 const accountWalletCols = `id, aid, kind, descriptor, descriptor_key, xonly, enclave_aid, label, proof, created_at`

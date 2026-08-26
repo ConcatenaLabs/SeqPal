@@ -204,6 +204,8 @@ export const amendments = (id) => req(`/issuances/${encodeURIComponent(id)}/amen
 // Record a real BIP340 e-signature over the tagged document hash. Owner/session
 // signs with the enclave key (see keys.signDocument). Returns { doc_hash,
 // signer_aid, tag, anchor_txid, note }.
+// Posting an empty signature asks what to sign and returns { sign_this, tag,
+// sign_this_message }; posting a signature records it.
 export const signDocumentSig = (docHash, sig) =>
   req(`/documents/${encodeURIComponent(docHash)}/sign`, { method: 'POST', body: { sig } })
 

@@ -79,10 +79,10 @@ func (s *server) handleBearerAttestation(w http.ResponseWriter, r *http.Request)
 	digest := sha256.Sum256(stmt)
 	sig := strings.TrimSpace(req.StatementSig)
 	if sig == "" {
-		writeJSON(w, 200, map[string]any{
-			"sign_this": string(stmt), "tag": bearerAttestationTag,
-			"note": "sign sha256 of these canonical bytes with your SeqPal ID key under the tag, then resubmit as statement_sig",
-		})
+		writeJSON(w, 200, withNoteOf(bearerAttestationTag, stmt, digest[:],
+			"sign sha256 of these canonical bytes with your SeqPal ID key under the tag, then "+
+				"resubmit as statement_sig; an ordinary wallet signs sign_this_message as a "+
+				"message instead"))
 		return
 	}
 	if err := s.verifyAccountStatement(acct, bearerAttestationTag, digest[:], sig); err != nil {

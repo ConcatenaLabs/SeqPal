@@ -5,6 +5,7 @@ import CopyId from './CopyId'
 import * as api from '../lib/api'
 import { usePoll } from '../lib/poll'
 import { useStore } from '../lib/store'
+import OfflineSignature from './OfflineSignature'
 
 // The issuer's payout mandate: a BIP340-signed instruction naming the ordinary
 // address escrow release pays. Signed with the browser enclave key over the exact
@@ -19,6 +20,8 @@ export default function PayoutMandateCard({ iss }) {
   const [address, setAddress] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
+  const [prep, setPrep] = useState(null)
+  const [sig, setSig] = useState('')
 
   const registered = data?.mandates || []
 
@@ -28,14 +31,18 @@ export default function PayoutMandateCard({ iss }) {
     try {
       // Step 1: ask seqpald for the exact canonical bytes to sign (it validates
       // the address network and rejects an enclave key-path address here too).
-      const prep = await api.mandate(iss.id, { chain, asset: asset.trim(), address: address.trim() })
-      if (!prep.sign_this) {
+      const got = await api.mandate(iss.id, { chain, asset: asset.trim(), address: address.trim() })
+      if (!got.sign_this) {
         // Already returned a stored mandate (shouldn't happen without a sig).
         refresh()
         return
       }
-      const sig = await signMandateStmt(prep.sign_this)
-      if (!sig) {
+      if (!hasKey) {
+        setPrep(got)
+        return
+      }
+      const signature = await signMandateStmt(got.sign_this)
+      if (!signature) {
         setErr('Connect your Sequentia wallet to sign the mandate.')
         return
       }
@@ -44,11 +51,33 @@ export default function PayoutMandateCard({ iss }) {
         chain,
         asset: asset.trim(),
         address: address.trim(),
-        signature: sig,
+        signature,
         signer_xonly: xonly,
       })
       setAddress('')
       setAsset('')
+      refresh()
+    } catch (e) {
+      setErr(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const registerSigned = async () => {
+    setErr(null)
+    setBusy(true)
+    try {
+      await api.mandate(iss.id, {
+        chain,
+        asset: asset.trim(),
+        address: address.trim(),
+        signature: sig.trim(),
+      })
+      setAddress('')
+      setAsset('')
+      setSig('')
+      setPrep(null)
       refresh()
     } catch (e) {
       setErr(e.message)
@@ -125,21 +154,23 @@ export default function PayoutMandateCard({ iss }) {
             onChange={(e) => setAddress(e.target.value)}
           />
         </div>
-        {!hasKey && (
-          <p className="text-xs text-amber-700">
-            No Sequentia wallet is connected. Sign in again with your wallet before signing the
-            mandate.
-          </p>
-        )}
         {err && <p className="text-xs font-medium text-rose-600">{err}</p>}
         <button
           onClick={register}
-          disabled={busy || !address.trim() || !hasKey}
+          disabled={busy || !address.trim()}
           className="btn-primary w-full disabled:opacity-60"
         >
           <Icon.shield width={16} height={16} />
           {busy ? 'Signing…' : 'Sign and register mandate'}
         </button>
+        <OfflineSignature
+          prep={prep}
+          sig={sig}
+          onSig={setSig}
+          onSubmit={registerSigned}
+          busy={busy}
+          label="Register mandate"
+        />
       </div>
     </div>
   )

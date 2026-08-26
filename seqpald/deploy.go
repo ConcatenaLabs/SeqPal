@@ -462,7 +462,7 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 			termsHash: termsHash, canonicalTerms: canonical, idem: idem,
 			whitelist: req.Whitelist, verifierAmount: req.VerifierAmount,
 			holderKey: req.HolderKey,
-			userCMR: req.UserCMR, verifierCMR: req.VerifierCMR, issuerCMR: req.IssuerCMR,
+			userCMR:   req.UserCMR, verifierCMR: req.VerifierCMR, issuerCMR: req.IssuerCMR,
 			pi: req.Pi,
 		})
 		return
