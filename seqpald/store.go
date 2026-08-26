@@ -1726,7 +1726,16 @@ func writeCanonical(buf *bytes.Buffer, v any) error {
 	case string:
 		return writeCanonicalString(buf, t)
 	case json.Number:
-		buf.WriteString(t.String())
+		// Negative zero has one canonical form, and it is the one the browser
+		// writes. JSON.stringify(-0) is "0"; Go's is "-0". Nothing in this
+		// platform can produce a -0 through a browser, but the canonical form is
+		// what a terms hash commits to on chain, and "the same document" must not
+		// depend on which side hashed it.
+		if n := t.String(); n == "-0" {
+			buf.WriteString("0")
+		} else {
+			buf.WriteString(n)
+		}
 	case bool:
 		if t {
 			buf.WriteString("true")

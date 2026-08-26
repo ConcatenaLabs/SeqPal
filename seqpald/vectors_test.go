@@ -239,3 +239,34 @@ func TestTheDigestsAWalletSignsAreFixed(t *testing.T) {
 			"change src/lib/statements.js and test/logic.test.js in the same breath", got, wantHoldingProof)
 	}
 }
+
+// The canonical form itself, pinned. Everything signed or committed on this
+// platform is canonical JSON, and the browser writes it too: the terms hash a
+// deploy commits on chain is computed on both sides and compared. So the two
+// implementations have to agree over every JSON value, not just the easy ones.
+//
+// test/logic.test.js asserts the SAME expected string from the browser's
+// implementation. The cases are the ones that usually diverge: HTML characters
+// (Go escapes them unless told not to), non-BMP characters, control characters,
+// the solidus, exponent formatting, integers past 2^53, and negative zero.
+func TestOneCanonicalFormInBothLanguages(t *testing.T) {
+	const doc = `{"amp":"Smith & Sons <Holdings>","ctl":"tab\there","emo":"a🙂b","sol":"a/b",` +
+		`"uni":"Ærø Zürich 東京","big":100000000000000000000,"exp":1e21,"tiny":1e-7,` +
+		`"round":9007199254740993,"negzero":-0,"one":1.0}`
+	const want = `{"amp":"Smith & Sons <Holdings>","big":100000000000000000000,"ctl":"tab\there",` +
+		`"emo":"a🙂b","exp":1e+21,"negzero":0,"one":1,"round":9007199254740992,"sol":"a/b",` +
+		`"tiny":1e-7,"uni":"Ærø Zürich 東京"}`
+
+	var v any
+	if err := json.Unmarshal([]byte(doc), &v); err != nil {
+		t.Fatal(err)
+	}
+	got, err := canonicalJSON(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != want {
+		t.Fatalf("the canonical form changed:\n got  %s\n want %s\nIf this was deliberate, change "+
+			"src/lib/openamp.js and test/logic.test.js in the same breath", got, want)
+	}
+}
