@@ -30,11 +30,11 @@ import { toTerms, view } from '../src/lib/issuance.js'
 import { canonicalJSON, termsHash } from '../src/lib/openamp.js'
 import {
   generateEnclaveKey,
-  computeAID,
   xonlyOf,
   taggedHash,
   signChallenge,
 } from '../scripts/e2e/lib/wallet-signer.mjs'
+import { computeAID, isAid, isXonly } from '../src/lib/statements.js'
 import { schnorr } from '@noble/curves/secp256k1'
 import { bytesToHex, hexToBytes } from '@noble/curves/abstract/utils'
 import { sha256 } from '@noble/hashes/sha256'
@@ -332,4 +332,32 @@ test('util — slugify', () => {
   assert.equal(slugify('  Helvetia Digital AG!! '), 'helvetia-digital-ag')
   assert.equal(slugify('a'.repeat(40)).length, 24) // capped
   assert.equal(slugify(''), '')
+})
+
+// A holder pastes whatever their wallet shows them, and wallets show the
+// account id far more prominently than the key it comes from. Both are
+// accepted, and an account id is only trusted once the key returned for it
+// re-derives to the same id.
+test('a linked wallet is named by its account id or its account key', () => {
+  const k = generateEnclaveKey()
+  const aid = computeAID([k.xonly])
+
+  assert.ok(isXonly(k.xonly), 'an account key is 64 hex')
+  assert.ok(isAid(aid), 'an account id is 40 hex')
+  assert.ok(!isAid(k.xonly), 'a key is not mistaken for an id')
+  assert.ok(!isXonly(aid), 'an id is not mistaken for a key')
+
+  // Case and surrounding whitespace are what a copy-paste actually delivers.
+  assert.ok(isAid('  ' + aid.toUpperCase() + '  '))
+  assert.ok(isXonly(' ' + k.xonly.toUpperCase() + ' '))
+
+  // Neither shape: the form has to say so rather than sit disabled.
+  for (const bad of ['', 'abc', aid.slice(0, 39), k.xonly.slice(0, 63), 'z'.repeat(40)]) {
+    assert.ok(!isAid(bad) && !isXonly(bad), `refused: ${bad.slice(0, 12)}`)
+  }
+
+  // The check that makes accepting an account id safe: the key the policy
+  // server returns must re-derive to the id that was pasted.
+  const impostor = generateEnclaveKey()
+  assert.notEqual(computeAID([impostor.xonly]), aid)
 })

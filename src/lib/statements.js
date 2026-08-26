@@ -85,3 +85,23 @@ export function holdingProofDigest({
 export function isXonly(v) {
   return /^[0-9a-f]{64}$/i.test(String(v || '').trim())
 }
+
+// An OpenAMP account id: 20 bytes, hex. Wallets show this far more prominently
+// than the key it is derived from, so anywhere a key is asked for, this is what
+// a holder is likely to have in their clipboard.
+export function isAid(v) {
+  return /^[0-9a-f]{40}$/i.test(String(v || '').trim())
+}
+
+// The account id the policy server derives from a set of x-only keys, matching
+// openampd's store.AID: sha256("openamp-aid-v1" || sorted-pubkey-hex), first 20
+// bytes. SeqPal recomputes it rather than trusting one: it is what lets an
+// account id pasted by a holder be checked against the key the policy server
+// says belongs to it, so a wrong or substituted key is caught here rather than
+// at a signature that mysteriously fails to verify.
+export function computeAID(xonlyHexes) {
+  const h = sha256.create()
+  h.update(enc.encode('openamp-aid-v1'))
+  for (const pk of [...xonlyHexes].sort()) h.update(enc.encode(pk))
+  return bytesToHex(h.digest().slice(0, 20))
+}
