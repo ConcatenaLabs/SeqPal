@@ -285,7 +285,10 @@ func (s *server) settleOne(iss *Issuance, escrow *EnclaveKey, sub *Subscription,
 // net paid out to the issuer. It is defensive: a fee that would meet or exceed
 // the deposit is dropped so the release is never negative.
 func escrowFeeSplit(sub *Subscription, bps int64) (fee, net uint64) {
-	fee = sub.DepositedAtoms * uint64(bps) / 10000
+	// mulDiv, like every other rate in this platform: a naive product wraps
+	// uint64 on a large enough deposit, and a wrapped fee is small and wrong
+	// rather than caught by the guard below.
+	fee = mulDiv(sub.DepositedAtoms, uint64(clampBps(bps, "escrow fee")), 10000)
 	net = sub.DepositedAtoms
 	if net > fee {
 		net -= fee

@@ -148,7 +148,13 @@ func (s *server) accrueEscrowFee(sub *Subscription, dep deposit) {
 	if _, ok, err := s.st.AccruedEscrowFee(sub.ID); err != nil || ok {
 		return
 	}
-	fee := mulDiv(dep.Atoms, uint64(s.cfg.escrowFeeBps), 10000)
+	fee := mulDiv(dep.Atoms, uint64(clampBps(s.cfg.escrowFeeBps, "escrow fee")), 10000)
+	// The ledger is the books, and a fee larger than the deposit it came out of
+	// is not a fee. The release paths already refuse to pay out less than
+	// nothing; this keeps the record from claiming otherwise.
+	if fee > dep.Atoms {
+		fee = dep.Atoms
+	}
 	if fee == 0 {
 		return
 	}
