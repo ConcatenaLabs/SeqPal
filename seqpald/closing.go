@@ -437,8 +437,13 @@ type atomicBuild struct {
 // when the policy server has no payment leg, so the caller falls back to v1.
 func (s *server) buildAtomicTransfer(escrow *EnclaveKey, sub *Subscription, assetID, payTo string, net uint64) (*atomicBuild, bool, error) {
 	body := map[string]any{
-		"asset": assetID, "sender_aid": escrow.AID, "recipient_aid": sub.InvestorAID,
-		"atoms": sub.TokenAtoms, "fee_mode": "sponsor",
+		// The recipient is named to the POLICY SERVER, which knows this holder by
+		// the account their enclave key derives -- not by the SeqPal id the
+		// subscription is filed under, which for an ID founded as a wallet is a
+		// different string entirely and an account openampd has never heard of.
+		"asset": assetID, "sender_aid": escrow.AID,
+		"recipient_aid": s.openampAIDFor(sub.InvestorAID),
+		"atoms":         sub.TokenAtoms, "fee_mode": "sponsor",
 		"payment": map[string]any{
 			"asset": s.cfg.usdxAsset, "atoms": net,
 			"from_address": sub.DepositAddress, "to_address": payTo,
@@ -552,8 +557,9 @@ func (s *server) deliverFromEscrow(escrow *EnclaveKey, investorAID, assetID stri
 		} `json:"to_sign"`
 	}
 	body := map[string]any{
-		"asset": assetID, "sender_aid": escrow.AID, "recipient_aid": investorAID,
-		"atoms": atoms, "fee_mode": "sponsor",
+		"asset": assetID, "sender_aid": escrow.AID,
+		"recipient_aid": s.openampAIDFor(investorAID),
+		"atoms":         atoms, "fee_mode": "sponsor",
 	}
 	if err := s.callOpenAMP("POST", "/v1/transfers", "", body, &built); err != nil {
 		return "", err

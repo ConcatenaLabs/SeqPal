@@ -329,3 +329,28 @@ func TestTheTwoAccountIdsOfAnAttachedWallet(t *testing.T) {
 			len(beforeCats), len(afterCats), after.raw)
 	}
 }
+
+// Delivery at closing names the recipient to the policy server, so it has to
+// name the account the policy server holds. A subscription is filed under the
+// SeqPal account id, which for an ID founded as a wallet is a different string
+// -- and delivering to an account openampd has never heard of is not a thing to
+// discover at closing, with the investor's money already in escrow.
+func TestDeliveryNamesTheAccountThePolicyServerHolds(t *testing.T) {
+	h := newHarness(t)
+	h.s.cfg.nodeURL = newWalletNode(t, true).URL
+	h.s.screen = newScreener("")
+	_, aid := walletSession(t, h, testPKH)
+
+	// No OpenAMP account: there is nothing to deliver to, and the resolver says
+	// so rather than handing back an id that means nothing there.
+	if got := h.s.openampAIDFor(aid); got != "" {
+		t.Fatalf("an ID with no OpenAMP account resolves to %q, want empty", got)
+	}
+
+	// An id that is not a SeqPal account at all -- an escrow enclave, a
+	// counterparty, a venue quoting one -- is already an openampd id.
+	other := strings.Repeat("9", 40)
+	if got := h.s.openampAIDFor(other); got != other {
+		t.Fatalf("a foreign id was rewritten to %q", got)
+	}
+}
