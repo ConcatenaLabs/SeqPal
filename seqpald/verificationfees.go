@@ -51,6 +51,13 @@ func (s *server) ensureVerificationFee(aid, feeKind, subject string) (*FeeInvoic
 		inv.PaidAt = time.Now().Unix()
 	}
 	if err := s.st.InsertFeeInvoice(inv); err != nil {
+		// Lost a race with a concurrent raise: the page that quotes this fee
+		// polls, and several cards poll at once. The unique index is what makes
+		// one of them lose rather than both winning and the holder paying an
+		// invoice the gate does not read.
+		if existing, qerr := s.st.AccountFee(aid, feeKind, subject); qerr == nil && existing != nil {
+			return existing, nil
+		}
 		return nil, err
 	}
 	return inv, nil

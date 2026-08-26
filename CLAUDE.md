@@ -91,6 +91,14 @@ rule that catches something that actually breaks.
   is created, and a fee asked for afterwards is one the platform can be refused. Submitted is
   not verified anywhere, including in the passport: an entity's treasury key and UBO link exist
   from submission, and `verified` comes from the entity's own check.
+- **A fee is credited only when what was owed has ARRIVED, on any rail it was quoted on.** A
+  fee is a gate, so `watchFeeDeposits` credits an invoice when the confirmed total at a quoted
+  address reaches that quote's amount (`FeeQuote.covers`) and not before -- crediting on any
+  confirmed amount let one atom open a gate priced in thousands. Quotes are kept PER RAIL on
+  the invoice (`quotes`), every one of them is watched, and quoting a rail again returns the
+  address it already has: overwriting a single address column stranded whatever had been sent
+  to the one it replaced. An account fee is raised at most once (unique index on
+  `aid, kind, subject`), because the page that quotes it polls from several cards at a time.
 - **A SeqPal ID has TWO account ids, and openampd knows only one of them.** `accounts.aid` is
   the id the ID was founded with and never changes; the policy server knows the account the
   enclave key derives. They coincide only for an ID founded ON an enclave. Never pass

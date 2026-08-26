@@ -114,30 +114,54 @@ func (s *server) watchFeeDeposits() {
 		return
 	}
 	for _, inv := range invoices {
-		if inv.Address == "" {
-			continue
-		}
-		var dep deposit
-		var ok bool
-		switch inv.Rail {
-		case "usdx":
-			if s.cfg.nodeURL == "" {
+		for rail, q := range feeQuotesOf(inv) {
+			if q.Address == "" {
+				continue // a fiat rail has no address to watch
+			}
+			var dep deposit
+			var ok bool
+			switch rail {
+			case "usdx":
+				if s.cfg.nodeURL == "" {
+					continue
+				}
+				dep, ok, err = s.usdxDeposit(q.Address)
+			case "btc":
+				if s.cfg.btcURL == "" {
+					continue
+				}
+				dep, ok, err = s.btcDeposit(q.Address)
+			default:
 				continue
 			}
-			dep, ok, err = s.usdxDeposit(inv.Address)
-		case "btc":
-			if s.cfg.btcURL == "" {
+			if err != nil || !ok || dep.Confirmations < s.cfg.escrowConfs {
 				continue
 			}
-			dep, ok, err = s.btcDeposit(inv.Address)
-		default:
-			continue
+			// A fee is a GATE, so it is paid when what was owed has arrived and
+			// not before. Crediting on any confirmed amount let a single atom
+			// open a gate priced in thousands -- the deploy gate included. The
+			// deposit is the running total at the address, so paying in parts
+			// still gets there; until it does, the invoice is simply unpaid,
+			// which is what the payer's own screen already says.
+			if !q.covers(dep.Atoms) {
+				continue
+			}
+			s.onFeeDepositConfirmed(inv, rail, q, dep.Txid, dep.Atoms)
+			break
 		}
-		if err != nil || !ok || dep.Confirmations < s.cfg.escrowConfs {
-			continue
-		}
-		s.onFeeDepositConfirmed(inv, dep.Txid, dep.Atoms)
 	}
+}
+
+// feeQuotesOf is every rail this invoice can be paid on. An invoice written
+// before quotes were kept per rail carries exactly one, on its own columns.
+func feeQuotesOf(inv *FeeInvoice) map[string]FeeQuote {
+	if len(inv.Quotes) > 0 {
+		return inv.Quotes
+	}
+	if inv.Address == "" || inv.Rail == "" {
+		return nil
+	}
+	return map[string]FeeQuote{inv.Rail: {Address: inv.Address, Amount: inv.Amount, Ccy: inv.Ccy}}
 }
 
 // accrueEscrowFee writes the W-6 deposit-time fee accrual: bps on the deposited
