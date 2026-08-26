@@ -233,8 +233,17 @@ func (s *server) handleIDPassport(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, "store error")
 		return
 	}
+	// Where the categories come from depends on what this account IS. An enclave
+	// account carries them on the policy server, which is authoritative for it.
+	// A wallet-backed one has no account there at all, so reading openampd would
+	// report zero categories for a holder who is verified -- which is how the
+	// passport came to show "Verified" and "Categories carried: 0" at once.
 	var user openampUser
-	_ = s.callOpenAMP("GET", "/v1/users/"+acct.AID, "", nil, &user)
+	if acct.HasEnclave() {
+		_ = s.callOpenAMP("GET", "/v1/users/"+acct.AID, "", nil, &user)
+	} else {
+		user.Categories = projectCategories(claims, time.Now().Unix())
+	}
 	screening, _ := s.st.ScreeningByAID(acct.AID)
 
 	now := time.Now().Unix()
@@ -277,6 +286,10 @@ func (s *server) handleIDPassport(w http.ResponseWriter, r *http.Request) {
 	eligibleAssets := s.eligibleAssetsFor(user.Categories, user.Frozen, height)
 
 	writeJSON(w, 200, map[string]any{
+		// What kind of account this is, so the passport can stop calling a
+		// wallet-backed id an enclave account id.
+		"identity":       acct.Identity,
+		"has_enclave":    acct.HasEnclave(),
 		"aid":            acct.AID,
 		"enclave_key":    acct.XOnly,
 		"status":         status,

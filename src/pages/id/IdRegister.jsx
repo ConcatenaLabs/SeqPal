@@ -481,7 +481,7 @@ export default function IdRegister() {
                 </div>
                 <h3 className="mt-4 text-lg font-bold text-ink-900">Your identity is verified</h3>
                 <p className="mt-2 text-sm text-ink-700/80">
-                  Your eligibility categories are live on your AID. You can view them on your
+                  Your eligibility categories are recorded on your SeqPal ID. You can view them on your
                   passport.
                 </p>
                 <div className="mt-5 flex flex-col gap-2">
