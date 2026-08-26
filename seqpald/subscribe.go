@@ -185,6 +185,12 @@ func (s *server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 		sub.RefundAddress = req.RefundAddress
 		sub.PayAmount = usdToAtoms(subUSD)
 		sub.PayCcy = "USDX"
+		// Zero is not a price. It means this amount at this offering's price is
+		// smaller than one atom of USDX, or larger than a uint64 of them.
+		if sub.PayAmount == 0 {
+			writeErr(w, 400, "this amount at this offering's price is not a payable figure in USDX")
+			return
+		}
 		if err := s.st.InsertSubscription(sub); err != nil {
 			writeErr(w, 500, "could not record the subscription")
 			return
@@ -213,7 +219,12 @@ func (s *server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 		}
 		sub.DepositAddress = addr
 		sub.RefundAddress = req.RefundAddress
-		sub.PayAmount = uint64(math.Ceil(subUSD / btcUSD * 1e8)) // expected sats
+		sats := math.Ceil(subUSD / btcUSD * 1e8)
+		if !(sats >= 1) || sats >= float64(math.MaxUint64) {
+			writeErr(w, 400, "this amount at this offering's price is not a payable figure in BTC")
+			return
+		}
+		sub.PayAmount = uint64(sats) // expected sats
 		sub.PayCcy = "BTC"
 		sub.USDRate = btcUSD // provisional; the confirmed rate is re-captured at N confs
 		if err := s.st.InsertSubscription(sub); err != nil {
@@ -240,6 +251,10 @@ func (s *server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 		sub.RefundAddress = strings.TrimSpace(req.RefundAddress) // optional for fiat
 		sub.PayAmount = usdToMinor(subUSD)
 		sub.PayCcy = "USD"
+		if sub.PayAmount == 0 {
+			writeErr(w, 400, "this amount at this offering's price is not a payable figure in USD")
+			return
+		}
 		sub.FundsSimulated = true
 		if err := s.st.InsertSubscription(sub); err != nil {
 			writeErr(w, 500, "could not record the subscription")
@@ -302,18 +317,29 @@ func btcPrice(prices map[string]float64) float64 {
 // usdToAtoms converts a USD figure to USDX atoms (USDX is treated 1:1 with USD at
 // 8 decimals for the PoC).
 func usdToAtoms(usd float64) uint64 {
-	if usd <= 0 {
-		return 0
-	}
-	return uint64(math.Round(usd * 1e8))
+	return usdToUnits(usd, 1e8)
 }
 
 // usdToMinor converts a USD figure to minor units (cents).
 func usdToMinor(usd float64) uint64 {
-	if usd <= 0 {
+	return usdToUnits(usd, 100)
+}
+
+// usdToUnits scales a USD figure into integer units, and answers zero for a
+// figure that has no such value: not positive, not finite, or larger than a
+// uint64 can hold. Every caller already reads zero as "no amount" and refuses
+// it, which is the right answer for all three -- and the last one used to be an
+// undefined conversion producing 9.2 quintillion, which is not refused by
+// anything because it is not zero.
+func usdToUnits(usd, scale float64) uint64 {
+	if !(usd > 0) || math.IsInf(usd, 0) || math.IsNaN(usd) {
 		return 0
 	}
-	return uint64(math.Round(usd * 100))
+	units := math.Round(usd * scale)
+	if units >= float64(math.MaxUint64) {
+		return 0
+	}
+	return uint64(units)
 }
 
 // --- address validation ------------------------------------------------------

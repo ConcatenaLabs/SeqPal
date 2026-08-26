@@ -2232,9 +2232,10 @@ func TestASubscriptionAmountIsANumberOfTokens(t *testing.T) {
 	h := newM5Harness(t, m5opts{escrowConfs: 2})
 	issuerPriv := genPriv(t)
 	issuerSession, _, _ := h.register(issuerPriv, "Issuer", "HN")
-	// A tiny unit price keeps the USD figure under the source-of-funds threshold,
-	// so what is being judged here is the amount rather than the money.
-	issID, _, _ := h.deployLivePrivate(issuerSession, "AMTL", "HN", 0.000000001)
+	// A small unit price keeps the USD figure under the source-of-funds
+	// threshold, so what is being judged here is the amount rather than the
+	// money -- but not so small that an ordinary amount stops being payable.
+	issID, _, _ := h.deployLivePrivate(issuerSession, "AMTL", "HN", 0.000001)
 
 	invPriv := genPriv(t)
 	invSession, _, _ := h.verifiedInvestor(invPriv, "Investor", "HN", "ret")
@@ -2299,6 +2300,43 @@ func TestTheFractionalAmountBoundIsWhereUint64Ends(t *testing.T) {
 		if !got && uint64(math.Round(ta)) == 9223372036854775808 {
 			t.Fatalf("%.1f tokens passed the bound and still converted to the "+
 				"undefined value", tc.amount)
+		}
+	}
+}
+
+// A USD figure becomes an integer number of units, and three kinds of figure
+// have no such value: not positive, not finite, and larger than a uint64 can
+// hold. Every caller reads zero as "no amount" and refuses it, so zero is the
+// right answer for all three -- where the last one used to be an undefined
+// conversion producing 9.2 quintillion, which nothing refuses because it is not
+// zero.
+func TestAUSDFigureThatCannotBeUnitsIsZero(t *testing.T) {
+	for _, tc := range []struct {
+		usd  float64
+		want uint64
+	}{
+		{0, 0},
+		{-1, 0},
+		{math.Inf(1), 0},
+		{math.NaN(), 0},
+		{1e30, 0},        // 1e38 atoms: past uint64
+		{1, 100000000},   // an ordinary dollar
+		{0.00000001, 1},  // one atom
+		{0.000000001, 0}, // less than one atom is not an amount
+	} {
+		if got := usdToAtoms(tc.usd); got != tc.want {
+			t.Fatalf("usdToAtoms(%g) = %d, want %d", tc.usd, got, tc.want)
+		}
+	}
+	for _, tc := range []struct {
+		usd  float64
+		want uint64
+	}{
+		{0, 0}, {-1, 0}, {math.Inf(1), 0}, {math.NaN(), 0}, {1e30, 0},
+		{1, 100}, {0.01, 1}, {0.001, 0},
+	} {
+		if got := usdToMinor(tc.usd); got != tc.want {
+			t.Fatalf("usdToMinor(%g) = %d, want %d", tc.usd, got, tc.want)
 		}
 	}
 }
