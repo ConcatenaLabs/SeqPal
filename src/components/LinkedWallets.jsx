@@ -59,7 +59,13 @@ export default function LinkedWallets() {
       const { xonly } = await resolveAccountKey(value.toLowerCase())
       const res = await api.linkWallet({ xonly, label })
       if (res?.challenge) {
-        const signature = await signEnclaveChallenge(xonly, res.challenge)
+        const signature = await signEnclaveChallenge(res.challenge)
+        if (!signature) {
+          // No extension to ask: show the challenge and take the signature here.
+          setChal({ ...res, xonly, enclave: true })
+          setStep('sign')
+          return
+        }
         await api.linkWallet({ xonly, challenge: res.challenge, sig: signature, label })
       }
       await done()
@@ -69,37 +75,29 @@ export default function LinkedWallets() {
     }
   }
 
-  // The enclave challenge is signed by the wallet that holds the key: the
-  // extension if it is here, otherwise by hand, exactly as everywhere else.
-  const signEnclaveChallenge = async (xonly, challenge) => {
+  // The extension signs the enclave challenge if it is here. If it is not, the
+  // holder signs it in their own wallet and pastes it back, on the same panel as
+  // every other signature: a browser prompt cannot be styled, cannot be copied
+  // out of comfortably, and is blocked outright in some contexts.
+  const signEnclaveChallenge = async (challenge) => {
     const p = await wallet.waitForProvider(600)
-    if (p) {
-      try {
-        return await wallet.signTagged(wallet.CHALLENGE_TAG, { statement: challenge })
-      } catch {
-        // fall through to the by-hand path
-      }
+    if (!p) return null
+    try {
+      return await wallet.signTagged(wallet.CHALLENGE_TAG, { statement: challenge })
+    } catch {
+      return null
     }
-    const typed = window.prompt(
-      'Sign this challenge with your OpenAMP account key (tag ' +
-        wallet.CHALLENGE_TAG +
-        ') and paste the signature:\n\n' +
-        challenge
-    )
-    if (!typed) throw new Error('Nothing was signed.')
-    return typed.trim()
   }
 
   const finishDescriptor = async () => {
     setErr(null)
     setStep('busy')
     try {
-      await api.linkWallet({
-        descriptor: chal.descriptor,
-        challenge: chal.challenge,
-        sig: sig.trim(),
-        label,
-      })
+      await api.linkWallet(
+        chal.enclave
+          ? { xonly: chal.xonly, challenge: chal.challenge, sig: sig.trim(), label }
+          : { descriptor: chal.descriptor, challenge: chal.challenge, sig: sig.trim(), label }
+      )
       await done()
     } catch (e) {
       setErr(e.message)
@@ -169,13 +167,17 @@ export default function LinkedWallets() {
       {step === 'sign' && chal ? (
         <div className="mt-5 space-y-3">
           <p className="text-sm leading-relaxed text-ink-700/80">
-            Sign this in that wallet, with address {chal.index}, and paste the signature back.
+            {chal.enclave
+              ? `Sign this challenge in that wallet, tagged ${wallet.CHALLENGE_TAG}, and paste the signature back.`
+              : `Sign this in that wallet, with address ${chal.index}, and paste the signature back.`}
           </p>
           <dl className="space-y-2 rounded-xl border border-ink-900/10 bg-ink-900/[0.02] p-4 text-xs">
-            <div>
-              <dt className="text-ink-700/70">Address to sign with</dt>
-              <dd className="mt-1 break-all font-mono text-ink-900">{chal.address}</dd>
-            </div>
+            {chal.address && (
+              <div>
+                <dt className="text-ink-700/70">Address to sign with</dt>
+                <dd className="mt-1 break-all font-mono text-ink-900">{chal.address}</dd>
+              </div>
+            )}
             <div>
               <dt className="font-semibold text-ink-900">Message, and nothing else in that box</dt>
               <dd className="mt-1 break-all font-mono text-ink-900">{chal.challenge}</dd>

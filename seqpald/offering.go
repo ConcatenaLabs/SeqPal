@@ -52,7 +52,8 @@ func (s *server) handleOffering(w http.ResponseWriter, r *http.Request) {
 	if acct == nil {
 		writeJSON(w, 200, map[string]any{
 			"issuance_id": iss.ID, "gated": true, "teaser": teaser,
-			"cta": "verification required to view offering details",
+			"enforcement": iss.Enforcement, "ticker": iss.Ticker,
+			"cta":         "verification required to view offering details",
 		})
 		return
 	}
@@ -61,6 +62,7 @@ func (s *server) handleOffering(w http.ResponseWriter, r *http.Request) {
 	if !granted {
 		writeJSON(w, 200, map[string]any{
 			"issuance_id": iss.ID, "gated": true, "teaser": teaser,
+			"enforcement": iss.Enforcement, "ticker": iss.Ticker,
 			"requirements": reqs, "cta": "complete the steps below to view offering details",
 		})
 		return
@@ -76,6 +78,7 @@ func (s *server) handleOffering(w http.ResponseWriter, r *http.Request) {
 		"name":          iss.Name,
 		"ticker":        iss.Ticker,
 		"asset_id":      iss.AssetID,
+		"enforcement":   iss.Enforcement,
 		"status":        iss.Status,
 		"price":         price,
 		"quote":         quote,
