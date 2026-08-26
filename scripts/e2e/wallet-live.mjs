@@ -139,5 +139,45 @@ const bearer = await call('POST', '/deploy', {
 if (bearer.status !== 403) throw new Error(`a bearer deploy must be refused 403, got ${bearer.status}`)
 console.log('other deploys  ', 'both refused, before any terms are written')
 
+// 8. One person, two wallets, one identity. Signing in with either has to land
+//    in the same SeqPal ID, or a holder who owns a web wallet and an extension
+//    is two people to this platform and verified as neither.
+const second = walletFromSeed(randomBytes(32).toString('hex'))
+const linkChallenge = must(
+  await call('POST', '/account/wallets', { descriptor: second.descriptor, label: 'second wallet' }),
+  'link challenge',
+)
+must(
+  await call('POST', '/account/wallets', {
+    descriptor: second.descriptor,
+    label: 'second wallet',
+    challenge: linkChallenge.challenge,
+    sig: signWalletMessage(second.receiveKey(0), linkChallenge.challenge),
+  }),
+  'link second wallet',
+)
+const wallets = must(await call('GET', '/account/wallets'), 'list wallets')
+if ((wallets.wallets || []).length !== 2) {
+  throw new Error(`expected two wallets on this ID, got ${(wallets.wallets || []).length}`)
+}
+
+const other = new Client()
+const otherChallenge = must(
+  await other.call('POST', '/auth/wallet/challenge', { descriptor: second.descriptor }),
+  'second wallet challenge',
+)
+const login = must(
+  await other.call('POST', '/auth/wallet/login', {
+    descriptor: second.descriptor,
+    challenge: otherChallenge.challenge,
+    sig: signWalletMessage(second.receiveKey(0), otherChallenge.challenge),
+  }),
+  'sign in with the second wallet',
+)
+if (login.account?.aid !== aid) {
+  throw new Error(`the second wallet signed in as a different identity: ${login.account?.aid}`)
+}
+console.log('second wallet  ', 'linked, and signs in as the same identity')
+
 console.log('\nPASS: a SeqPal ID that is only a wallet can finish everything it is offered,')
 console.log('      and is refused everything it is not, in words that name what is missing.')
