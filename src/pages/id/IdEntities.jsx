@@ -69,9 +69,12 @@ function EntityForm({ onAdded, onCancel }) {
         </Field>
       </div>
       <DemoNote className="mt-4">
-        KYB verification is SIMULATED. The entity is recorded against your SeqPal ID. Verifying
-        it provisions a treasury enclave with its own key, so assets issued for the company are
-        held by the company, not by your personal AID.
+        The verification provider is SIMULATED on this deployment; the check itself runs the way
+        a real one does. The entity is recorded against your SeqPal ID, and submitting it
+        provisions a treasury enclave with its own key, so assets issued for the company are
+        held by the company rather than by your personal AID. SeqPal custodies that treasury
+        key for now, which is not how your own SeqPal ID works: moving what the company holds
+        takes SeqPal and the policy server together.
       </DemoNote>
       <ErrorNote>{err}</ErrorNote>
       <button disabled={busy || !form.name.trim()} className="btn-primary mt-4 w-full disabled:opacity-50">

@@ -35,6 +35,7 @@ export const REAL = [
   'Corporate-action snapshots and claims: the register snapshot is taken from the chain at the first pass at or after the record height, and a claim is a real signed holding proof over named outpoints',
   'The recovery key for a freely-tradable asset: a second Sequentia wallet the issuer names before deploy, whose public half is registered on the asset and whose private half SeqPal never sees',
   'The bearer attestation: a real signature by the issuer’s own key over the two US-exposure statements, recorded before a freely-tradable deploy is accepted',
+  'The keys SeqPal holds, and the ones it does not: your SeqPal ID key is yours and never reaches the platform, while the enclave key of each company treasury, the two escrow wallets, and the claims-signing key are the platform\u2019s own. Moving what a company holds takes SeqPal and the policy server together',
   'The verification fee gate: the provider bills per check, so an identity or business check is invoiced and collected before it is submitted, and submitting without paying is refused. One payment buys one check \u2014 only a resubmission the provider itself asked for is free. The money is testnet money; the gate is not',
   'Fee crediting: an invoice is paid when the amount owed has actually arrived and confirmed at an address it quoted \u2014 a short payment leaves it unpaid \u2014 and every rail it was ever quoted on stays watched, so choosing a second rail never strands what was sent to the first',
 ]

@@ -160,7 +160,7 @@ export default function Docs() {
 
       <Section icon={Icon.lock} title="Key custody">
         <p>
-          SeqPal holds no keys and makes none. A SeqPal ID is the OpenAMP enclave account
+          SeqPal holds no key of YOURS and makes none. A SeqPal ID is the OpenAMP enclave account
           your own Sequentia wallet derives at m/5/0: the wallet registers its x-only public
           key with the policy server, which derives the account id and the enclave address
           from it, and nothing but that public key ever reaches SeqPal. Your wallet&rsquo;s
@@ -174,6 +174,16 @@ export default function Docs() {
           position. For freely-tradable assets the issuer additionally names a recovery
           key, exported to an encrypted offline backup before deploy, whose public half is
           registered on the asset as the replacement path for a stolen issuer key.
+        </p>
+        <p>
+          What the platform does hold, said plainly, is keys of its own: the enclave key of
+          each company treasury it provisions at KYB, the two escrow wallets it operates on
+          Sequentia and on Bitcoin testnet4, and the key it signs claims records with. A
+          company treasury is an enclave account like any other, so moving what a company
+          holds takes SeqPal and the policy server together; a holder&rsquo;s own position is
+          not among them. This is the interim arrangement, and it is the reason an issuer
+          names an external issuer key and a recovery key: those are the paths that do not
+          run through this platform at all.
         </p>
         <p>
           Application-layer signatures (login challenges, document e-signatures, mandates,
