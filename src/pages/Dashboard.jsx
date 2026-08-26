@@ -4,6 +4,7 @@ import { Icon, StructureIcon } from '../components/icons'
 import { Badge } from '../components/ui'
 import Modal from '../components/Modal'
 import SignInGate from '../components/SignInGate'
+import AttachEnclaveCard from '../components/AttachEnclaveCard'
 import { useStore } from '../lib/store'
 import { view } from '../lib/issuance'
 import { getBalance } from '../lib/openamp'
@@ -130,6 +131,7 @@ export default function Dashboard() {
 
   return (
     <section className="container-x py-12">
+      <AttachEnclaveCard />
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight text-ink-900">

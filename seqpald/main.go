@@ -282,6 +282,11 @@ func (s *server) handler() http.Handler {
 	mux.HandleFunc("POST /api/auth/challenge", s.handleChallenge)
 	mux.HandleFunc("POST /api/auth/register", s.handleRegister)
 	mux.HandleFunc("POST /api/auth/login", s.handleLogin)
+	// Signing in with a wallet that has no enclave key: the descriptor names the
+	// account, an ordinary signed message proves it.
+	mux.HandleFunc("POST /api/auth/wallet/challenge", s.handleWalletChallenge)
+	mux.HandleFunc("POST /api/auth/wallet/register", s.handleWalletRegister)
+	mux.HandleFunc("POST /api/auth/wallet/login", s.handleWalletLogin)
 	mux.HandleFunc("GET /api/eligibility", s.handleEligibility) // advisory preflight, public (serves the SeqDEX handover)
 	mux.HandleFunc("GET /api/listings", s.handleListings)       // M8: issuer-granted listing authorization, public (serves the SeqDEX handover)
 
@@ -296,6 +301,9 @@ func (s *server) handler() http.Handler {
 
 	// Session required.
 	mux.HandleFunc("POST /api/auth/logout", s.requireSession(s.handleLogout))
+	// Attaching an enclave key to a wallet-backed account, which is what opens
+	// OpenAMP restricted assets to it.
+	mux.HandleFunc("POST /api/auth/attach-enclave", s.requireSession(s.handleAttachEnclave))
 	mux.HandleFunc("GET /api/me", s.requireSession(s.handleMe))
 	mux.HandleFunc("POST /api/entities", s.requireSession(s.handleCreateEntity))
 	mux.HandleFunc("GET /api/issuances", s.requireSession(s.handleListIssuances))
@@ -350,7 +358,7 @@ func (s *server) handler() http.Handler {
 	// checkout, platform fees, payout mandates, and closing.
 	mux.HandleFunc("GET /api/issuances/{id}/offering", s.handleOffering) // public: teaser or gated full view
 	mux.HandleFunc("POST /api/issuances/{id}/gate", s.requireSession(s.handleGate))
-	mux.HandleFunc("POST /api/issuances/{id}/subscribe", s.requireSession(s.handleSubscribe))
+	mux.HandleFunc("POST /api/issuances/{id}/subscribe", s.requireSession(s.requireEnclave(s.handleSubscribe)))
 	mux.HandleFunc("GET /api/subscriptions", s.requireSession(s.handleMySubscriptions))
 	mux.HandleFunc("GET /api/issuances/{id}/subscriptions", s.requireSession(s.handleIssuanceSubscriptions))
 	mux.HandleFunc("GET /api/fiat/{id}", s.requireSession(s.handleFiatStatus))
@@ -358,7 +366,7 @@ func (s *server) handler() http.Handler {
 	mux.HandleFunc("POST /api/issuances/{id}/fees/pay", s.requireSession(s.handlePayFee))
 	mux.HandleFunc("GET /api/issuances/{id}/mandate", s.requireSession(s.handleMandates))
 	mux.HandleFunc("POST /api/issuances/{id}/mandate", s.requireSession(s.handleMandate))
-	mux.HandleFunc("POST /api/issuances/{id}/close", s.requireSession(s.handleClose))
+	mux.HandleFunc("POST /api/issuances/{id}/close", s.requireSession(s.requireEnclave(s.handleClose)))
 	mux.HandleFunc("GET /api/issuances/{id}/settlements", s.requireSession(s.handleSettlements))
 
 	// M7 transfer-agent servicing: investor payout mandates and the distribution
@@ -366,23 +374,23 @@ func (s *server) handler() http.Handler {
 	// net payouts to registered mandate addresses, read runs + per-holder txids).
 	mux.HandleFunc("POST /api/mandates/investor", s.requireSession(s.handleInvestorMandate))
 	mux.HandleFunc("GET /api/mandates/investor", s.requireSession(s.handleInvestorMandateGet))
-	mux.HandleFunc("POST /api/issuances/{id}/distributions", s.requireSession(s.handleCreateDistribution))
+	mux.HandleFunc("POST /api/issuances/{id}/distributions", s.requireSession(s.requireEnclave(s.handleCreateDistribution)))
 	mux.HandleFunc("GET /api/issuances/{id}/distributions", s.requireSession(s.handleListDistributions))
 	mux.HandleFunc("GET /api/issuances/{id}/distributions/{runID}", s.requireSession(s.handleGetDistribution))
-	mux.HandleFunc("POST /api/issuances/{id}/distributions/{runID}/snapshot", s.requireSession(s.handleSnapshotDistribution))
-	mux.HandleFunc("POST /api/issuances/{id}/distributions/{runID}/execute", s.requireSession(s.handleExecuteDistribution))
+	mux.HandleFunc("POST /api/issuances/{id}/distributions/{runID}/snapshot", s.requireSession(s.requireEnclave(s.handleSnapshotDistribution)))
+	mux.HandleFunc("POST /api/issuances/{id}/distributions/{runID}/execute", s.requireSession(s.requireEnclave(s.handleExecuteDistribution)))
 
 	// M7 servicing consoles: the freeze/clawback console (owner-scoped, reason
 	// required), the holder notices inbox, and the stranded-key re-delivery runbook
 	// (admin-scoped). The rules-amendment chain is exercised through the existing
 	// POST /api/issuances/{id}/amendments (now a live mutation when new_rules is
 	// supplied) and read, with its head-consistency invariant, at GET .../amendments.
-	mux.HandleFunc("POST /api/issuances/{id}/freeze", s.requireSession(s.handleConsoleFreeze))
-	mux.HandleFunc("POST /api/issuances/{id}/clawback", s.requireSession(s.handleConsoleClawback))
+	mux.HandleFunc("POST /api/issuances/{id}/freeze", s.requireSession(s.requireEnclave(s.handleConsoleFreeze)))
+	mux.HandleFunc("POST /api/issuances/{id}/clawback", s.requireSession(s.requireEnclave(s.handleConsoleClawback)))
 	// M9: complete a two-phase (external-issuer) clawback with the issuer's browser
 	// signatures. Legacy (server-held issuer key) assets never reach here; their
 	// clawback still completes in the single call above.
-	mux.HandleFunc("POST /api/issuances/{id}/clawback/{cid}/complete", s.requireSession(s.handleConsoleClawbackComplete))
+	mux.HandleFunc("POST /api/issuances/{id}/clawback/{cid}/complete", s.requireSession(s.requireEnclave(s.handleConsoleClawbackComplete)))
 	mux.HandleFunc("GET /api/id/notices", s.requireSession(s.handleNotices))
 	mux.HandleFunc("POST /api/id/redeliver", s.requireSession(s.requireAdmin(s.handleRedeliver)))
 
@@ -392,17 +400,17 @@ func (s *server) handler() http.Handler {
 	mux.HandleFunc("GET /api/id/market-abuse-ack", s.requireSession(s.handleMarketAbuseAckGet))
 	mux.HandleFunc("POST /api/id/market-abuse-ack", s.requireSession(s.handleMarketAbuseAck))
 	mux.HandleFunc("GET /api/transfers", s.requireSession(s.handleListMyTransfers))
-	mux.HandleFunc("POST /api/transfers", s.requireSession(s.handleP2PInitiate))
-	mux.HandleFunc("POST /api/transfers/{id}/complete", s.requireSession(s.handleP2PComplete))
+	mux.HandleFunc("POST /api/transfers", s.requireSession(s.requireEnclave(s.handleP2PInitiate)))
+	mux.HandleFunc("POST /api/transfers/{id}/complete", s.requireSession(s.requireEnclave(s.handleP2PComplete)))
 
 	// M8 issuer surfaces: listing authorization grant and the Depository-Receipt
 	// programme (enable + US-person exclusion, mint = reissuance, redeem = burn,
 	// chain-derived supply).
 	mux.HandleFunc("POST /api/issuances/{id}/listing", s.requireSession(s.handleGrantListing))
 	mux.HandleFunc("GET /api/issuances/{id}/dr", s.requireSession(s.handleDRProgram))
-	mux.HandleFunc("POST /api/issuances/{id}/dr/enable", s.requireSession(s.handleDREnable))
-	mux.HandleFunc("POST /api/issuances/{id}/dr/mint", s.requireSession(s.handleDRMint))
-	mux.HandleFunc("POST /api/issuances/{id}/dr/redeem", s.requireSession(s.handleDRRedeem))
+	mux.HandleFunc("POST /api/issuances/{id}/dr/enable", s.requireSession(s.requireEnclave(s.handleDREnable)))
+	mux.HandleFunc("POST /api/issuances/{id}/dr/mint", s.requireSession(s.requireEnclave(s.handleDRMint)))
+	mux.HandleFunc("POST /api/issuances/{id}/dr/redeem", s.requireSession(s.requireEnclave(s.handleDRRedeem)))
 	mux.HandleFunc("GET /api/issuances/{id}/dr/supply", s.requireSession(s.handleDRSupply))
 
 	// SeqPal ID surface.

@@ -257,6 +257,49 @@ export function StoreProvider({ children }) {
     }
   }
 
+  // ── a wallet with no OpenAMP account ────────────────────────────────
+  // Proof of possession here is an ordinary signed message, not a tagged
+  // enclave signature: the holder signs the challenge with the address SeqPal
+  // derived from their own descriptor, in whatever wallet they already use.
+  // That is what lets a hardware or node wallet, which has no enclave key at
+  // all, hold a SeqPal ID.
+  const walletChallenge = (descriptor) => api.walletChallenge(descriptor)
+
+  const walletSignIn = async ({ descriptor, challenge, sig }) => {
+    const { account: acct } = await api.walletLogin({ descriptor, challenge, sig })
+    setSigner({ kind: 'wallet', xonly: null, aid: acct.aid, descriptor })
+    applyMe(await api.me())
+    return acct
+  }
+
+  const walletRegisterId = async ({ descriptor, challenge, sig, displayName, residence, profile }) => {
+    const { account: acct } = await api.walletRegister({
+      descriptor,
+      challenge,
+      sig,
+      kind: 'individual',
+      display_name: displayName,
+      residence,
+      profile,
+    })
+    setSigner({ kind: 'wallet', xonly: null, aid: acct.aid, descriptor })
+    applyMe(await api.me())
+    return acct
+  }
+
+  // Attach an OpenAMP account to a wallet-backed ID. The enclave key proves
+  // itself the same way it would sign in, so nothing new is trusted.
+  const attachEnclave = async (identity) => {
+    const { challenge } = await api.challenge(identity.xonly)
+    const sig =
+      identity.kind === 'extension'
+        ? await wallet.signTagged(wallet.CHALLENGE_TAG, { statement: challenge })
+        : await askLinked({ tag: wallet.CHALLENGE_TAG, statement: challenge, xonly: identity.xonly })
+    const res = await api.attachEnclave({ xonly: identity.xonly, challenge, sig })
+    applyMe(await api.me())
+    return res
+  }
+
   const registerId = async (identity, { displayName, residence, profile }) =>
     handshake(identity, api.register, {
       kind: 'individual',
@@ -447,6 +490,10 @@ export function StoreProvider({ children }) {
     connectExtension,
     signIn,
     registerId,
+    walletChallenge,
+    walletSignIn,
+    walletRegisterId,
+    attachEnclave,
     signOut,
     createEntity,
     createIssuance,
@@ -468,6 +515,8 @@ export function StoreProvider({ children }) {
     // Whether this session can produce a signature at all. A wallet is attached
     // or it is not; there is no locked-key state of SeqPal's own any more.
     hasKey: !!signer,
+    // Whether this ID can hold OpenAMP restricted assets at all.
+    hasEnclave: !account || account.identity !== 'xpub',
     pendingSig,
     resolvePendingSig,
     cancelPendingSig,

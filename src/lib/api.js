@@ -61,6 +61,21 @@ export const register = (body) => req('/auth/register', { method: 'POST', body }
 
 export const login = (body) => req('/auth/login', { method: 'POST', body })
 
+// ── signing in with a wallet that has no OpenAMP account ────────────────────
+// The descriptor names the account; the address SeqPal derives from it is what
+// the holder signs the challenge with, in whatever wallet they already use.
+// Returns { account_id, descriptor, address, challenge, registered }.
+export const walletChallenge = (descriptor) =>
+  req('/auth/wallet/challenge', { method: 'POST', body: { descriptor } })
+
+export const walletRegister = (body) => req('/auth/wallet/register', { method: 'POST', body })
+export const walletLogin = (body) => req('/auth/wallet/login', { method: 'POST', body })
+
+// Attach an OpenAMP account to a wallet-backed SeqPal ID, which is what lets it
+// hold restricted assets. Body { xonly, challenge, sig } -- the same tagged
+// challenge an OpenAMP account signs in with.
+export const attachEnclave = (body) => req('/auth/attach-enclave', { method: 'POST', body })
+
 // ── session required ────────────────────────────────────────────────────
 export const logout = () => req('/auth/logout', { method: 'POST', body: {} })
 

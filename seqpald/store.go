@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -916,6 +917,16 @@ ALTER TABLE clawbacks ADD COLUMN tx TEXT NOT NULL DEFAULT '';
 	`
 ALTER TABLE damp_policy_ops ADD COLUMN snapshot_hash TEXT NOT NULL DEFAULT '';
 `,
+	// A SeqPal ID no longer has to be an OpenAMP enclave account. A wallet that
+	// can prove control of a descriptor gets one too, and reaches everything
+	// that is not the enclave: supervised stocks, network-enforced assets, the
+	// distributions attached to them. `identity` says which kind an account is
+	// and `descriptor` carries the wallet's, both additive with defaults that
+	// keep every existing row an enclave account exactly as before.
+	`
+ALTER TABLE accounts ADD COLUMN identity TEXT NOT NULL DEFAULT 'aid';
+ALTER TABLE accounts ADD COLUMN descriptor TEXT NOT NULL DEFAULT '';
+`,
 }
 
 // Store is seqpald's persistent state. Every financial fact the UI shows is
@@ -992,7 +1003,23 @@ type Account struct {
 	IDNumber    string          `json:"id_number,omitempty"`
 	Profile     json.RawMessage `json:"profile"`
 	CreatedAt   int64           `json:"created_at"`
+
+	// Identity is what this account IS, which decides what it can reach:
+	//   "aid"  an OpenAMP enclave account. XOnly is its enclave key and AID is
+	//          the account id derived from it, so restricted assets can live in
+	//          its 2-of-2 enclave.
+	//   "xpub" a wallet identified by a descriptor it controls. There is no
+	//          enclave, so OpenAMP restricted assets are out of reach until an
+	//          enclave key is attached; everything else, supervised stocks and
+	//          network-enforced (OpenDAMP) assets included, is not.
+	Identity   string `json:"identity"`
+	Descriptor string `json:"descriptor,omitempty"`
 }
+
+// HasEnclave reports whether this account can hold OpenAMP restricted assets.
+// A wallet-backed account gains one by attaching an enclave key, at which point
+// its identity becomes "aid" and nothing else about it changes.
+func (a *Account) HasEnclave() bool { return a != nil && a.Identity != "xpub" }
 
 type Entity struct {
 	ID           string          `json:"id"`
@@ -1131,31 +1158,75 @@ type DeployRecord struct {
 
 // --- accounts ---
 
+// identityOrDefault keeps a row written before wallet-backed accounts existed
+// reading as what it is: an enclave account.
+func identityOrDefault(v string) string {
+	if v == "xpub" {
+		return "xpub"
+	}
+	return "aid"
+}
+
+// accounts.xonly is UNIQUE NOT NULL, which a wallet-backed account has nothing
+// to put in: it has no enclave key. Storing an empty string would let exactly
+// one such account exist and fail the second with a constraint error, so the
+// column holds a placeholder that is unique per account and cannot be mistaken
+// for a key (it is not 64 hex, and validXOnly rejects it). The Go value stays
+// empty, so the API says what is true: no enclave key.
+const noEnclaveKeyPrefix = "xpub:"
+
+func storedXOnly(a *Account) string {
+	if a.Identity == "xpub" && a.XOnly == "" {
+		return noEnclaveKeyPrefix + a.AID
+	}
+	return a.XOnly
+}
+
+func loadedXOnly(v string) string {
+	if strings.HasPrefix(v, noEnclaveKeyPrefix) {
+		return ""
+	}
+	return v
+}
+
 func (s *Store) CreateAccount(a *Account) error {
 	var idNum any
 	if a.IDNumber != "" {
 		idNum = a.IDNumber
 	}
 	_, err := s.db.Exec(
-		`INSERT INTO accounts (aid, kind, xonly, display_name, id_number, profile, created_at) VALUES (?,?,?,?,?,?,?)`,
-		a.AID, a.Kind, a.XOnly, a.DisplayName, idNum, string(rawOrEmpty(a.Profile)), a.CreatedAt)
+		`INSERT INTO accounts (aid, kind, xonly, display_name, id_number, profile, created_at, identity, descriptor) VALUES (?,?,?,?,?,?,?,?,?)`,
+		a.AID, a.Kind, storedXOnly(a), a.DisplayName, idNum, string(rawOrEmpty(a.Profile)), a.CreatedAt,
+		identityOrDefault(a.Identity), a.Descriptor)
 	return err
 }
 
 func (s *Store) AccountByAID(aid string) (*Account, error) {
 	return s.scanAccount(s.db.QueryRow(
-		`SELECT aid, kind, xonly, display_name, COALESCE(id_number,''), profile, created_at FROM accounts WHERE aid = ?`, aid))
+		`SELECT aid, kind, xonly, display_name, COALESCE(id_number,''), profile, created_at, identity, COALESCE(descriptor,'') FROM accounts WHERE aid = ?`, aid))
+}
+
+// AttachEnclave binds an OpenAMP enclave key to a wallet-backed account. The
+// account id does not change: it is the same SeqPal ID, with the enclave it was
+// missing, so every record already pointing at it stays pointing at it.
+func (s *Store) AttachEnclave(accountID, xonly string) error {
+	_, err := s.db.Exec(
+		`UPDATE accounts SET xonly = ?, identity = 'aid' WHERE aid = ? AND identity = 'xpub'`,
+		xonly, accountID)
+	return err
 }
 
 func (s *Store) AccountByXOnly(xonly string) (*Account, error) {
 	return s.scanAccount(s.db.QueryRow(
-		`SELECT aid, kind, xonly, display_name, COALESCE(id_number,''), profile, created_at FROM accounts WHERE xonly = ?`, xonly))
+		`SELECT aid, kind, xonly, display_name, COALESCE(id_number,''), profile, created_at, identity, COALESCE(descriptor,'') FROM accounts WHERE xonly = ?`, xonly))
 }
 
 func (s *Store) scanAccount(row *sql.Row) (*Account, error) {
 	var a Account
 	var profile string
-	err := row.Scan(&a.AID, &a.Kind, &a.XOnly, &a.DisplayName, &a.IDNumber, &profile, &a.CreatedAt)
+	err := row.Scan(&a.AID, &a.Kind, &a.XOnly, &a.DisplayName, &a.IDNumber, &profile, &a.CreatedAt,
+		&a.Identity, &a.Descriptor)
+	a.XOnly = loadedXOnly(a.XOnly)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}

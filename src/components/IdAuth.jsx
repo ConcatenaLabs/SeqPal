@@ -258,6 +258,207 @@ function LinkWallet({ onIdentity, onBack, busy }) {
   )
 }
 
+/* ────────────── a wallet with no OpenAMP account (descriptor) ────────────── */
+
+// Not every wallet has an OpenAMP account. A hardware wallet, a node wallet, a
+// plain Bitcoin-style wallet: none of them can hold restricted assets, and
+// requiring one shut them out of everything else SeqPal does. So a wallet can
+// identify itself by a descriptor it controls instead, and prove it the way
+// wallets have proved things for fifteen years: sign a message with an address.
+function WalletDescriptorId({ onDone }) {
+  const { walletChallenge, walletSignIn, walletRegisterId } = useStore()
+  const [desc, setDesc] = useState('')
+  const [step, setStep] = useState('descriptor') // descriptor | sign | profile
+  const [chal, setChal] = useState(null)
+  const [sig, setSig] = useState('')
+  const [form, setForm] = useState({ name: '', residence: 'AE' })
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+
+  const ask = async (e) => {
+    e.preventDefault()
+    setErr(null)
+    setBusy(true)
+    try {
+      setChal(await walletChallenge(desc.trim()))
+      setStep('sign')
+    } catch (e2) {
+      setErr(e2.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const submit = async () => {
+    setErr(null)
+    setBusy(true)
+    try {
+      if (chal.registered) {
+        await walletSignIn({ descriptor: chal.descriptor, challenge: chal.challenge, sig: sig.trim() })
+        onDone?.()
+        return
+      }
+      setStep('profile')
+    } catch (e2) {
+      setErr(e2.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const finish = async (e) => {
+    e.preventDefault()
+    setErr(null)
+    setBusy(true)
+    try {
+      const res = RESIDENCE_OPTIONS.find((r) => r.code === form.residence)
+      await walletRegisterId({
+        descriptor: chal.descriptor,
+        challenge: chal.challenge,
+        sig: sig.trim(),
+        displayName: form.name.trim(),
+        residence: form.residence,
+        profile: {
+          residence: res.name,
+          residence_code: form.residence,
+          kyc: 'simulated',
+          verified_at: new Date().toISOString(),
+        },
+      })
+      onDone?.()
+    } catch (e2) {
+      setErr(e2.message)
+      setStep('sign')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (step === 'profile') {
+    return (
+      <form onSubmit={finish} className="space-y-4">
+        <p className="text-sm leading-relaxed text-ink-700/80">
+          This wallet has no SeqPal ID yet. Tell us who you are and we will register it.
+        </p>
+        <Field id="wd-name" label="Full legal name">
+          <input
+            id="wd-name"
+            className="input"
+            placeholder="Jordan Avery"
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+          />
+        </Field>
+        <Field id="wd-res" label="Country of residence">
+          <select
+            id="wd-res"
+            className="select"
+            value={form.residence}
+            onChange={(e) => setForm({ ...form, residence: e.target.value })}
+          >
+            {RESIDENCE_OPTIONS.map((r) => (
+              <option key={r.code} value={r.code}>
+                {r.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <ErrorNote>{err}</ErrorNote>
+        <button
+          type="submit"
+          disabled={busy || form.name.trim().length < 2}
+          className="btn-primary w-full disabled:opacity-50"
+        >
+          {busy ? <Spinner /> : null}
+          Create my SeqPal ID
+        </button>
+      </form>
+    )
+  }
+
+  if (step === 'sign') {
+    return (
+      <div className="space-y-4">
+        <p className="text-sm leading-relaxed text-ink-700/80">
+          Sign this challenge with the address below, in your own wallet, and paste the signature
+          back. In a Sequentia node that is{' '}
+          <span className="font-mono text-xs">signmessage</span>; in most wallets it is a
+          &ldquo;sign message&rdquo; button. SeqPal never sees a key.
+        </p>
+        <dl className="space-y-2 rounded-xl border border-ink-900/10 bg-ink-900/[0.02] p-4 text-xs">
+          <div>
+            <dt className="text-ink-700/70">Address to sign with</dt>
+            <dd className="mt-1 break-all font-mono text-ink-900">{chal.address}</dd>
+          </div>
+          <div>
+            <dt className="text-ink-700/70">Message to sign</dt>
+            <dd className="mt-1 break-all font-mono text-ink-900">{chal.challenge}</dd>
+          </div>
+        </dl>
+        <Field id="wd-sig" label="Signature from your wallet">
+          <textarea
+            id="wd-sig"
+            className="input font-mono text-xs"
+            rows={3}
+            spellCheck={false}
+            value={sig}
+            onChange={(e) => setSig(e.target.value)}
+          />
+        </Field>
+        <ErrorNote>{err}</ErrorNote>
+        <div className="flex gap-3">
+          <button
+            onClick={submit}
+            disabled={busy || sig.trim().length < 20}
+            className="btn-primary flex-1 disabled:opacity-50"
+          >
+            {busy ? <Spinner /> : null}
+            {chal.registered ? 'Sign in' : 'Continue'}
+          </button>
+          <button onClick={() => setStep('descriptor')} className="btn-outline">
+            Back
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <form onSubmit={ask} className="space-y-4">
+      <p className="text-sm leading-relaxed text-ink-700/80">
+        For a wallet that has no OpenAMP account. Paste the public{' '}
+        <span className="font-mono text-xs">pkh(...)</span> descriptor your wallet exports, the
+        legacy one. SeqPal derives its first address and asks you to sign a challenge with it.
+      </p>
+      <Field
+        id="wd-desc"
+        label="Your wallet descriptor"
+        hint="The PUBLIC descriptor, with an extended public key. Never paste one containing a private key."
+      >
+        <textarea
+          id="wd-desc"
+          className="input font-mono text-xs"
+          rows={3}
+          spellCheck={false}
+          placeholder="pkh([fingerprint/44h/1h/0h]tpub.../0/*)"
+          value={desc}
+          onChange={(e) => setDesc(e.target.value)}
+        />
+      </Field>
+      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-900">
+        An ID like this cannot hold OpenAMP restricted assets until you attach an OpenAMP account
+        to it. Freely-tradable stocks, network-enforced assets and the distributions attached to
+        them all work without one.
+      </div>
+      <ErrorNote>{err}</ErrorNote>
+      <button type="submit" disabled={busy || desc.trim().length < 20} className="btn-primary w-full disabled:opacity-50">
+        {busy ? <Spinner /> : null}
+        Continue
+      </button>
+    </form>
+  )
+}
+
 /* ───────────────────────────────── panel ─────────────────────────────────── */
 
 export function AuthPanel({ onDone }) {
@@ -294,6 +495,20 @@ export function AuthPanel({ onDone }) {
     } finally {
       setBusy(false)
     }
+  }
+
+  if (phase === 'descriptor') {
+    return (
+      <div className="card p-7">
+        <h2 className="text-lg font-bold text-ink-900">Use a wallet with no OpenAMP account</h2>
+        <div className="mt-5">
+          <WalletDescriptorId onDone={onDone} />
+        </div>
+        <button onClick={() => setPhase('choose')} className="btn-ghost mt-4 w-full text-sm">
+          Back
+        </button>
+      </div>
+    )
   }
 
   if (phase === 'profile' && identity) {
@@ -352,6 +567,9 @@ export function AuthPanel({ onDone }) {
             )}
             <button onClick={() => setPhase('link')} className="btn-outline w-full">
               Link another Sequentia wallet
+            </button>
+            <button onClick={() => setPhase('descriptor')} className="btn-ghost w-full text-sm">
+              My wallet has no OpenAMP account
             </button>
           </div>
           <div className="mt-4">
