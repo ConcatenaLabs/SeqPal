@@ -15,7 +15,7 @@
 // service rather than of a comment.
 import { randomBytes } from 'node:crypto'
 import { Client, must, BASE } from './lib/drill.mjs'
-import { signWalletMessage } from './lib/wallet-signer.mjs'
+import { computeAID, signChallenge, signWalletMessage, xonlyOf } from './lib/wallet-signer.mjs'
 import { walletFromSeed } from './lib/hd.mjs'
 
 const client = new Client()
@@ -223,6 +223,44 @@ if (pkhLogin.account?.aid !== formAccount.account.aid) {
   throw new Error('the same wallet in its other form reached a different identity')
 }
 console.log('both forms     ', 'one wallet, one identity, and the address shown is one it displays')
+
+// 10. Attaching an OpenAMP account to an ID that started as a wallet. The
+//     credential it already earned has to survive that, and the two account ids
+//     it now has are different strings: the SeqPal one it was founded with, and
+//     the one the policy server derives from the enclave key. Everything asked
+//     of the policy server about this holder has to name the second.
+const enclavePriv = randomBytes(32).toString('hex')
+const enclaveXonly = xonlyOf(enclavePriv)
+const derivedAID = computeAID([enclaveXonly])
+const enclaveChallenge = must(
+  await call('POST', '/auth/challenge', { xonly: enclaveXonly }),
+  'enclave challenge',
+)
+must(
+  await call('POST', '/auth/attach-enclave', {
+    xonly: enclaveXonly,
+    challenge: enclaveChallenge.challenge,
+    sig: signChallenge(enclavePriv, enclaveChallenge.challenge),
+  }),
+  'attach an OpenAMP account',
+)
+const attachedPassport = must(await call('GET', '/id/passport'), 'passport after attaching')
+if (!attachedPassport.has_enclave) {
+  throw new Error('the OpenAMP account did not attach')
+}
+if ((attachedPassport.categories || []).length !== (after.categories || []).length) {
+  throw new Error(
+    `attaching an OpenAMP account lost the eligibility this ID already had: ` +
+      `${(after.categories || []).length} -> ${(attachedPassport.categories || []).length}`,
+  )
+}
+if (attachedPassport.enclave_aid !== derivedAID) {
+  throw new Error(`the passport reports OpenAMP account ${attachedPassport.enclave_aid}, want ${derivedAID}`)
+}
+if (attachedPassport.aid !== aid) {
+  throw new Error('the SeqPal account id changed when an OpenAMP account was attached')
+}
+console.log('both ids       ', 'attached, credential kept, and each id reported as itself')
 
 console.log('\nPASS: a SeqPal ID that is only a wallet can finish everything it is offered,')
 console.log('      and is refused everything it is not, in words that name what is missing.')
