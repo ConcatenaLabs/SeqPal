@@ -1020,6 +1020,15 @@ UPDATE account_wallets
    SET descriptor_key = substr(descriptor_key, 1, instr(descriptor_key, '#') - 1)
  WHERE descriptor_key LIKE '%#%';
 `,
+	// One enclave per SeqPal ID, enforced where it cannot be raced. The handler
+	// checks before inserting, and between those two statements a second request
+	// can pass the same check: two enclave accounts on one ID, and no answer to
+	// which one its restricted assets settle in. A partial unique index decides
+	// it in the database, where there is no window.
+	`
+CREATE UNIQUE INDEX idx_account_wallets_one_enclave
+    ON account_wallets(aid) WHERE kind = 'enclave';
+`,
 }
 
 // Store is seqpald's persistent state. Every financial fact the UI shows is

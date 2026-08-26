@@ -211,6 +211,14 @@ func (s *server) linkEnclaveWallet(w http.ResponseWriter, acct *Account, req *li
 		EnclaveAID: enclaveAID, Label: label, Proof: "tagged-challenge",
 	}
 	if err := s.st.InsertAccountWallet(wl); err != nil {
+		// The database holds the one-enclave rule where it cannot be raced. Losing
+		// that race is the same situation the check above describes, so it reads
+		// the same way rather than leaking a constraint name.
+		if strings.Contains(err.Error(), "UNIQUE") {
+			writeErr(w, 409, "this SeqPal ID already holds an OpenAMP account. Restricted assets "+
+				"settle in one account, so a second would leave no answer to which one they settle in")
+			return
+		}
 		writeErr(w, 409, "could not link that OpenAMP account: %v", err)
 		return
 	}
