@@ -91,21 +91,31 @@ func (s *server) verifyKeyStatement(key, tag string, msg []byte, sig string) err
 // the wallets it has linked -- the same address it signs in with -- and any of
 // them will do, because they are all wallets this ID has proven.
 func (s *server) verifyAccountStatement(acct *Account, tag string, msg []byte, sig string) error {
+	_, err := s.verifyAccountStatementBy(acct, tag, msg, sig)
+	return err
+}
+
+// verifyAccountStatementBy is verifyAccountStatement, and also reports WHAT the
+// signature was checked against: the empty string for a tagged signature by the
+// account's own key, or the wallet address an ordinary signed message verified
+// for. A record that keeps a signature without keeping that cannot be checked
+// by anyone afterwards.
+func (s *server) verifyAccountStatementBy(acct *Account, tag string, msg []byte, sig string) (string, error) {
 	if acct == nil {
-		return fmt.Errorf("no account to check this signature against")
+		return "", fmt.Errorf("no account to check this signature against")
 	}
 	if acct.XOnly != "" && looksLikeTaggedSig(sig) {
-		return verifyTaggedByKey(acct.XOnly, tag, msg, sig)
+		return "", verifyTaggedByKey(acct.XOnly, tag, msg, sig)
 	}
 	wallets, err := s.st.DescriptorWallets(acct.AID)
 	if err != nil {
-		return fmt.Errorf("could not read this ID's wallets: %v", err)
+		return "", fmt.Errorf("could not read this ID's wallets: %v", err)
 	}
 	if len(wallets) == 0 {
 		if acct.XOnly == "" {
-			return fmt.Errorf("this SeqPal ID has no wallet able to sign this")
+			return "", fmt.Errorf("this SeqPal ID has no wallet able to sign this")
 		}
-		return verifyTaggedByKey(acct.XOnly, tag, msg, sig)
+		return "", verifyTaggedByKey(acct.XOnly, tag, msg, sig)
 	}
 	message := classicStatementMessage(tag, msg)
 	var last error
@@ -121,7 +131,7 @@ func (s *server) verifyAccountStatement(acct *Account, tag string, msg []byte, s
 			continue
 		}
 		if err := s.verifyWalletMessage(addr, sig, message); err == nil {
-			return nil
+			return addr, nil
 		} else {
 			last = err
 		}
@@ -129,7 +139,7 @@ func (s *server) verifyAccountStatement(acct *Account, tag string, msg []byte, s
 	if last == nil {
 		last = fmt.Errorf("that signature does not verify for any wallet on this SeqPal ID")
 	}
-	return fmt.Errorf("the signature does not verify for this SeqPal ID: %v", last)
+	return "", fmt.Errorf("the signature does not verify for this SeqPal ID: %v", last)
 }
 
 // accountSigningAddresses is what a holder has to be TOLD when they cannot sign

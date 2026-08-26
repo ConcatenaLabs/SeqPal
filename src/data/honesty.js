@@ -13,7 +13,7 @@ export const REAL = [
   'The hash-chained transparency log and its on-chain anchors',
   'Sanctions screening against the public OFAC, EU, and UN lists',
   'terms_hash committed on chain, and the content-addressed document set',
-  'BIP340 document e-signatures over the tagged document hash',
+  'Document e-signatures over the real document hash, recorded with what checks them: a BIP340 signature under the tag by an OpenAMP key, or an ordinary signed message and the wallet address it verifies for',
   'The RFSA filing number, its public lookup, the deploy gate, and the anchored filing hash',
   'USDX and native testnet BTC as settlement assets',
   'Atomic delivery versus payment for USDX: the token and the USDX payment settle in one transaction',
