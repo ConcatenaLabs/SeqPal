@@ -39,6 +39,14 @@ func newWalletNode(t *testing.T, signedOK bool) *httptest.Server {
 			// pkh one.
 			var p []any
 			_ = json.Unmarshal(req.Params, &p)
+			// The node refuses a descriptor with no checksum, and answering one
+			// anyway hid a bug where three call sites derived from text the node
+			// would never have accepted.
+			if d, _ := p[0].(string); !strings.Contains(d, "#") {
+				_ = json.NewEncoder(w).Encode(map[string]any{"result": nil,
+					"error": map[string]any{"code": -5, "message": "Missing checksum"}})
+				return
+			}
 			if d, _ := p[0].(string); strings.HasPrefix(d, "wpkh(") {
 				reply([]string{"ert1qnzten2u3ayqmnqtdul7z00v3uvapet7dv2789z"})
 			} else {

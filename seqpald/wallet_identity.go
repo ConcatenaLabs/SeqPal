@@ -132,6 +132,17 @@ func toPKH(desc string) string {
 	return d
 }
 
+// pkhForm is the pkh view of a wallet's descriptor, WITH the checksum the node
+// requires. toPKH alone drops the checksum -- it has to, since the old one was
+// computed over different text -- and `deriveaddresses` refuses a descriptor
+// with no checksum outright ("Missing checksum"). Every caller that derives an
+// address from a stored descriptor goes through here, because one that does not
+// gets an error from the node instead of an address, and an error looks like a
+// signature that did not verify or a key that derives from nothing.
+func (s *server) pkhForm(desc string) (string, error) {
+	return s.canonicalDescriptor(toPKH(desc))
+}
+
 // canonicalWalletDescriptor validates the descriptor at the node and returns it
 // in canonical form with its checksum. The node is the authority on what a
 // descriptor means, so it is not re-implemented here.

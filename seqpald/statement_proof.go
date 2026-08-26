@@ -110,7 +110,12 @@ func (s *server) verifyAccountStatement(acct *Account, tag string, msg []byte, s
 	message := classicStatementMessage(tag, msg)
 	var last error
 	for _, wl := range wallets {
-		addr, err := s.walletAddressAt(toPKH(wl.Descriptor), walletProofIndex)
+		desc, err := s.pkhForm(wl.Descriptor)
+		if err != nil {
+			last = err
+			continue
+		}
+		addr, err := s.walletAddressAt(desc, walletProofIndex)
 		if err != nil {
 			last = err
 			continue
@@ -136,7 +141,11 @@ func (s *server) accountSigningAddresses(acct *Account) []string {
 	}
 	out := make([]string, 0, len(wallets))
 	for _, wl := range wallets {
-		if addr, err := s.walletAddressAt(toPKH(wl.Descriptor), walletProofIndex); err == nil {
+		desc, derr := s.pkhForm(wl.Descriptor)
+		if derr != nil {
+			continue
+		}
+		if addr, err := s.walletAddressAt(desc, walletProofIndex); err == nil {
 			out = append(out, addr)
 		}
 	}
