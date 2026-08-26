@@ -816,3 +816,25 @@ func TestWithholdingNeverLosesAnAtom(t *testing.T) {
 		}
 	}
 }
+
+// net is computed as gross - withheld on UNSIGNED integers. A withholding rate
+// outside 0..100% would not make net negative, it would make it wrap to
+// something astronomical -- and that net is what gets paid on chain. The
+// reconciliation check downstream cannot catch it, because modular arithmetic
+// makes net + withheld == gross however far it wrapped.
+func TestWithholdingCanNeverExceedTheGross(t *testing.T) {
+	for _, gross := range []uint64{0, 1, 1000, 1 << 40, ^uint64(0) >> 2} {
+		for _, res := range []string{"GB", "JP", "US", "AE", "ZZ", ""} {
+			withheld, bps, _ := withholdingFor(&Claims{Residence: res, Status: "verified"}, gross)
+			if withheld > gross {
+				t.Fatalf("withheld %d from gross %d (%s at %d bps)", withheld, gross, res, bps)
+			}
+			if bps < 0 || bps > 10000 {
+				t.Fatalf("rate %d bps is outside 0..100%% (%s)", bps, res)
+			}
+			if net := gross - withheld; net > gross {
+				t.Fatalf("net %d wrapped past gross %d (%s)", net, gross, res)
+			}
+		}
+	}
+}
