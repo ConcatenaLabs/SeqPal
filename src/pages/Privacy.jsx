@@ -13,9 +13,9 @@ const LAWFUL_BASIS = [
     note: 'Verifying who may hold a restricted asset is what the securities restrictions require.',
   },
   {
-    purpose: 'Sanctions screening',
+    purpose: 'Watchlist checks, by the verification provider',
     basis: 'Compliance with a legal obligation',
-    note: 'Screening against the public OFAC, EU, and UN lists.',
+    note: 'The name you register is passed to the identity-verification provider, who runs the watchlist checks their check covers and returns a decision. SeqPal keeps no list of its own and screens against none.',
   },
   {
     purpose: 'Eligibility categories on your AID',
@@ -98,6 +98,19 @@ export default function Privacy() {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Who else receives it */}
+      <div className="card mt-8 p-6">
+        <h2 className="font-bold text-ink-900">Who else sees this</h2>
+        <p className="mt-2 text-sm leading-relaxed text-ink-700/80">
+          Identity verification is performed by an independent provider, not by SeqPal. What
+          leaves this platform for them is what a check needs: the name you registered and the
+          kind of check being run. What comes back is their decision and their reason for it.
+          They act as a processor; SeqPal runs no watchlist of its own and screens against none.
+          On this demo the provider is simulated and nothing leaves the server, which is why
+          every screen that shows their decision says so.
+        </p>
       </div>
 
       {/* Public wallet surface */}

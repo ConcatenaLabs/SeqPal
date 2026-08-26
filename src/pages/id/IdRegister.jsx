@@ -461,7 +461,7 @@ export default function IdRegister() {
             title={isSignedIn ? 'Verify your identity' : 'Create or sign in with your SeqPal ID'}
             sub={
               isSignedIn
-                ? 'One flow for everyone. Verification runs a labeled-simulated document review and a real sanctions screen, then stamps the eligibility categories the policy server enforces.'
+                ? 'One flow for everyone. An independent provider runs the check and decides; when they clear it, the eligibility categories the policy server enforces are stamped.'
                 : 'One registration flow, identical for everybody. It never asks whether you intend to issue or invest.'
             }
           />
