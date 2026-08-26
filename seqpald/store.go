@@ -1156,9 +1156,9 @@ type Issuance struct {
 	IssuerExternal bool   `json:"issuer_external,omitempty"`
 	IssuerPubkey   string `json:"issuer_pubkey,omitempty"`
 	// Enforcement (M10) is the issuer's election: "serviced" (the co-signed
-	// OpenAMP path, the default), "network" (OpenDAMP, not yet available), or
-	// "bearer" (a consensus-supervised asset issued through the node's raw
-	// path). For a bearer asset the supervision descriptor is (operational key =
+	// OpenAMP path, the default), "network" (OpenDAMP, gated on SEQPALD_DAMP and
+	// minted at a holding key the issuer names), or "bearer" (a
+	// consensus-supervised asset issued through the node's raw path). For a bearer asset the supervision descriptor is (operational key =
 	// IssuerPubkey, RecoveryPubkey, SupervisionPause), committed in the asset id.
 	Enforcement      string `json:"enforcement,omitempty"`
 	RecoveryPubkey   string `json:"recovery_pubkey,omitempty"`

@@ -26,22 +26,23 @@ registrar steps are simulated so the flow can be walked end to end.
 - A wallet with **no** OpenAMP account gets a SeqPal ID too, from the same
   "link another wallet" field: paste a public `pkh(...)` descriptor instead of an
   account id and it is proved with an ordinary signed message, which is a button
-  a hardware or node wallet has always had. Such an
-  ID cannot hold OpenAMP restricted assets until an OpenAMP account is attached
-  to it, and every path that needs one says so. It can HOLD a freely-tradable
-  stock, which is an ordinary coin in an ordinary wallet, and claim the KYC-gated
-  distributions attached to it. It can also hold a network-enforced (OpenDAMP)
-  asset, which is not ordinary: that coin sits at its own covenant address, and
-  moving it means signing with the holding key through OpenDAMP tooling rather
-  than pressing send in a wallet. ISSUING is narrower still: it can issue a
-  network-enforced asset, naming a holding key from a wallet it has linked, but
-  not a freely-tradable one, because that is supervised by a key that signs its
-  freezes and an ordinary wallet cannot make such a signature.
-  Everywhere SeqPal asks such an ID for a signature — a payout mandate, an
-  offering document, a market-abuse acknowledgment, a claim on a distribution —
-  it shows the exact characters to sign and takes the signature back as a paste,
-  because that wallet is not in the browser to be asked.
-  Attaching an OpenAMP account later keeps the same SeqPal ID.
+  a hardware or node wallet has always had. Attaching an OpenAMP account later
+  keeps the same SeqPal ID.
+- **What such an ID can do.** It holds a freely-tradable stock, which is an
+  ordinary coin in an ordinary wallet, and claims the KYC-gated distributions
+  attached to it. It holds a network-enforced (OpenDAMP) asset too, though that
+  one is not ordinary: the coin sits at its own covenant address, and moving it
+  means signing with the holding key through OpenDAMP tooling rather than
+  pressing send in a wallet. It can issue a network-enforced asset, naming a
+  holding key from a wallet it has linked. It cannot hold an OpenAMP restricted
+  asset, and it cannot issue a freely-tradable one, which is supervised by a key
+  that signs its freezes — a signature an ordinary wallet cannot make. Every
+  path that needs an OpenAMP account says so.
+- **How such an ID signs.** Its wallet is not in the browser to be asked, so
+  wherever SeqPal wants a signature — a payout mandate, an offering document, a
+  market-abuse acknowledgment, a listing authorization, a claim on a
+  distribution — it shows the exact characters to sign and takes the signature
+  back as a paste.
 - One SeqPal ID holds as many **wallets** as its holder can prove, and signing in
   with any of them lands in the same account: a web wallet and a browser
   extension are one person, not two identities. Descriptor wallets are
