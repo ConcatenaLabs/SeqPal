@@ -399,6 +399,8 @@ const ENFORCEMENT_MODELS = [
 export function Step3Enforcement({ data, update }) {
   // Whether this deployment can run network-enforced rules, probed live.
   const [dampAvailable, setDampAvailable] = useState(null)
+  // And whether this issuer has an OpenAMP account to mint a serviced token into.
+  const { servicedAvailable } = useStore()
   useEffect(() => {
     let cancelled = false
     health()
@@ -435,7 +437,11 @@ export function Step3Enforcement({ data, update }) {
       <div className="space-y-4">
         {ENFORCEMENT_MODELS.map((m) => {
           const isNetwork = m.id === 'network'
-          const unavailable = isNetwork && dampAvailable === false
+          // A token SeqPal services settles through an account this issuer may
+          // not have set up. Finding that out at checkout, after configuring the
+          // whole issuance, is the failure the other card already avoids.
+          const needsServicing = m.id === 'serviced' && !servicedAvailable
+          const unavailable = (isNetwork && dampAvailable === false) || needsServicing
           const selected = data.enforcement === m.id
           return (
             // A div rather than a button so the "How this works" link inside
@@ -503,7 +509,9 @@ export function Step3Enforcement({ data, update }) {
               )}
               {unavailable && (
                 <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
-                  Not available on this deployment.
+                  {needsServicing
+                    ? 'This option settles through SeqPal, and your SeqPal ID is not set up for that yet. Set it up from your passport, or choose an option that does not need it.'
+                    : 'Not available on this deployment.'}
                 </p>
               )}
               <span className="mt-4 inline-flex items-center gap-1.5 text-xs font-medium text-seq-600">

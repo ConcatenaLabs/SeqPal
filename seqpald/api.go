@@ -21,9 +21,14 @@ func (s *server) handleMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]any{
-		"account":   acct,
-		"entities":  entities,
-		"issuances": issuances,
+		"account":  acct,
+		"entities": entities,
+		// Whether this ID can hold OpenAMP restricted assets, computed from the
+		// wallets it has linked. The browser used to infer this from the kind the
+		// account was FOUNDED with, which is a different question and drifts from
+		// this one the moment a wallet is linked.
+		"has_enclave": s.hasEnclave(acct),
+		"issuances":   issuances,
 	})
 }
 

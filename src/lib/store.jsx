@@ -59,6 +59,7 @@ const EMPTY_SIM = { portal: null, subscriptions: [], activity: [] }
 export function StoreProvider({ children }) {
   const [status, setStatus] = useState('loading') // loading | anon | in
   const [account, setAccount] = useState(null)
+  const [hasEnclave, setHasEnclaveState] = useState(true)
   const [entities, setEntities] = useState([])
   const [issuances, setIssuances] = useState([])
   const [prefs, setPrefsState] = useState(() => readJSON(PREFS_KEY) || {})
@@ -82,6 +83,9 @@ export function StoreProvider({ children }) {
 
   const applyMe = useCallback((data) => {
     setAccount(data.account)
+    // The server decides this from the wallets actually linked; inferring it
+    // here from the account's founding kind is a different question.
+    setHasEnclaveState(data.has_enclave ?? (data.account?.identity ?? 'aid') !== 'xpub')
     setEntities(data.entities || [])
     setIssuances(data.issuances || [])
     setStatus('in')
@@ -523,7 +527,10 @@ export function StoreProvider({ children }) {
     // or it is not; there is no locked-key state of SeqPal's own any more.
     hasKey: !!signer,
     // Whether this ID can hold OpenAMP restricted assets at all.
-    hasEnclave: !account || account.identity !== 'xpub',
+    hasEnclave,
+    // The same fact, named for the surfaces that must speak plain business
+    // language: whether SeqPal can service this issuer's transfers at all.
+    servicedAvailable: hasEnclave,
     pendingSig,
     resolvePendingSig,
     cancelPendingSig,
