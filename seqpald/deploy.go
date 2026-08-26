@@ -398,6 +398,14 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	// default case, both terms {}) would collide, so deploying the second returns the
 	// first's asset and silently strands the second at draft forever.
 	idem := sha256Hex([]byte(acct.XOnly + "\x00" + iss.ID + "\x00" + termsHash))
+
+	// One deploy at a time for this issuance. The check below asks whether this
+	// one already happened, and what it does about the answer is MINT, so two
+	// calls in flight together would both be told no and the chain would keep
+	// both assets. The retry this key exists to make safe is exactly the case
+	// where two are in flight.
+	defer s.st.LockIssuance(iss.ID)()
+
 	if prev, err := s.st.DeployByIdem(idem); err != nil {
 		writeErr(w, 500, "store error")
 		return
