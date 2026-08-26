@@ -551,3 +551,39 @@ func TestARescreenHitParksTheIdentityAndIsNeverDropped(t *testing.T) {
 		t.Fatalf("a queued hit must be recorded as seen: %v %v", seen, err)
 	}
 }
+
+// The EU consolidated list is a 118-column semicolon file with a header row.
+// Field 8 is the classification code -- the literal word "person" on nearly
+// every row -- and that is the field this parsed for as long as it was set, so
+// screening against the EU list matched nobody who was not called "person".
+func TestTheEUListParsesNamesAndNotClassifications(t *testing.T) {
+	sample := "fileGenerationDate;Entity_LogicalId;Entity_EU_ReferenceNumber;Entity_UnitedNationId;" +
+		"Entity_DesignationDate;Entity_DesignationDetails;Entity_Remark;Entity_SubjectType;" +
+		"Entity_SubjectType_ClassificationCode;Entity_Regulation_Type;Entity_Regulation_OrganisationType;" +
+		"Entity_Regulation_PublicationDate;Entity_Regulation_EntryIntoForceDate;Entity_Regulation_NumberTitle;" +
+		"Entity_Regulation_Programme;Entity_Regulation_PublicationUrl;NameAlias_LastName;NameAlias_FirstName;" +
+		"NameAlias_MiddleName;NameAlias_WholeName\n" +
+		"2026-08-26;13;EU.27.28;;2003-06-27;;;person;person;;;;;;;;Al-Tikriti;Saddam;;Saddam Hussein Al-Tikriti\n" +
+		"2026-08-26;14;EU.27.29;;2003-06-27;;;person;person;;;;;;;;;;;Abu Ali\n"
+
+	names := parseSanctions("eu_consolidated", []byte(sample))
+	if len(names) != 2 {
+		t.Fatalf("expected the two names, got %v", names)
+	}
+	for _, want := range []string{"Saddam Hussein Al-Tikriti", "Abu Ali"} {
+		found := false
+		for _, n := range names {
+			if n == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("%q missing from %v", want, names)
+		}
+	}
+	for _, n := range names {
+		if n == "person" || n == "NameAlias_WholeName" {
+			t.Fatalf("the parser returned %q, which is not a name", n)
+		}
+	}
+}
