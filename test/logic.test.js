@@ -449,3 +449,24 @@ test('the digests a wallet signs are fixed on both sides of the wire', () => {
     '9dfde23596857df2e4a76be48068939322880b5d134b13e30ddc177029cb61ea',
   )
 })
+
+// The canonical form itself, pinned to the same expected string seqpald asserts
+// in vectors_test.go. Everything signed or committed here is canonical JSON, and
+// both sides write it: the terms hash a deploy commits on chain is computed in
+// the browser and again on the server, and compared. The cases are the ones that
+// usually diverge between two implementations -- HTML characters, non-BMP
+// characters, control characters, the solidus, exponent formatting, integers
+// past 2^53, and negative zero.
+test('one canonical form in both languages', () => {
+  const doc = JSON.parse(
+    '{"amp":"Smith & Sons <Holdings>","ctl":"tab\\there","emo":"a\u{1F642}b","sol":"a/b",' +
+      '"uni":"Ærø Zürich 東京","big":100000000000000000000,"exp":1e21,"tiny":1e-7,' +
+      '"round":9007199254740993,"negzero":-0,"one":1.0}',
+  )
+  assert.equal(
+    canonicalJSON(doc),
+    '{"amp":"Smith & Sons <Holdings>","big":100000000000000000000,"ctl":"tab\\there",' +
+      '"emo":"a\u{1F642}b","exp":1e+21,"negzero":0,"one":1,"round":9007199254740992,"sol":"a/b",' +
+      '"tiny":1e-7,"uni":"Ærø Zürich 東京"}',
+  )
+})
