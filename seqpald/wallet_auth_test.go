@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -365,4 +366,51 @@ func TestPassportOfAWalletBackedID(t *testing.T) {
 	if p.body["status"] != "verified" {
 		t.Fatalf("status: %v", p.body["status"])
 	}
+}
+
+// A node that signs in fine but never recognises a holding key as the wallet's
+// own, and refuses the whitelist statement: precisely the case where a holder
+// must prove the key with a signature, and fails to.
+func newWalletNodeNoMatch(t *testing.T) *httptest.Server {
+	t.Helper()
+	n := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Method string          `json:"method"`
+			Params json.RawMessage `json:"params"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		reply := func(v any) {
+			_ = json.NewEncoder(w).Encode(map[string]any{"result": v, "error": nil, "id": "seqpald"})
+		}
+		switch req.Method {
+		case "getdescriptorinfo":
+			var p []string
+			_ = json.Unmarshal(req.Params, &p)
+			d := p[0]
+			if i := strings.Index(d, "#"); i >= 0 {
+				d = d[:i]
+			}
+			reply(map[string]any{"descriptor": d, "checksum": "0wcatm2p", "hasprivatekeys": false})
+		case "deriveaddresses":
+			// A different address every time, so no key is ever recognised as one
+			// this wallet derives.
+			n++
+			reply([]string{fmt.Sprintf("2ds6y7euxH5WNMGRzTCxUDtYdd8EaCSAq%02d", n%100)})
+		case "verifymessage":
+			// Sign-in verifies; the whitelist statement does not.
+			var p []string
+			_ = json.Unmarshal(req.Params, &p)
+			msg := ""
+			if len(p) > 2 {
+				msg = p[2]
+			}
+			reply(!strings.Contains(msg, "whitelist-request"))
+		default:
+			_ = json.NewEncoder(w).Encode(map[string]any{"result": nil,
+				"error": map[string]any{"code": -32601, "message": "no such method"}})
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
 }

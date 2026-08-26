@@ -32,6 +32,17 @@ registrar steps are simulated so the flow can be walked end to end.
   freely-tradable (supervised) stocks, network-enforced (OpenDAMP) assets, and
   the KYC-gated distributions attached to them, none of which involve an enclave.
   Attaching an OpenAMP account later keeps the same SeqPal ID.
+- One SeqPal ID holds as many **wallets** as its holder can prove, and signing in
+  with any of them lands in the same account: a web wallet and a browser
+  extension are one person, not two identities. Descriptor wallets are
+  unlimited; an OpenAMP account is limited to one, because restricted assets
+  settle in it and a second would leave no answer to which.
+- A verified SeqPal ID can **ask to be admitted** to a network-enforced
+  (OpenDAMP) asset's whitelist, per asset. The key it asks for must be one the ID
+  controls -- recognised from a linked wallet, or proven by a signed message --
+  so the credential proves eligibility rather than lending it to somebody else's
+  key. The issuer decides; the key reaches the published list when the issuer
+  publishes a policy change carrying it, and not before.
 - Deploying an issuance mints a real OpenAMP restricted asset: the SeqPal backend
   (`seqpald`) registers the issuer's enclave key and calls OpenAMP's issuer API,
   which builds and broadcasts the issuance transaction on Sequentia. The returned
