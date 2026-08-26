@@ -122,7 +122,11 @@ rule that catches something that actually breaks.
   read-modify-write, so two rails quoted at once would each write a set missing the other's,
   and a dropped quote is a deposit address nothing watches any more. The same uniqueness holds
   for an OFFERING's fee (`issuance_id, kind`): the setup fee is the deploy gate, and raised
-  twice the issuer pays one invoice while the gate reads the other.
+  twice the issuer pays one invoice while the gate reads the other. And for an ENCLAVE KEY
+  (`kind, ref_id`), where two at once mean two keys for one company treasury and assets going
+  to a treasury the ownership link does not name. That migration deletes NOTHING: a duplicate
+  key may hold assets, so if any exist the index fails to create and seqpald refuses to start,
+  which is a person's problem rather than a coin flip.
 - **A decision that never arrives is CHASED, never waited on forever.** A callback crosses a
   network once, and the process can restart between the submission and the delivery, so
   `runIDVReconcileCron` asks the provider directly about any check outstanding past

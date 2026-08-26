@@ -136,3 +136,42 @@ func TestAnIssuanceRaisesOneSetupFee(t *testing.T) {
 		}
 	}
 }
+
+// An enclave key is looked up by what it belongs to and created if there is
+// none. Two of those at once make two keys for one company treasury, each
+// registered with the policy server, and assets then go to a treasury the
+// ownership link does not name.
+func TestOneReferenceHasOneEnclaveKey(t *testing.T) {
+	h := newHarness(t)
+
+	var wg sync.WaitGroup
+	aids := make([]string, 6)
+	for i := range aids {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			if k, err := h.s.createEnclave(enclaveEntityTreasury, "entity-1"); err == nil && k != nil {
+				aids[i] = k.AID
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	var n int
+	if err := h.s.st.db.QueryRow(
+		`SELECT count(*) FROM enclave_keys WHERE kind = ? AND ref_id = 'entity-1'`,
+		enclaveEntityTreasury).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("one treasury, one key: got %d", n)
+	}
+	for i, aid := range aids {
+		if aid == "" {
+			t.Fatalf("create %d returned no key", i)
+		}
+		if aid != aids[0] {
+			t.Fatalf("concurrent creates handed out different treasuries: %q and %q", aids[0], aid)
+		}
+	}
+}

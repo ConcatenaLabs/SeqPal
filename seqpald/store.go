@@ -1168,6 +1168,21 @@ DROP INDEX IF EXISTS idx_fee_invoices_issuance;
 CREATE UNIQUE INDEX idx_fee_invoices_issuance ON fee_invoices(issuance_id, kind)
   WHERE issuance_id != '';
 `,
+	// An enclave key is looked up by what it belongs to, and created if the
+	// lookup finds nothing: two of those at once make two keys for one company
+	// treasury or one offering escrow, each registered with the policy server,
+	// with later reads returning whichever the lookup happened to return. Assets
+	// then go to a treasury the ownership link does not name.
+	//
+	// Note what this migration does NOT do. Where a duplicate fee invoice can be
+	// collapsed onto the paid one, a duplicate KEY may hold assets, so nothing is
+	// deleted here: if any exist, creating this index fails and seqpald refuses
+	// to start, which is a person's problem to resolve rather than a coin flip.
+	`
+DROP INDEX IF EXISTS idx_enclave_ref;
+CREATE UNIQUE INDEX idx_enclave_ref ON enclave_keys(kind, ref_id) WHERE ref_id != '';
+CREATE INDEX idx_enclave_ref_any ON enclave_keys(kind, ref_id);
+`,
 }
 
 // Store is seqpald's persistent state. Every financial fact the UI shows is
