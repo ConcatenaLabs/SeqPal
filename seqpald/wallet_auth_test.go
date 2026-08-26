@@ -47,7 +47,22 @@ func newWalletNode(t *testing.T, signedOK bool) *httptest.Server {
 					"error": map[string]any{"code": -5, "message": "Missing checksum"}})
 				return
 			}
-			if d, _ := p[0].(string); strings.HasPrefix(d, "wpkh(") {
+			// The node refuses a range for a descriptor that makes one address,
+			// and refuses to derive without one for a descriptor that makes a
+			// chain. Answering both hid a whole class of derivation that could
+			// never have worked.
+			d, _ := p[0].(string)
+			ranged := strings.Contains(d, "/*")
+			if ranged != (len(p) > 1) {
+				msg := "Range should not be specified for an un-ranged descriptor"
+				if ranged {
+					msg = "Range must be specified for a ranged descriptor"
+				}
+				_ = json.NewEncoder(w).Encode(map[string]any{"result": nil,
+					"error": map[string]any{"code": -8, "message": msg}})
+				return
+			}
+			if strings.HasPrefix(d, "wpkh(") {
 				reply([]string{"ert1qnzten2u3ayqmnqtdul7z00v3uvapet7dv2789z"})
 			} else {
 				reply([]string{"2ds6y7euxH5WNMGRzTCxUDtYdd8EaCSAqD2"})

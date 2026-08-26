@@ -174,10 +174,27 @@ func (s *server) canonicalWalletDescriptor(desc string) (string, error) {
 	return out.Descriptor + "#" + out.Checksum, nil
 }
 
+// rangedDescriptor reports whether a descriptor makes a CHAIN of addresses
+// rather than one. A wallet is ranged; a single key is not. The node refuses a
+// range for one that is not ("Range should not be specified for an un-ranged
+// descriptor") and refuses to derive without one for one that is, so which of
+// the two this is decides the call, and getting it wrong is an error rather
+// than a wrong answer.
+func rangedDescriptor(desc string) bool { return strings.Contains(desc, "/*") }
+
 // walletAddressAt derives one address of a canonical descriptor. Public data
 // only: this is the same derivation any watch-only wallet performs.
 func (s *server) walletAddressAt(canonicalDesc string, index int) (string, error) {
-	res, err := s.nodeRPC("deriveaddresses", canonicalDesc, []int{index, index})
+	var res json.RawMessage
+	var err error
+	if rangedDescriptor(canonicalDesc) {
+		res, err = s.nodeRPC("deriveaddresses", canonicalDesc, []int{index, index})
+	} else {
+		if index != 0 {
+			return "", fmt.Errorf("that descriptor makes one address, so there is no index %d of it", index)
+		}
+		res, err = s.nodeRPC("deriveaddresses", canonicalDesc)
+	}
 	if err != nil {
 		return "", fmt.Errorf("could not derive an address from that descriptor: %v", err)
 	}
@@ -285,6 +302,14 @@ func (s *server) walletAddressRange(canonicalDesc string, count int) ([]string, 
 		if desc, err = s.canonicalWalletDescriptor(desc); err != nil {
 			return nil, err
 		}
+	}
+	// A descriptor that makes exactly one address has one address to scan.
+	if !rangedDescriptor(desc) {
+		addr, err := s.walletAddressAt(desc, 0)
+		if err != nil {
+			return nil, err
+		}
+		return []string{addr}, nil
 	}
 	res, err := s.nodeRPC("deriveaddresses", desc, []int{0, count - 1})
 	if err != nil {
