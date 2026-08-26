@@ -277,12 +277,19 @@ type actionClaimReq struct {
 // proof to exactly this use, so a dividend proof can never be replayed as a
 // ballot (or vice versa), and the aid binds it to the presenting session.
 func holdingProofStatement(a *CorporateAction, outpoints []string, payoutAddress, choice, aid string) []byte {
+	// Sorted HERE, not left to the caller. The browser sorts before it signs, so
+	// a claim whose outpoints arrived in any other order was checked against a
+	// different statement than the one that was signed, and a correct signature
+	// was rejected. Which order a holder happened to select their coins in is
+	// not something a signature should depend on.
+	sorted := append([]string(nil), outpoints...)
+	sort.Strings(sorted)
 	m := map[string]any{
 		"v":             1,
 		"action_id":     a.ID,
 		"asset":         a.AssetID,
 		"record_height": a.RecordHeight,
-		"outpoints":     outpoints, // sorted by the caller
+		"outpoints":     sorted,
 		"purpose":       a.Kind,
 		"aid":           aid,
 	}
