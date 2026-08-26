@@ -203,10 +203,23 @@ func main() {
 	flag.StringVar(&cfg.btcUser, "btcuser", env("SEQPALD_BTC_RPC_USER", ""), "testnet4 Bitcoin RPC username (mainchainrpcuser)")
 	flag.StringVar(&cfg.btcPass, "btcpass", env("SEQPALD_BTC_RPC_PASS", ""), "testnet4 Bitcoin RPC password (mainchainrpcpassword)")
 	flag.StringVar(&cfg.usdxAsset, "usdxasset", env("SEQPALD_USDX_ASSET", "2a515539da5e6a60caa7766ecd65bac0c10d15717ddd2088844ba58f4d04b9de"), "USDX asset id (Sequentia payment asset)")
-	flag.Int64Var(&cfg.escrowConfs, "escrowconfs", envInt("SEQPALD_ESCROW_CONFS", 1), "confirmations before a deposit becomes in_escrow")
+	// Zero confirmations is not a setting this platform has: nothing here is
+	// final at 0-conf, and a deposit that has not confirmed has not arrived.
+	flag.Int64Var(&cfg.escrowConfs, "escrowconfs", envInt("SEQPALD_ESCROW_CONFS", 1), "confirmations before a deposit becomes in_escrow (minimum 1)")
 	atomicDefault := env("SEQPALD_ATOMIC_CLOSE", "1") == "1" || strings.EqualFold(env("SEQPALD_ATOMIC_CLOSE", "1"), "true")
 	flag.BoolVar(&cfg.atomicClose, "atomicclose", atomicDefault, "settle USDX subscriptions as one atomic delivery-versus-payment transaction (closing v2); falls back to the two-transaction close v1 when the policy server has no payment leg")
 	flag.Parse()
+	// Both of these decide when money is treated as arrived, and when a lockup
+	// ends. Zero confirmations is not a setting this platform has, and a year of
+	// zero blocks makes a Rule 144 lockup expire at the moment it is stamped.
+	if cfg.escrowConfs < 1 {
+		log.Printf("escrow confirmations is %d; using 1, because a deposit that has not confirmed has not arrived", cfg.escrowConfs)
+		cfg.escrowConfs = 1
+	}
+	if cfg.blocksPerDay < 1 {
+		log.Printf("blocks per day is %d; using 1440, because a lockup measured in zero blocks is not a lockup", cfg.blocksPerDay)
+		cfg.blocksPerDay = 1440
+	}
 	cfg.damp = env("SEQPALD_DAMP", "") == "1" || strings.EqualFold(env("SEQPALD_DAMP", ""), "true")
 	cfg.setupFeeUSD = envFloat("SEQPALD_SETUP_FEE_USD", 500)
 	// A rate outside 0..100% is a typo -- an extra digit on a percentage -- and
@@ -227,10 +240,14 @@ func main() {
 	// Servicing cadences. Reconcile fast so a half-applied rules mutation heals
 	// within a tick; snapshot daily; annual report yearly. All overridable in
 	// seconds by env so a demo can run them unattended.
-	cfg.rulesReconcile = time.Duration(envInt("SEQPALD_RULES_RECONCILE_SECS", 30)) * time.Second
-	cfg.snapshotInterval = time.Duration(envInt("SEQPALD_SNAPSHOT_SECS", 24*3600)) * time.Second
-	cfg.reportInterval = time.Duration(envInt("SEQPALD_REPORT_SECS", 365*24*3600)) * time.Second
-	cfg.walletPollInterval = time.Duration(envInt("SEQPALD_WALLET_POLL_SECS", 15)) * time.Second
+	// A cadence of zero is not a fast cadence: time.NewTicker refuses a
+	// non-positive interval and PANICS, so a `SEQPALD_WALLET_POLL_SECS=0` takes
+	// the whole daemon down at boot, on a number that reads like an ordinary
+	// operational knob.
+	cfg.rulesReconcile = interval("SEQPALD_RULES_RECONCILE_SECS", 30)
+	cfg.snapshotInterval = interval("SEQPALD_SNAPSHOT_SECS", 24*3600)
+	cfg.reportInterval = interval("SEQPALD_REPORT_SECS", 365*24*3600)
+	cfg.walletPollInterval = interval("SEQPALD_WALLET_POLL_SECS", 15)
 	cfg.openampURL = strings.TrimRight(cfg.openampURL, "/")
 	cfg.electrsURL = strings.TrimRight(cfg.electrsURL, "/")
 	cfg.registryURL = strings.TrimRight(cfg.registryURL, "/")
@@ -539,6 +556,18 @@ func (s *server) originAllowed(origin string, r *http.Request) bool {
 		}
 	}
 	return false
+}
+
+// interval reads a cadence in seconds and refuses to return one a ticker cannot
+// run. Every worker here builds a time.Ticker from its interval, and a
+// non-positive one panics rather than ticking fast.
+func interval(name string, def int64) time.Duration {
+	secs := envInt(name, def)
+	if secs < 1 {
+		log.Printf("%s is %d seconds, which is not a cadence; using %d", name, secs, def)
+		secs = def
+	}
+	return time.Duration(secs) * time.Second
 }
 
 // clampBps holds a configured rate inside 0..100%, saying so when it has to.

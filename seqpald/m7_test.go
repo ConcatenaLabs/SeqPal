@@ -871,3 +871,26 @@ func TestAFeeCanNeverExceedWhatItCameFrom(t *testing.T) {
 		}
 	}
 }
+
+// Numbers an operator sets should not be able to take the service down or
+// quietly remove a control. A cadence of zero panics time.NewTicker rather than
+// ticking fast; zero confirmations would treat an unconfirmed deposit as
+// arrived, which this platform says nowhere else that it does; and a year of
+// zero blocks makes a Rule 144 lockup expire at the moment it is stamped.
+func TestAMisconfiguredNumberIsRefusedNotObeyed(t *testing.T) {
+	t.Setenv("SEQPALD_TEST_CADENCE", "0")
+	if got := interval("SEQPALD_TEST_CADENCE", 30); got != 30*time.Second {
+		t.Fatalf("a cadence of zero became %v, want the default", got)
+	}
+	t.Setenv("SEQPALD_TEST_CADENCE", "-5")
+	if got := interval("SEQPALD_TEST_CADENCE", 30); got != 30*time.Second {
+		t.Fatalf("a negative cadence became %v, want the default", got)
+	}
+	t.Setenv("SEQPALD_TEST_CADENCE", "7")
+	if got := interval("SEQPALD_TEST_CADENCE", 30); got != 7*time.Second {
+		t.Fatalf("an ordinary cadence became %v", got)
+	}
+	// And whatever it returns can actually run a ticker.
+	tk := time.NewTicker(interval("SEQPALD_TEST_CADENCE", 30))
+	tk.Stop()
+}
