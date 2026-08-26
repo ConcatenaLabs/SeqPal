@@ -413,14 +413,14 @@ func TestARefusalThePolicyServerNeverHeardIsNotFinished(t *testing.T) {
 	}
 	h.oa.freezeFail.Store(true)
 
-	check, _ := h.s.st.LatestVerificationCheck(aid)
+	check, _ := h.s.st.LatestVerificationCheck(aid, "identity")
 	if err := h.s.applyAdjudication(check, idvReject, ""); err == nil {
 		t.Fatal("a refusal that could not be enforced must not report success")
 	}
 	if c, _ := h.s.st.ClaimsByAID(aid); c.Status != "refused" {
 		t.Fatalf("the claims refuse regardless, since they can only restrict, got %v", c.Status)
 	}
-	if again, _ := h.s.st.LatestVerificationCheck(aid); again.Status != "submitted" {
+	if again, _ := h.s.st.LatestVerificationCheck(aid, "identity"); again.Status != "submitted" {
 		t.Fatalf("the check must stay open for another attempt, got %v", again.Status)
 	}
 
@@ -432,7 +432,7 @@ func TestARefusalThePolicyServerNeverHeardIsNotFinished(t *testing.T) {
 	if frozen, _ := h.oa.frozen.Load(aid); frozen != true {
 		t.Fatalf("the retry must reach the policy server, got %v", frozen)
 	}
-	if done, _ := h.s.st.LatestVerificationCheck(aid); done.Status != "complete" || done.Result != string(idvReject) {
+	if done, _ := h.s.st.LatestVerificationCheck(aid, "identity"); done.Status != "complete" || done.Result != string(idvReject) {
 		t.Fatalf("the check must finish as the refusal it was, got %+v", done)
 	}
 }
@@ -555,14 +555,21 @@ func TestVerifyingACompanyIsAComplianceDecision(t *testing.T) {
 	if got, _ := res.body["status"].(string); got != "submitted" {
 		t.Fatalf("entity verification status = %q, want submitted", got)
 	}
-	check, _ := h.s.st.LatestVerificationCheck(aid)
+	check, _ := h.s.st.LatestVerificationCheck(aid, "business")
 	if check == nil || check.Kind != "business" || check.EntityID != entityID {
 		t.Fatalf("the company's check is %+v, want a business check for %s", check, entityID)
 	}
+	// The person's own check is a different one, under the same account id.
+	own, _ := h.s.st.LatestVerificationCheck(aid, "identity")
+	if own == nil || own.ID == check.ID {
+		t.Fatalf("the controller's own check must be separate, got %+v", own)
+	}
 
 	// And a company the provider refuses does not become verified.
-	h.adjudicate(aid, idvReject)
-	done, _ := h.s.st.LatestVerificationCheck(aid)
+	if err := h.s.applyAdjudication(check, idvReject, ""); err != nil {
+		t.Fatal(err)
+	}
+	done, _ := h.s.st.LatestVerificationCheck(aid, "business")
 	if done.Status != "complete" || done.Result != string(idvReject) {
 		t.Fatalf("the refusal was not recorded on the check: %+v", done)
 	}
@@ -673,7 +680,7 @@ func dup(n int) string {
 // adjudicate delivers a provider decision for this harness.
 func (h *m2Harness) adjudicate(aid string, decision idvDecision) {
 	h.t.Helper()
-	check, err := h.s.st.LatestVerificationCheck(aid)
+	check, err := h.s.st.LatestVerificationCheck(aid, "identity")
 	if err != nil || check == nil {
 		h.t.Fatalf("no verification check for %s: %v", aid, err)
 	}

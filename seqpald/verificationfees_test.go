@@ -23,7 +23,7 @@ func TestAVerificationIsNotSubmittedUntilItIsPaidFor(t *testing.T) {
 	// Nothing was written and nothing was submitted: an unpaid caller leaves
 	// exactly as they arrived, so paying later is a first attempt, not a retry
 	// blocked by the "already with the provider" guard.
-	if check, _ := h.s.st.LatestVerificationCheck(aid); check != nil {
+	if check, _ := h.s.st.LatestVerificationCheck(aid, "identity"); check != nil {
 		t.Fatalf("an unpaid verification must not reach the provider, got %+v", check)
 	}
 	if c, _ := h.s.st.ClaimsByAID(aid); c != nil {
@@ -65,7 +65,7 @@ func TestAVerificationIsNotSubmittedUntilItIsPaidFor(t *testing.T) {
 	if v := h.do("POST", "/api/id/verify", session, body); v.code != 200 {
 		t.Fatalf("verify after paying = %d, want 200 (%s)", v.code, v.raw)
 	}
-	check, _ := h.s.st.LatestVerificationCheck(aid)
+	check, _ := h.s.st.LatestVerificationCheck(aid, "identity")
 	if check == nil {
 		t.Fatalf("a paid verification must reach the provider")
 	}

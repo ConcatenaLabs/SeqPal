@@ -100,6 +100,12 @@ rule that catches something that actually breaks.
   nothing -- quoting a price is not billing for it. Submitted is
   not verified anywhere, including in the passport: an entity's treasury key and UBO link exist
   from submission, and `verified` comes from the entity's own check.
+- **"The latest check for this account" is never the answer to "where does this person's
+  identity stand".** A company's check is filed under its controller's account id, because they
+  are who asked for it, so `LatestVerificationCheck` TAKES A KIND and every identity question
+  passes `"identity"`. Answering with the account's newest check of any kind showed a holder
+  their company's decision as their own on the passport, and let a company's resubmission buy
+  their next identity check for nothing.
 - **A decision about a BUSINESS is about that business, never about its owner.** A business
   check travels on the controller's account id, because they are who asked for it, so
   `applyAdjudication` branches on `check.Kind` FIRST: applying a company's refusal to the

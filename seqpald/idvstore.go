@@ -63,10 +63,16 @@ func (s *Store) VerificationCheckByRef(ref string) (*VerificationCheck, error) {
 
 // LatestVerificationCheck is the most recent check for an account, which is what
 // a holder is shown while they wait.
-func (s *Store) LatestVerificationCheck(aid string) (*VerificationCheck, error) {
+// LatestVerificationCheck is the newest check of one KIND for an account. The
+// kind is not optional: a person's companies are checked under their account id
+// too, because they are who asked, so "the latest check for this account" is a
+// different question from "where does this person's identity stand" and
+// answering the second with the first shows a holder their company's decision
+// as their own.
+func (s *Store) LatestVerificationCheck(aid, kind string) (*VerificationCheck, error) {
 	return scanVerificationCheck(s.db.QueryRow(
 		`SELECT `+verificationCheckCols+` FROM verification_checks
-         WHERE aid = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`, aid))
+         WHERE aid = ? AND kind = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`, aid, kind))
 }
 
 // LatestVerificationCheckForEntity is the business check for one entity. An

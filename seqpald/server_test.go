@@ -1084,7 +1084,7 @@ func (p *testIDV) PollCheck(*VerificationCheck) (idvDecision, string, bool, erro
 // the way the callback would.
 func (h *harness) adjudicate(aid string, decision idvDecision) {
 	h.t.Helper()
-	check, err := h.s.st.LatestVerificationCheck(aid)
+	check, err := h.s.st.LatestVerificationCheck(aid, "identity")
 	if err != nil || check == nil {
 		h.t.Fatalf("no verification check for %s: %v", aid, err)
 	}

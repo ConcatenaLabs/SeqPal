@@ -20,7 +20,7 @@ func TestTheVerificationCallbackIsTheProviderSeam(t *testing.T) {
 	}); v.code != 200 {
 		t.Fatalf("verify: %d %s", v.code, v.raw)
 	}
-	check, _ := h.s.st.LatestVerificationCheck(aid)
+	check, _ := h.s.st.LatestVerificationCheck(aid, "identity")
 	if check == nil || check.ProviderRef == "" {
 		t.Fatalf("the check must carry the provider's reference: %+v", check)
 	}
