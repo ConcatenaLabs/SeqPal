@@ -175,3 +175,14 @@ test('the listing authorization can be signed by a wallet that is not in the bro
   assert.match(src, /setPrep\(\{ sign_this_message/, 'no wallet here means showing what to sign')
   assert.match(src, /OfflineSignature/, 'and taking the signature back as a paste')
 })
+
+test('the election says the deploy takes a registrar the issuer runs', () => {
+  // Three values a network-enforced deploy needs cannot be computed by the
+  // issuer or by SeqPal; they come from a registrar the issuer runs, between
+  // two halves of the deploy. The handoff panel explains it well -- but it
+  // appears at the moment of deploying, which is the worst place to learn that
+  // you need a tool you do not have.
+  const src = read('pages/onboarding/Steps.jsx')
+  assert.match(src, /Issuing it takes two rounds/, 'the election names the two-round deploy')
+  assert.match(src, /registrar is yours to run/, 'and says whose tool it is')
+})
