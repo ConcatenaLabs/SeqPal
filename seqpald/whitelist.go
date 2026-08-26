@@ -38,6 +38,11 @@ const whitelistScanWindow = 200
 
 const whitelistRequestTag = "seqpal-whitelist-request-v1"
 
+// How long a refusal stands before the same holder may ask again about the same
+// token. Long enough that asking is a considered act rather than a reflex, short
+// enough that a holder whose circumstances changed is not shut out.
+const whitelistReaskAfter = 24 * time.Hour
+
 // whitelistRequestStatement is the exact text a holder signs to prove the key
 // is theirs. It names the asset and the account, so a signature for one asset
 // cannot be replayed to get the same key admitted to another.
@@ -191,6 +196,17 @@ func (s *server) handleWhitelistRequest(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		proof = "signature"
+	}
+
+	// An issuer who has said no should not be asked again the same afternoon.
+	if refused, err := s.st.RecentWhitelistRefusal(iss.ID, acct.AID,
+		time.Now().Add(-whitelistReaskAfter).Unix()); err != nil {
+		writeErr(w, 500, "store error")
+		return
+	} else if refused != nil {
+		writeErr(w, 429, "this issuer refused your last request for this token. You can ask again "+
+			"after a day, and it is worth changing something first")
+		return
 	}
 
 	if existing, err := s.st.OpenWhitelistRequest(iss.ID, key); err != nil {

@@ -215,3 +215,41 @@ func TestWhitelistRequestOnlyForNetworkAssets(t *testing.T) {
 		t.Fatalf("a serviced asset has no whitelist to join, got %d %s", req.code, req.raw)
 	}
 }
+
+// A refusal has to stand for a while. Every request puts a notice in front of
+// the issuer, so a holder who can re-ask instantly can make a nuisance of
+// themselves indefinitely.
+func TestARefusalStandsForAWhile(t *testing.T) {
+	h := newHarness(t)
+	h.s.cfg.nodeURL = newWalletNode(t, true).URL
+	h.s.screen = newScreener("")
+	holderSession, _ := walletSession(t, h, testPKH)
+	verifyWalletHolder(t, h, holderSession)
+	ownerSession, ownerAID, _ := m3SeedAccount(t, h.s, vecPriv, "Issuer Ida")
+	iss := seedNetworkIssuance(t, h.s, ownerAID)
+	key := strings.Repeat("d", 64)
+
+	req := h.do("POST", "/api/issuances/"+iss.ID+"/whitelist-requests", holderSession,
+		map[string]any{"holding_key": key})
+	rid := req.body["request"].(map[string]any)["id"].(string)
+	if dec := h.do("POST", "/api/issuances/"+iss.ID+"/whitelist-requests/"+rid+"/decide",
+		ownerSession, map[string]any{"approve": false, "note": "not yet"}); dec.code != 200 {
+		t.Fatalf("refuse: %d %s", dec.code, dec.raw)
+	}
+
+	again := h.do("POST", "/api/issuances/"+iss.ID+"/whitelist-requests", holderSession,
+		map[string]any{"holding_key": key})
+	if again.code != 429 {
+		t.Fatalf("asking again straight away must be refused, got %d %s", again.code, again.raw)
+	}
+
+	// But a refusal is not "never": once it has aged, asking again works.
+	_ = h.s.st.UpdateWhitelistRequestFields(rid, map[string]any{
+		"decided_at": time.Now().Add(-48 * time.Hour).Unix(),
+	})
+	later := h.do("POST", "/api/issuances/"+iss.ID+"/whitelist-requests", holderSession,
+		map[string]any{"holding_key": key})
+	if later.code != 200 {
+		t.Fatalf("an aged refusal must not shut a holder out for good, got %d %s", later.code, later.raw)
+	}
+}

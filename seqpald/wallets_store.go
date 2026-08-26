@@ -34,20 +34,25 @@ type AccountWallet struct {
 	// EnclaveAID is the OpenAMP account id derived from XOnly, which is NOT this
 	// SeqPal account's id and must never be confused with it.
 	EnclaveAID string `json:"enclave_aid,omitempty"`
+	// DescriptorKey is Descriptor normalised to its pkh form: the wallet's
+	// identity, independent of which script type it was presented as. Lookups go
+	// through this, or one wallet answers to one name and not the other.
+	DescriptorKey string `json:"-"`
 	Label      string `json:"label,omitempty"`
 	Proof      string `json:"proof,omitempty"`
 	CreatedAt  int64  `json:"created_at"`
 }
 
-const accountWalletCols = `id, aid, kind, descriptor, xonly, enclave_aid, label, proof, created_at`
+const accountWalletCols = `id, aid, kind, descriptor, descriptor_key, xonly, enclave_aid, label, proof, created_at`
 
 func (s *Store) InsertAccountWallet(wl *AccountWallet) error {
 	if wl.CreatedAt == 0 {
 		wl.CreatedAt = time.Now().Unix()
 	}
 	_, err := s.db.Exec(
-		`INSERT INTO account_wallets (`+accountWalletCols+`) VALUES (?,?,?,?,?,?,?,?,?)`,
-		wl.ID, wl.AID, wl.Kind, wl.Descriptor, wl.XOnly, wl.EnclaveAID, wl.Label, wl.Proof, wl.CreatedAt)
+		`INSERT INTO account_wallets (`+accountWalletCols+`) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+		wl.ID, wl.AID, wl.Kind, wl.Descriptor, descriptorKeyOf(wl), wl.XOnly, wl.EnclaveAID,
+		wl.Label, wl.Proof, wl.CreatedAt)
 	return err
 }
 
@@ -61,8 +66,8 @@ func (s *Store) AccountWallets(aid string) ([]*AccountWallet, error) {
 	out := []*AccountWallet{}
 	for rows.Next() {
 		var wl AccountWallet
-		if err := rows.Scan(&wl.ID, &wl.AID, &wl.Kind, &wl.Descriptor, &wl.XOnly, &wl.EnclaveAID,
-			&wl.Label, &wl.Proof, &wl.CreatedAt); err != nil {
+		if err := rows.Scan(&wl.ID, &wl.AID, &wl.Kind, &wl.Descriptor, &wl.DescriptorKey, &wl.XOnly,
+			&wl.EnclaveAID, &wl.Label, &wl.Proof, &wl.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, &wl)
@@ -81,8 +86,8 @@ func (s *Store) AccountWalletByID(id string) (*AccountWallet, error) {
 func (s *Store) AccountByDescriptor(desc string) (*Account, error) {
 	var aid string
 	err := s.db.QueryRow(
-		`SELECT aid FROM account_wallets WHERE kind = 'descriptor' AND descriptor = ?`,
-		strings.TrimSpace(desc)).Scan(&aid)
+		`SELECT aid FROM account_wallets WHERE kind = 'descriptor' AND descriptor_key = ?`,
+		normaliseDescriptorKey(desc)).Scan(&aid)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -139,10 +144,26 @@ func (s *Store) DeleteAccountWallet(id, aid string) error {
 	return err
 }
 
+// descriptorKeyOf is what a wallet row is looked up by: nothing for an enclave,
+// the normalised descriptor for a wallet.
+func descriptorKeyOf(wl *AccountWallet) string {
+	if wl.Kind != "descriptor" || wl.Descriptor == "" {
+		return ""
+	}
+	return normaliseDescriptorKey(wl.Descriptor)
+}
+
+// normaliseDescriptorKey reduces a descriptor to the wallet it names, dropping
+// the script type it was written in. Kept in step with toPKH, which does the
+// same thing for the address derivation.
+func normaliseDescriptorKey(desc string) string {
+	return toPKH(desc)
+}
+
 func scanAccountWallet(row *sql.Row) (*AccountWallet, error) {
 	var wl AccountWallet
-	err := row.Scan(&wl.ID, &wl.AID, &wl.Kind, &wl.Descriptor, &wl.XOnly, &wl.EnclaveAID,
-		&wl.Label, &wl.Proof, &wl.CreatedAt)
+	err := row.Scan(&wl.ID, &wl.AID, &wl.Kind, &wl.Descriptor, &wl.DescriptorKey, &wl.XOnly,
+		&wl.EnclaveAID, &wl.Label, &wl.Proof, &wl.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
