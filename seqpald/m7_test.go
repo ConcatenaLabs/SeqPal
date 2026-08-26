@@ -632,7 +632,6 @@ func TestM7Clawback_ReasonRequired_RecordsTxidAndLog_Idempotent(t *testing.T) {
 // 5. Stranded-key re-delivery runbook.
 // ===========================================================================
 
-
 // TestM7Redeliver_UnknownOldIdentityRefused proves step 1 re-auth: the old AID
 // must have a server-held identity record; without one, the runbook refuses to
 // start (it re-authenticates against the record, not the lost key).

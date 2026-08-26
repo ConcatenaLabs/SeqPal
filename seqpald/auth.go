@@ -106,6 +106,10 @@ func (s *server) handleChallenge(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "xonly must be a valid 32-byte x-only public key in lowercase hex")
 		return
 	}
+	if ok, why := s.chalRL.allow(req.XOnly); !ok {
+		writeErr(w, 429, "%s", why)
+		return
+	}
 	challenge, exp, err := s.st.CreateChallenge(req.XOnly, challengeTTL)
 	if err != nil {
 		writeErr(w, 500, "could not issue a challenge")

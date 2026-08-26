@@ -177,6 +177,7 @@ func newM2Harness(t *testing.T) *m2Harness {
 		st:     st,
 		http:   &http.Client{Timeout: 5 * time.Second},
 		rl:     newRateLimiter(),
+		chalRL: newWindowLimiter(challengesPerKeyPerHour, challengesGlobalPerHour, time.Hour),
 		catMu:  newKeyedMutex(),
 		screen: newScreener(""),
 	}

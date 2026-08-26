@@ -104,6 +104,10 @@ func (s *server) linkDescriptorWallet(w http.ResponseWriter, acct *Account, req 
 	// Proof, in two steps like every other wallet exchange: ask for a challenge,
 	// come back with the signature.
 	if strings.TrimSpace(req.Sig) == "" {
+		if ok, why := s.chalRL.allow(walletIDFor(verifyDesc)); !ok {
+			writeErr(w, 429, "%s", why)
+			return
+		}
 		challenge, exp, err := s.st.CreateChallenge(walletIDFor(verifyDesc), walletChallengeTTL)
 		if err != nil {
 			writeErr(w, 500, "could not issue a challenge")
@@ -156,6 +160,10 @@ func (s *server) linkEnclaveWallet(w http.ResponseWriter, acct *Account, req *li
 		return
 	}
 	if strings.TrimSpace(req.Sig) == "" {
+		if ok, why := s.chalRL.allow(auth.XOnly); !ok {
+			writeErr(w, 429, "%s", why)
+			return
+		}
 		challenge, exp, err := s.st.CreateChallenge(auth.XOnly, walletChallengeTTL)
 		if err != nil {
 			writeErr(w, 500, "could not issue a challenge")

@@ -97,6 +97,7 @@ type server struct {
 	st     *Store
 	http   *http.Client
 	rl     *rateLimiter
+	chalRL *windowLimiter
 	catMu  *keyedMutex // serializes openampd category writes per AID
 	screen *screener   // sanctions lists
 
@@ -247,12 +248,25 @@ func main() {
 	if err := st.PurgeExpired(); err != nil {
 		log.Printf("warning: purge expired sessions and challenges: %v", err)
 	}
+	// And keep purging. Run once at startup, this left every expired session and
+	// challenge in place for as long as the process stayed up, which on a server
+	// is measured in weeks.
+	go func() {
+		t := time.NewTicker(15 * time.Minute)
+		defer t.Stop()
+		for range t.C {
+			if err := st.PurgeExpired(); err != nil {
+				log.Printf("warning: purge expired sessions and challenges: %v", err)
+			}
+		}
+	}()
 
 	s := &server{
 		cfg:         cfg,
 		st:          st,
 		http:        &http.Client{Timeout: 60 * time.Second},
 		rl:          newRateLimiter(),
+		chalRL:      newWindowLimiter(challengesPerKeyPerHour, challengesGlobalPerHour, time.Hour),
 		catMu:       newKeyedMutex(),
 		screen:      newScreener(cfg.screenDir),
 		escrow:      newEscrowState(),

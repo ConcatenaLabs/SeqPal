@@ -188,7 +188,6 @@ func TestM9Console_ExternalClawbackIsTwoPhase(t *testing.T) {
 	}
 }
 
-
 // ===========================================================================
 // 3. Stranded-key runbook (external issuer key).
 // ===========================================================================
