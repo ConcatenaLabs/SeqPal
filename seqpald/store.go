@@ -1497,6 +1497,25 @@ func (s *Store) CreateChallenge(xonly string, ttl time.Duration) (string, int64,
 // ConsumeChallenge marks a challenge used, and only succeeds once: the UPDATE
 // itself is the single-use guard, so two concurrent presentations cannot both
 // pass. It also binds the challenge to the key it was issued for.
+// PeekChallenge reports whether a challenge is live and bound to this id,
+// WITHOUT spending it. A flow that sends the holder to another application to
+// sign has to be able to fail and be retried: burning the challenge on a
+// mistyped signature would make one bad paste cost them the whole exchange.
+// Spending it is ConsumeChallenge's job, once the signature has verified.
+func (s *Store) PeekChallenge(challenge, xonly string) error {
+	var n int
+	err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM challenges WHERE challenge = ? AND xonly = ? AND used = 0 AND expires_at > ?`,
+		challenge, xonly, time.Now().Unix()).Scan(&n)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("this challenge has expired or was already used; ask for a new one")
+	}
+	return nil
+}
+
 func (s *Store) ConsumeChallenge(challenge, xonly string) error {
 	res, err := s.db.Exec(
 		`UPDATE challenges SET used = 1 WHERE challenge = ? AND xonly = ? AND used = 0 AND expires_at > ?`,
