@@ -364,3 +364,43 @@ func (s *server) noteWhitelistInclusions(issuanceID, policyOpID string, holdersJ
 		})
 	}
 }
+
+// holdingKeysOf is every x-only key this account has proven it can sign with:
+// its OpenAMP account key, if it has one, and every key it presented on a
+// whitelist request, each of which was proven before the request was stored.
+//
+// A published holder list names keys, not identities, so any question of the
+// form "is this identity on that list" has to be asked of all of them. Asking it
+// of the OpenAMP key alone answered "no holding key on record" for a SeqPal ID
+// that is only a wallet -- which by then could hold the token perfectly well.
+func (s *server) holdingKeysOf(acct *Account) (map[string]bool, error) {
+	keys := map[string]bool{}
+	if own := strings.ToLower(strings.TrimSpace(acct.XOnly)); validXOnly(own) {
+		keys[own] = true
+	}
+	reqs, err := s.st.WhitelistRequestsByAID(acct.AID)
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range reqs {
+		if k := strings.ToLower(strings.TrimSpace(r.HoldingKey)); validXOnly(k) {
+			keys[k] = true
+		}
+	}
+	// An issuer of a network-enforced token holds their own supply at the key
+	// they named when they deployed it, and that key is always on their own
+	// published list.
+	issued, err := s.st.IssuancesByOwner(acct.AID)
+	if err != nil {
+		return nil, err
+	}
+	for _, iss := range issued {
+		if iss.Enforcement != "network" {
+			continue
+		}
+		if k := strings.ToLower(strings.TrimSpace(iss.IssuerPubkey)); validXOnly(k) {
+			keys[k] = true
+		}
+	}
+	return keys, nil
+}

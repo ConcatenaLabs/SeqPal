@@ -253,3 +253,53 @@ func TestARefusalStandsForAWhile(t *testing.T) {
 		t.Fatalf("an aged refusal must not shut a holder out for good, got %d %s", later.code, later.raw)
 	}
 }
+
+// A published holder list names KEYS. Asking "is this identity eligible" of the
+// OpenAMP account key alone answered "no holding key on record" for a SeqPal ID
+// that is only a wallet -- which by then could be on the list perfectly well,
+// because that is exactly what a whitelist request puts there. Every key the
+// account has proven counts.
+func TestEligibilityCountsEveryProvenHoldingKey(t *testing.T) {
+	h := newHarness(t)
+	h.s.cfg.nodeURL = newWalletNode(t, true).URL
+	h.s.screen = newScreener("")
+	_, aid := walletSession(t, h, testPKH)
+
+	asset := strings.Repeat("c", 64)
+	key := xonlyHex(t, strings.Repeat("42", 32))
+	iss := seedIssuanceOfKind(t, h.s, aid, "network")
+	if err := h.s.st.UpdateIssuanceFields(iss.ID, map[string]any{"asset_id": asset}); err != nil {
+		t.Fatal(err)
+	}
+	up := &dampUpstream{asset: asset, seq: 3, pi: strings.Repeat("cd", 32),
+		holders: []any{key}, frozen: []string{}}
+	h.oa.extra.Store(up.handler())
+
+	ask := func() map[string]any {
+		res := h.do("GET", "/api/eligibility?aid="+aid+"&asset="+asset, "", nil)
+		if res.code != 200 {
+			t.Fatalf("eligibility: %d %s", res.code, res.raw)
+		}
+		return res.body
+	}
+
+	if got := ask(); got["eligible"] != false {
+		t.Fatalf("a key nobody has proven must not make an identity eligible: %v", got)
+	}
+
+	now := time.Now().Unix()
+	if err := h.s.st.InsertWhitelistRequest(&WhitelistRequest{
+		ID: "wr-proven", IssuanceID: iss.ID, AssetID: asset, AID: aid,
+		HoldingKey: key, Proof: "descriptor", State: "included",
+		CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got := ask()
+	if got["eligible"] != true {
+		t.Fatalf("the account proved this key and the published list carries it: %v", got)
+	}
+	if got["list_version"] == nil {
+		t.Fatalf("the answer must name the list it came from: %v", got)
+	}
+}

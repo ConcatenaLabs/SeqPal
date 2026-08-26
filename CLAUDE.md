@@ -56,7 +56,10 @@ rule that catches something that actually breaks.
   wallet). An `xpub` account is refused every OpenAMP path by `requireEnclave`, and BOTH a
   serviced and a bearer deploy by `handleDeploy` -- serviced mints into an enclave, and bearer
   is supervised by a key that must sign a BIP340 freeze message, which an ordinary wallet
-  cannot produce. Only `network` is issuable without one; supervised, OpenDAMP, corporate actions and claims are deliberately
+  cannot produce. Only `network` is issuable without one, and it takes a
+  `holder_key` naming where the supply mints -- `initialHolderKey` accepts the
+  account's own enclave key, or any key `keyDerivesFromAccount` derives from a
+  linked wallet, and refuses anything else before a mint happens; supervised, OpenDAMP, corporate actions and claims are deliberately
   NOT behind that gate. `POST /api/auth/attach-enclave` upgrades one in place, keeping its id.
   The node does the descriptor work (`getdescriptorinfo`, `deriveaddresses`, `verifymessage`
   are pure functions needing no wallet), so there is no bespoke key handling in seqpald.

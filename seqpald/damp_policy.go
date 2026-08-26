@@ -283,11 +283,19 @@ func (s *server) eligibilityFromPublishedList(w http.ResponseWriter, aid, asset 
 		writeErr(w, 500, "store error")
 		return
 	}
-	if acct == nil || !validXOnly(strings.ToLower(strings.TrimSpace(acct.XOnly))) {
+	if acct == nil {
 		answer(false, []string{"this identity has no holding key on record, so it cannot appear on the published holder list"}, nil)
 		return
 	}
-	key := strings.ToLower(strings.TrimSpace(acct.XOnly))
+	keys, err := s.holdingKeysOf(acct)
+	if err != nil {
+		writeErr(w, 500, "store error")
+		return
+	}
+	if len(keys) == 0 {
+		answer(false, []string{"this identity has no holding key on record, so it cannot appear on the published holder list"}, nil)
+		return
+	}
 	var pol publishedPolicy
 	if err := s.callOpenAMP("GET", "/v1/snapshots?asset="+asset, "", nil, &pol); err != nil {
 		// Fail closed and say so: an unreadable list is not an empty list.
@@ -295,7 +303,7 @@ func (s *server) eligibilityFromPublishedList(w http.ResponseWriter, aid, asset 
 		return
 	}
 	for _, e := range pol.Snapshot.Predicates.Whitelist.Entries {
-		if !strings.EqualFold(e.Key, key) {
+		if !keys[strings.ToLower(strings.TrimSpace(e.Key))] {
 			continue
 		}
 		// On the list, and the height bounds that bind this holder travel with the

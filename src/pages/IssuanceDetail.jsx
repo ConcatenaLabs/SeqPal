@@ -47,12 +47,18 @@ const DEPLOY_HINT = {
 }
 
 function DeployCard({ iss, onDeployed }) {
-  const { deployIssuance, xonly } = useStore()
+  const { deployIssuance, xonly, hasEnclave } = useStore()
   const [form, setForm] = useState({
     supply: iss.supply > 0 ? String(iss.supply) : '1000000',
     precision: iss.precision >= 1 && iss.precision <= 8 ? iss.precision : 8,
     clawback: iss.clawback !== false,
+    holderKey: '',
   })
+  // A network-enforced mint lands at a holding key, and the coin is spent by
+  // signing with it. An OpenAMP account supplies one; a SeqPal ID that is only a
+  // wallet names a key from a wallet it has linked, and seqpald derives it from
+  // that wallet before it mints anything.
+  const namesHolderKey = (iss.enforcement || 'serviced') === 'network' && !hasEnclave
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
 
@@ -80,6 +86,7 @@ function DeployCard({ iss, onDeployed }) {
         // never holds an issuer key for this asset. seqpald cross-checks this against
         // the deploying account and refuses a mismatch.
         ...(xonly ? { issuer_pubkey: xonly } : {}),
+        ...(namesHolderKey ? { holder_key: form.holderKey.trim().toLowerCase() } : {}),
         // fee_convert_atoms is intentionally not sent: seqpald derives it from
         // the price server (value-preserving conversion), and a nonzero value
         // here would be treated as an explicit issuer override.
@@ -157,6 +164,29 @@ function DeployCard({ iss, onDeployed }) {
           </select>
         </div>
       </div>
+
+      {namesHolderKey && (
+        <div className="mt-4">
+          <label className="label" htmlFor="dep-holder-key">
+            Holding key (32-byte x-only, hex)
+          </label>
+          <input
+            id="dep-holder-key"
+            className="input font-mono text-sm"
+            spellCheck={false}
+            placeholder="the key the supply mints to"
+            value={form.holderKey}
+            onChange={(e) => setForm({ ...form, holderKey: e.target.value })}
+          />
+          <p className="mt-2 text-xs leading-relaxed text-ink-700/70">
+            The whole supply mints to this key, and the only way to move it afterwards is to
+            sign with it. It must come from a wallet you have linked to this SeqPal ID, which
+            is checked before anything is minted. A network-enforced coin sits at its own
+            covenant address rather than in an ordinary wallet balance, so keep the key where
+            you can still use it with OpenDAMP tooling.
+          </p>
+        </div>
+      )}
 
       <div className="mt-4 space-y-2">
         <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-ink-900/10 px-4 py-3">

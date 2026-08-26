@@ -134,6 +134,11 @@ type deployReq struct {
 	// VerifierAmount is the fixed amount of the verifier asset a valid rules
 	// output carries. Defaults to 1.
 	VerifierAmount uint64 `json:"verifier_amount"`
+	// HolderKey names where the mint lands: an x-only key this account can sign
+	// with. An account with an OpenAMP account has one already and may leave this
+	// empty; a SeqPal ID that is only a wallet must name one of its own, which
+	// the server proves derives from a wallet the account has linked.
+	HolderKey string `json:"holder_key"`
 	// The two values the issuer's registrar produces for this policy, and which
 	// nothing in this platform can compute: the compiled program identities and
 	// the policy commitment they were compiled against. Absent on the first
@@ -456,6 +461,7 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 			precision: precision, atoms: atoms, supply: req.Supply,
 			termsHash: termsHash, canonicalTerms: canonical, idem: idem,
 			whitelist: req.Whitelist, verifierAmount: req.VerifierAmount,
+			holderKey: req.HolderKey,
 			userCMR: req.UserCMR, verifierCMR: req.VerifierCMR, issuerCMR: req.IssuerCMR,
 			pi: req.Pi,
 		})

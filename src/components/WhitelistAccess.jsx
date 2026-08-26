@@ -188,7 +188,10 @@ export default function WhitelistAccess({ iss }) {
             />
             <p className="mt-1.5 text-xs leading-relaxed text-ink-700/60">
               This is what the network checks, so it has to be a key you hold. If it belongs to a
-              wallet linked to this SeqPal ID, nothing further is needed.
+              wallet linked to this SeqPal ID, nothing further is needed. Once tokens reach it
+              they sit at their own covenant address, which ordinary wallet software neither
+              displays nor spends, and signing with this key through OpenDAMP tooling is the
+              only way to move them again: name a key you will still be able to use.
             </p>
           </div>
           {signThis && (
