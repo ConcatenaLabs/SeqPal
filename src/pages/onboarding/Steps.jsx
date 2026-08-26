@@ -440,7 +440,10 @@ export function Step3Enforcement({ data, update }) {
           // A token SeqPal services settles through an account this issuer may
           // not have set up. Finding that out at checkout, after configuring the
           // whole issuance, is the failure the other card already avoids.
-          const needsServicing = m.id === 'serviced' && !servicedAvailable
+          // Both of these settle through, or are supervised by, an account this
+          // issuer may not have set up. Only the chain-enforced option needs
+          // nothing of the sort.
+          const needsServicing = (m.id === 'serviced' || m.id === 'bearer') && !servicedAvailable
           const unavailable = (isNetwork && dampAvailable === false) || needsServicing
           const selected = data.enforcement === m.id
           return (
@@ -510,7 +513,7 @@ export function Step3Enforcement({ data, update }) {
               {unavailable && (
                 <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
                   {needsServicing
-                    ? 'This option settles through SeqPal, and your SeqPal ID is not set up for that yet. Set it up from your passport, or choose an option that does not need it.'
+                    ? 'This option needs an account your SeqPal ID has not set up yet: one settles through SeqPal, the other is supervised by a key that signs its freezes. Set one up from your passport, or choose the option the chain enforces on its own.'
                     : 'Not available on this deployment.'}
                 </p>
               )}

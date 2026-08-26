@@ -28,9 +28,13 @@ registrar steps are simulated so the flow can be walked end to end.
   account id and it is proved with an ordinary signed message, which is a button
   a hardware or node wallet has always had. Such an
   ID cannot hold OpenAMP restricted assets until an OpenAMP account is attached
-  to it, and every path that needs one says so. Everything else is open to it:
-  freely-tradable (supervised) stocks, network-enforced (OpenDAMP) assets, and
-  the KYC-gated distributions attached to them, none of which involve an enclave.
+  to it, and every path that needs one says so. It can HOLD a freely-tradable
+  stock or a network-enforced (OpenDAMP) asset, both of which are ordinary
+  on-chain holdings, and claim the KYC-gated distributions attached to them.
+  ISSUING is narrower: it can issue a network-enforced asset, whose rules the
+  chain enforces on its own, but not a freely-tradable one, because that is
+  supervised by a key that signs its freezes and an ordinary wallet cannot make
+  such a signature.
   Attaching an OpenAMP account later keeps the same SeqPal ID.
 - One SeqPal ID holds as many **wallets** as its holder can prove, and signing in
   with any of them lands in the same account: a web wallet and a browser
