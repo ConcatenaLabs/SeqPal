@@ -282,3 +282,42 @@ func TestWalletChallengeWindowIsLongEnoughToLeaveThePage(t *testing.T) {
 		t.Fatalf("%s is not long enough for an out-of-band signature", walletChallengeTTL)
 	}
 }
+
+// Verifying an identity must not require an enclave account. This failed live
+// with "register with the policy server: bad pubkey", because a wallet-backed
+// ID has no key to register -- and what it is verified FOR needs none.
+func TestVerifyWorksWithoutAnEnclave(t *testing.T) {
+	h := newHarness(t)
+	h.s.cfg.nodeURL = newWalletNode(t, true).URL
+	h.s.screen = newScreener("") // the sanctions screener the verify path uses
+	ch := h.do("POST", "/api/auth/wallet/challenge", "", map[string]any{"descriptor": testPKH})
+	reg := h.do("POST", "/api/auth/wallet/register", "", map[string]any{
+		"descriptor": testPKH, "challenge": ch.body["challenge"], "sig": "X",
+		"display_name": "Wallet Wendy", "residence": "AE",
+	})
+	if reg.code != 200 {
+		t.Fatalf("register: %d %s", reg.code, reg.raw)
+	}
+	var session string
+	for _, c := range reg.set {
+		if c.Name == sessionCookie {
+			session = c.Value
+		}
+	}
+
+	v := h.do("POST", "/api/id/verify", session, map[string]any{
+		"residence": "AE", "screening_name": "Wallet Wendy", "base_eligibility": "ret",
+	})
+	if v.code != 200 {
+		t.Fatalf("verifying a wallet-backed ID must work, got %d %s", v.code, v.raw)
+	}
+	if v.body["status"] != "verified" {
+		t.Fatalf("status: %v", v.body["status"])
+	}
+	if v.body["aid"] != reg.body["account"].(map[string]any)["aid"] {
+		t.Fatal("the id in the verification result must be this account's own")
+	}
+	if _, ok := v.body["categories"]; !ok {
+		t.Fatal("categories must still be projected, even with nowhere to stamp them")
+	}
+}

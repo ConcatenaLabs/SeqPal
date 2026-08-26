@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Icon } from './icons'
 import { useStore } from '../lib/store'
-import { computeAID, isAid, isXonly, looksLikeDescriptor } from '../lib/statements'
-import * as oamp from '../lib/openamp'
+import { isAid, isXonly, looksLikeDescriptor } from '../lib/statements'
+import { resolveAccountKey } from '../lib/account'
 import * as wallet from '../lib/wallet'
 import { RESIDENCE_OPTIONS } from '../data/jurisdictions'
 
@@ -389,27 +389,12 @@ function LinkWallet({ onIdentity, onBack, onDone, busy }) {
       setProving(raw)
       return
     }
-    if (isXonly(value)) {
-      onIdentity({ kind: 'linked', xonly: value, aid: computeAID([value]) })
-      return
-    }
     setResolving(true)
     try {
-      const user = await oamp.getUser(value)
-      const xonly = (user?.pubkeys || [])[0]
-      if (!isXonly(xonly)) {
-        throw new Error('The policy server has no account key registered for that account id.')
-      }
-      if (computeAID([xonly]) !== value) {
-        throw new Error('That account id does not match the key the policy server returned for it. Nothing was linked.')
-      }
-      onIdentity({ kind: 'linked', xonly, aid: value })
+      const { xonly, aid } = await resolveAccountKey(value)
+      onIdentity({ kind: 'linked', xonly, aid })
     } catch (e) {
-      setErr(
-        e?.status === 404
-          ? 'No account with that id is registered with the policy server yet. Receive a restricted asset in that wallet first, or paste its wallet descriptor instead.'
-          : e.message
-      )
+      setErr(e.message)
     } finally {
       setResolving(false)
     }

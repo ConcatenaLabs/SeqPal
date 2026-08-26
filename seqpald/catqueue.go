@@ -44,11 +44,22 @@ type openampUser struct {
 // POST it, then VERIFY by re-reading GET /v1/users/{aid}, and audit-log the
 // pre/post lists and vocabulary version. A verification mismatch is an error,
 // never a silent success.
+// writeCategories stamps an account's eligibility on the policy server, where
+// the SeqPal account id and the OpenAMP account id are the same thing.
 func (s *server) writeCategories(aid string) ([]string, error) {
+	return s.writeCategoriesFor(aid, aid)
+}
+
+// writeCategoriesFor separates the two ids, which stop being the same the moment
+// a wallet-backed SeqPal ID attaches an enclave: the claims are filed under the
+// SeqPal account id it has always had, while the policy server knows only the
+// account derived from the enclave key.
+func (s *server) writeCategoriesFor(claimsAID, enclaveAID string) ([]string, error) {
+	aid := enclaveAID
 	unlock := s.catMu.lock(aid)
 	defer unlock()
 
-	claims, err := s.st.ClaimsByAID(aid)
+	claims, err := s.st.ClaimsByAID(claimsAID)
 	if err != nil {
 		return nil, fmt.Errorf("read claims: %w", err)
 	}

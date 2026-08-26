@@ -53,14 +53,24 @@ func (s *server) handleIDVerify(w http.ResponseWriter, r *http.Request) {
 	// The investor must be a registered openampd user before any category can be
 	// stamped; the server-recomputed AID must equal the local AID or we would be
 	// stamping an account we do not control.
-	aid, err := s.registerUser(acct.XOnly)
-	if err != nil {
-		writeErr(w, 502, "register with the policy server: %v", err)
-		return
-	}
-	if aid != acct.AID {
-		writeErr(w, 502, "the policy server returned an unexpected account id for this key")
-		return
+	//
+	// A wallet-backed ID has no enclave key to register and no enclave account to
+	// stamp, and does not need one: what it is verified FOR -- freely-tradable
+	// stocks, network-enforced assets, the distributions attached to them -- is
+	// not gated on the policy server. Its eligibility is recorded here and
+	// pushed the moment an enclave is attached (handleAttachEnclave).
+	aid := acct.AID
+	if acct.HasEnclave() {
+		registered, err := s.registerUser(acct.XOnly)
+		if err != nil {
+			writeErr(w, 502, "register with the policy server: %v", err)
+			return
+		}
+		if registered != acct.AID {
+			writeErr(w, 502, "the policy server returned an unexpected account id for this key")
+			return
+		}
+		aid = registered
 	}
 
 	// Real sanctions screening against all four public lists.
@@ -158,11 +168,20 @@ func (s *server) handleIDVerify(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, "store error")
 		return
 	}
-	cats, err := s.writeCategories(aid)
-	if err != nil {
-		s.st.Audit(aid, "id.verify.stamp_failed", map[string]any{"error": err.Error()})
-		writeErr(w, 502, "categories could not be stamped on the policy server: %v", err)
-		return
+	var cats []string
+	if acct.HasEnclave() {
+		cats, err = s.writeCategories(aid)
+		if err != nil {
+			s.st.Audit(aid, "id.verify.stamp_failed", map[string]any{"error": err.Error()})
+			writeErr(w, 502, "categories could not be stamped on the policy server: %v", err)
+			return
+		}
+	} else {
+		// Projected the same way, just not pushed anywhere yet.
+		cats = projectCategories(claims, time.Now().Unix())
+		if cats == nil {
+			cats = []string{}
+		}
 	}
 	s.st.Audit(aid, "id.verify.approved", map[string]any{"categories": cats})
 	writeJSON(w, 200, map[string]any{
