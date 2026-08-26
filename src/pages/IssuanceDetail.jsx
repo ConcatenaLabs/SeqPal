@@ -19,6 +19,7 @@ import DistributionConsole from '../components/DistributionConsole'
 import FreezeClawbackConsole from '../components/FreezeClawbackConsole'
 import SupervisionConsole from '../components/SupervisionConsole'
 import PolicyConsole from '../components/PolicyConsole'
+import WhitelistAccess from '../components/WhitelistAccess'
 import CorporateActionsCard from '../components/CorporateActionsCard'
 import AmendmentChainCard from '../components/AmendmentChainCard'
 import DRConsole from '../components/DRConsole'
@@ -491,7 +492,10 @@ export default function IssuanceDetail() {
                   <CorporateActionsCard iss={iss} />
                 </>
               ) : networkAsset ? (
-                <PolicyConsole iss={iss} />
+                <>
+                  <PolicyConsole iss={iss} />
+                  <WhitelistAccess iss={iss} />
+                </>
               ) : (
                 <FreezeClawbackConsole iss={iss} />
               )}

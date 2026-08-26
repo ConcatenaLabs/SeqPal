@@ -927,6 +927,65 @@ ALTER TABLE damp_policy_ops ADD COLUMN snapshot_hash TEXT NOT NULL DEFAULT '';
 ALTER TABLE accounts ADD COLUMN identity TEXT NOT NULL DEFAULT 'aid';
 ALTER TABLE accounts ADD COLUMN descriptor TEXT NOT NULL DEFAULT '';
 `,
+	// Nothing put a holder on a network-enforced asset's whitelist except the
+	// issuer typing their key, so a verified SeqPal ID was a credential with
+	// nowhere to present itself. A holder can now ask, per asset, having proved
+	// control of the key they want admitted; the issuer decides, and a published
+	// policy change is what turns an approval into a fact.
+	`
+CREATE TABLE whitelist_requests (
+    id            TEXT PRIMARY KEY,
+    issuance_id   TEXT NOT NULL,
+    asset_id      TEXT NOT NULL DEFAULT '',
+    aid           TEXT NOT NULL,
+    holding_key   TEXT NOT NULL,
+    proof         TEXT NOT NULL DEFAULT '',
+    note          TEXT NOT NULL DEFAULT '',
+    state         TEXT NOT NULL DEFAULT 'pending',
+    decided_by    TEXT NOT NULL DEFAULT '',
+    decided_at    INTEGER NOT NULL DEFAULT 0,
+    decision_note TEXT NOT NULL DEFAULT '',
+    policy_op_id  TEXT NOT NULL DEFAULT '',
+    created_at    INTEGER NOT NULL,
+    updated_at    INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX idx_whitelist_requests_issuance ON whitelist_requests(issuance_id, state);
+CREATE INDEX idx_whitelist_requests_aid ON whitelist_requests(aid);
+CREATE UNIQUE INDEX idx_whitelist_requests_live ON whitelist_requests(issuance_id, holding_key)
+    WHERE state IN ('pending','approved');
+`,
+	// One SeqPal ID, more than one wallet. A holder who opened their ID with a
+	// web wallet and also runs the browser extension is one person with one set
+	// of obligations; two SeqPal IDs would say otherwise. Every wallet here has
+	// been proven in the way its kind allows, and the account id never changes
+	// when one is added, so every record pointing at it keeps pointing at it.
+	//
+	// Existing accounts are backfilled from what they signed up with, so each
+	// one starts with exactly the wallet it already had.
+	`
+CREATE TABLE account_wallets (
+    id          TEXT PRIMARY KEY,
+    aid         TEXT NOT NULL,
+    kind        TEXT NOT NULL,
+    descriptor  TEXT NOT NULL DEFAULT '',
+    xonly       TEXT NOT NULL DEFAULT '',
+    enclave_aid TEXT NOT NULL DEFAULT '',
+    label       TEXT NOT NULL DEFAULT '',
+    proof       TEXT NOT NULL DEFAULT '',
+    created_at  INTEGER NOT NULL
+);
+CREATE INDEX idx_account_wallets_aid ON account_wallets(aid);
+CREATE UNIQUE INDEX idx_account_wallets_desc ON account_wallets(descriptor) WHERE descriptor != '';
+CREATE UNIQUE INDEX idx_account_wallets_xonly ON account_wallets(xonly) WHERE xonly != '';
+
+INSERT INTO account_wallets (id, aid, kind, descriptor, xonly, enclave_aid, label, proof, created_at)
+SELECT lower(hex(randomblob(16))), aid, 'enclave', '', xonly, aid, 'Original wallet', 'migrated', created_at
+  FROM accounts WHERE identity = 'aid' AND xonly != '' AND xonly NOT LIKE 'xpub:%';
+
+INSERT INTO account_wallets (id, aid, kind, descriptor, xonly, enclave_aid, label, proof, created_at)
+SELECT lower(hex(randomblob(16))), aid, 'descriptor', descriptor, '', '', 'Original wallet', 'migrated', created_at
+  FROM accounts WHERE identity = 'xpub' AND descriptor != '';
+`,
 }
 
 // Store is seqpald's persistent state. Every financial fact the UI shows is

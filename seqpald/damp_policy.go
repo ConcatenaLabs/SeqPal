@@ -627,6 +627,13 @@ func (s *server) handlePolicyComplete(w http.ResponseWriter, r *http.Request) {
 	// the commitment shows the one the chain is moving to.
 	_ = s.st.UpdateIssuanceFields(iss.ID, map[string]any{"policy_commitment": op.PiNext})
 
+	// A holder whose request this change carried is now admitted in fact, not
+	// just in the issuer's intention. Only an unfreeze adds keys; a freeze
+	// removes them, and marking those included would be exactly backwards.
+	if op.Kind == "unfreeze" {
+		s.noteWhitelistInclusions(iss.ID, op.ID, op.HoldersAdded)
+	}
+
 	writeJSON(w, 200, map[string]any{
 		"op_id": op.ID, "kind": op.Kind, "state": "published", "txid": done.Txid,
 		"seq": op.Seq, "commitment": op.PiNext,

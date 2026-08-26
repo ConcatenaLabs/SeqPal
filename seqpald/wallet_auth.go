@@ -155,6 +155,14 @@ func (s *server) handleWalletRegister(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 409, "could not create the account: %v", err)
 		return
 	}
+	// The wallet an ID was founded with is the first of the wallets it is held
+	// in, not a special case outside that list.
+	if err := s.st.InsertAccountWallet(&AccountWallet{
+		ID: mustID(), AID: id, Kind: "descriptor", Descriptor: desc,
+		Label: "Original wallet", Proof: "signature",
+	}); err != nil {
+		s.st.Audit(id, "auth.wallet.register.wallet_row_failed", map[string]any{"error": err.Error()})
+	}
 	s.st.Audit(id, "auth.wallet.register", map[string]any{
 		"kind": acct.Kind, "display_name": acct.DisplayName, "address": address,
 	})
@@ -168,16 +176,26 @@ func (s *server) handleWalletLogin(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "bad request body")
 		return
 	}
-	_, id, _, err := s.authenticateWallet(&req)
+	desc, id, _, err := s.authenticateWallet(&req)
 	if err != nil {
 		s.st.Audit("", "auth.wallet.login.refused", map[string]any{"reason": err.Error()})
 		writeErr(w, 401, "%v", err)
 		return
 	}
-	acct, err := s.st.AccountByAID(id)
+	// A wallet linked to an existing ID signs into THAT ID. Falling back to the
+	// id derived from the descriptor covers the wallet an account was founded
+	// with, which is its own id by construction.
+	acct, err := s.st.AccountByDescriptor(desc)
 	if err != nil {
 		writeErr(w, 500, "store error")
 		return
+	}
+	if acct == nil {
+		acct, err = s.st.AccountByAID(id)
+		if err != nil {
+			writeErr(w, 500, "store error")
+			return
+		}
 	}
 	if acct == nil {
 		writeErr(w, 404, "no account exists for this wallet; register first")
@@ -199,7 +217,7 @@ func (s *server) handleAttachEnclave(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "bad request body")
 		return
 	}
-	if acct.HasEnclave() {
+	if s.hasEnclave(acct) {
 		writeErr(w, 409, "this account already has an OpenAMP account attached")
 		return
 	}
@@ -227,6 +245,12 @@ func (s *server) handleAttachEnclave(w http.ResponseWriter, r *http.Request) {
 	if err := s.st.AttachEnclave(acct.AID, req.XOnly); err != nil {
 		writeErr(w, 500, "could not attach the OpenAMP account: %v", err)
 		return
+	}
+	if err := s.st.InsertAccountWallet(&AccountWallet{
+		ID: mustID(), AID: acct.AID, Kind: "enclave", XOnly: req.XOnly, EnclaveAID: enclaveAID,
+		Label: "OpenAMP account", Proof: "tagged-challenge",
+	}); err != nil {
+		s.st.Audit(acct.AID, "auth.attach_enclave.wallet_row_failed", map[string]any{"error": err.Error()})
 	}
 	s.st.Audit(acct.AID, "auth.attach_enclave", map[string]any{"xonly": req.XOnly, "enclave_aid": enclaveAID})
 
@@ -272,7 +296,7 @@ func (s *server) handleAttachEnclave(w http.ResponseWriter, r *http.Request) {
 // wallet that has no enclave at all.
 func (s *server) requireEnclave(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if acct := principal(r); acct != nil && !acct.HasEnclave() {
+		if acct := principal(r); acct != nil && !s.hasEnclave(acct) {
 			writeErr(w, 403, "this SeqPal ID is a wallet with no OpenAMP account attached, so it "+
 				"cannot hold or move OpenAMP restricted assets. Attach an OpenAMP account to it "+
 				"and this works; freely-tradable stocks and network-enforced assets do not need one")

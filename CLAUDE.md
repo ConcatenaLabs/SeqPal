@@ -52,6 +52,16 @@ There is no CI. Those commands are the whole gate.
   NOT behind that gate. `POST /api/auth/attach-enclave` upgrades one in place, keeping its id.
   The node does the descriptor work (`getdescriptorinfo`, `deriveaddresses`, `verifymessage`
   are pure functions needing no wallet), so there is no bespoke key handling in seqpald.
+- `account_wallets` holds the wallets ONE SeqPal ID is kept in; signing in with any linked
+  wallet resolves to the account that linked it (`AccountByDescriptor` / `AccountByEnclaveKey`),
+  never to a second account. Descriptor wallets are unlimited; enclave wallets are capped at
+  one, because restricted assets settle in exactly one account. `s.hasEnclave(acct)` reads that
+  table -- never `acct.Identity` directly, which is only what the ID was FOUNDED with.
+- `whitelist_requests` is how a verified ID asks to join a network-enforced asset's whitelist.
+  The requested key must be proven (`descriptor`: derives from a linked wallet; `signature`: a
+  signed message from that key), or a verified holder could launder eligibility onto somebody
+  else's key. Approving is a decision; `included` is only ever set when a published policy
+  change carried the key (`noteWhitelistInclusions`, unfreeze only -- a freeze REMOVES keys).
 - **A wallet is never handed a digest to sign.** Application statements are domain-TAGGED, and
   an enclave spend is sent as the TRANSACTION so the wallet recomputes each sighash itself. The
   enclave key is half of the 2-of-2 every restricted asset sits behind, so a digest signer over

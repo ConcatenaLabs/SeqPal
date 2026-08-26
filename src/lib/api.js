@@ -76,6 +76,32 @@ export const walletLogin = (body) => req('/auth/wallet/login', { method: 'POST',
 // challenge an OpenAMP account signs in with.
 export const attachEnclave = (body) => req('/auth/attach-enclave', { method: 'POST', body })
 
+// ── the wallets one SeqPal ID is held in ────────────────────────────────────
+// One identity, more than one wallet. Descriptor wallets are unlimited; an
+// OpenAMP account is limited to one, because restricted assets settle in it and
+// a second would leave no answer to which.
+export const accountWallets = () => req('/account/wallets')
+export const linkWallet = (body) => req('/account/wallets', { method: 'POST', body })
+export const unlinkWallet = (id) =>
+  req(`/account/wallets/${encodeURIComponent(id)}`, { method: 'DELETE' })
+
+// ── admission to a network-enforced asset's whitelist ───────────────────────
+// An OpenDAMP whitelist is a list of holding keys the issuer publishes. Nothing
+// puts a holder on one automatically, so this is how a verified SeqPal ID asks.
+// Body { holding_key, sig?, note? }: without a signature the server answers with
+// `sign_this` when the key is not one this ID's wallets derive.
+export const requestWhitelist = (id, body) =>
+  req(`/issuances/${encodeURIComponent(id)}/whitelist-requests`, { method: 'POST', body })
+
+export const whitelistRequests = (id) =>
+  req(`/issuances/${encodeURIComponent(id)}/whitelist-requests`)
+
+// Owner: approve or refuse one request. Approving is a decision; the key reaches
+// the published list when a policy change carries it.
+export const decideWhitelist = (id, rid, body) =>
+  req(`/issuances/${encodeURIComponent(id)}/whitelist-requests/${encodeURIComponent(rid)}/decide`,
+    { method: 'POST', body })
+
 // ── session required ────────────────────────────────────────────────────
 export const logout = () => req('/auth/logout', { method: 'POST', body: {} })
 

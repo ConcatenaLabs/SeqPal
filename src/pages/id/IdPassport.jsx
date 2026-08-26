@@ -5,6 +5,7 @@ import { Badge } from '../../components/ui'
 import SignInGate from '../../components/SignInGate'
 import { useStore } from '../../lib/store'
 import { idPassport } from '../../lib/api'
+import LinkedWallets from '../../components/LinkedWallets'
 
 const LIST_LABELS = {
   ofac_sdn: 'OFAC SDN',
@@ -329,6 +330,10 @@ export default function IdPassport() {
             )}
           </div>
         </Section>
+      </div>
+
+      <div className="mt-8">
+        <LinkedWallets />
       </div>
 
       <div className="mt-10 flex flex-wrap gap-3">

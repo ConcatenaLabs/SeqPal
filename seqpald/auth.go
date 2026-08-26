@@ -180,6 +180,14 @@ func (s *server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 409, "could not create the account: %v", err)
 		return
 	}
+	// The enclave an ID was founded with is the first of the wallets it is held
+	// in, so it appears in that list like any other.
+	if err := s.st.InsertAccountWallet(&AccountWallet{
+		ID: mustID(), AID: aid, Kind: "enclave", XOnly: req.XOnly, EnclaveAID: aid,
+		Label: "Original wallet", Proof: "tagged-challenge",
+	}); err != nil {
+		s.st.Audit(aid, "auth.register.wallet_row_failed", map[string]any{"error": err.Error()})
+	}
 	s.st.Audit(aid, "auth.register", map[string]any{"kind": acct.Kind, "display_name": acct.DisplayName})
 	s.openSession(w, acct)
 	writeJSON(w, 200, map[string]any{"account": acct})
@@ -197,7 +205,16 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 401, "%v", err)
 		return
 	}
-	acct, err := s.st.AccountByAID(aid)
+	// An enclave linked to an existing SeqPal ID signs into THAT ID, not into a
+	// second one derived from the same key.
+	acct, err := s.st.AccountByEnclaveKey(req.XOnly)
+	if err != nil {
+		writeErr(w, 500, "store error")
+		return
+	}
+	if acct == nil {
+		acct, err = s.st.AccountByAID(aid)
+	}
 	if err != nil {
 		writeErr(w, 500, "store error")
 		return

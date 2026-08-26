@@ -304,6 +304,10 @@ func (s *server) handler() http.Handler {
 	// Attaching an enclave key to a wallet-backed account, which is what opens
 	// OpenAMP restricted assets to it.
 	mux.HandleFunc("POST /api/auth/attach-enclave", s.requireSession(s.handleAttachEnclave))
+	// One SeqPal ID, more than one wallet: link another, list them, unlink one.
+	mux.HandleFunc("GET /api/account/wallets", s.requireSession(s.handleAccountWallets))
+	mux.HandleFunc("POST /api/account/wallets", s.requireSession(s.handleLinkWallet))
+	mux.HandleFunc("DELETE /api/account/wallets/{wid}", s.requireSession(s.handleUnlinkWallet))
 	mux.HandleFunc("GET /api/me", s.requireSession(s.handleMe))
 	mux.HandleFunc("POST /api/entities", s.requireSession(s.handleCreateEntity))
 	mux.HandleFunc("GET /api/issuances", s.requireSession(s.handleListIssuances))
@@ -331,6 +335,12 @@ func (s *server) handler() http.Handler {
 	mux.HandleFunc("POST /api/issuances/{id}/policy/freeze", s.requireSession(s.handlePolicyFreeze))
 	mux.HandleFunc("POST /api/issuances/{id}/policy/unfreeze", s.requireSession(s.handlePolicyUnfreeze))
 	mux.HandleFunc("POST /api/issuances/{id}/policy/{opID}/complete", s.requireSession(s.handlePolicyComplete))
+	// Asking to be admitted to a network-enforced asset's whitelist, and the
+	// issuer's decision on it. Not behind requireEnclave: a whitelist is a list
+	// of holding keys, and holding one needs no enclave account.
+	mux.HandleFunc("POST /api/issuances/{id}/whitelist-requests", s.requireSession(s.handleWhitelistRequest))
+	mux.HandleFunc("GET /api/issuances/{id}/whitelist-requests", s.requireSession(s.handleWhitelistRequests))
+	mux.HandleFunc("POST /api/issuances/{id}/whitelist-requests/{rid}/decide", s.requireSession(s.handleWhitelistDecide))
 
 	// M10 corporate actions (W-3): owner creates; the list and detail are
 	// PUBLIC (outpoints, atoms, tallies; never identities); claiming requires a

@@ -1,0 +1,153 @@
+package main
+
+import (
+	"database/sql"
+	"strings"
+	"time"
+)
+
+// The wallets a SeqPal ID is held in.
+//
+// One identity, more than one wallet. A holder who opened their ID with a web
+// wallet and also runs the browser extension is one person with one set of
+// obligations, and making them keep two SeqPal IDs would say otherwise: two
+// passports, two verifications, two sets of eligibility, for one human being.
+//
+// Every wallet here has been proven, in the way its kind allows:
+//
+//	"descriptor"  a public wallet descriptor, proven by an ordinary signed
+//	              message from an address it derives.
+//	"enclave"     an OpenAMP account, proven by a tagged BIP340 challenge from
+//	              its enclave key. Having one of these is what lets the ID hold
+//	              restricted assets.
+//
+// The account id never changes when a wallet is added: it is the id the account
+// has always had, and every record pointing at it keeps pointing at it.
+type AccountWallet struct {
+	ID   string `json:"id"`
+	AID  string `json:"aid"`
+	Kind string `json:"kind"`
+	// Descriptor is set for kind "descriptor": canonical, with its checksum.
+	Descriptor string `json:"descriptor,omitempty"`
+	// XOnly is set for kind "enclave": the m/5/0 key the policy server knows.
+	XOnly string `json:"xonly,omitempty"`
+	// EnclaveAID is the OpenAMP account id derived from XOnly, which is NOT this
+	// SeqPal account's id and must never be confused with it.
+	EnclaveAID string `json:"enclave_aid,omitempty"`
+	Label      string `json:"label,omitempty"`
+	Proof      string `json:"proof,omitempty"`
+	CreatedAt  int64  `json:"created_at"`
+}
+
+const accountWalletCols = `id, aid, kind, descriptor, xonly, enclave_aid, label, proof, created_at`
+
+func (s *Store) InsertAccountWallet(wl *AccountWallet) error {
+	if wl.CreatedAt == 0 {
+		wl.CreatedAt = time.Now().Unix()
+	}
+	_, err := s.db.Exec(
+		`INSERT INTO account_wallets (`+accountWalletCols+`) VALUES (?,?,?,?,?,?,?,?,?)`,
+		wl.ID, wl.AID, wl.Kind, wl.Descriptor, wl.XOnly, wl.EnclaveAID, wl.Label, wl.Proof, wl.CreatedAt)
+	return err
+}
+
+func (s *Store) AccountWallets(aid string) ([]*AccountWallet, error) {
+	rows, err := s.db.Query(
+		`SELECT `+accountWalletCols+` FROM account_wallets WHERE aid = ? ORDER BY created_at`, aid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []*AccountWallet{}
+	for rows.Next() {
+		var wl AccountWallet
+		if err := rows.Scan(&wl.ID, &wl.AID, &wl.Kind, &wl.Descriptor, &wl.XOnly, &wl.EnclaveAID,
+			&wl.Label, &wl.Proof, &wl.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, &wl)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) AccountWalletByID(id string) (*AccountWallet, error) {
+	return scanAccountWallet(s.db.QueryRow(
+		`SELECT `+accountWalletCols+` FROM account_wallets WHERE id = ?`, id))
+}
+
+// AccountByDescriptor finds whose wallet a descriptor is. This is what lets a
+// holder sign in with any wallet they have linked and land in the same account,
+// rather than in a second one derived from that descriptor.
+func (s *Store) AccountByDescriptor(desc string) (*Account, error) {
+	var aid string
+	err := s.db.QueryRow(
+		`SELECT aid FROM account_wallets WHERE kind = 'descriptor' AND descriptor = ?`,
+		strings.TrimSpace(desc)).Scan(&aid)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return s.AccountByAID(aid)
+}
+
+// AccountByEnclaveKey finds whose wallet an enclave key is, for the same reason.
+func (s *Store) AccountByEnclaveKey(xonly string) (*Account, error) {
+	var aid string
+	err := s.db.QueryRow(
+		`SELECT aid FROM account_wallets WHERE kind = 'enclave' AND xonly = ?`,
+		strings.ToLower(strings.TrimSpace(xonly))).Scan(&aid)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return s.AccountByAID(aid)
+}
+
+// HasEnclaveWallet reports whether this ID holds any OpenAMP account at all,
+// which is what decides whether restricted assets are within its reach.
+func (s *Store) HasEnclaveWallet(aid string) (bool, error) {
+	var n int
+	if err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM account_wallets WHERE aid = ? AND kind = 'enclave'`, aid).Scan(&n); err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+// DescriptorWallets are the linked wallets whose addresses can be derived, which
+// is how a holding key can be recognised as one this account already controls.
+func (s *Store) DescriptorWallets(aid string) ([]*AccountWallet, error) {
+	all, err := s.AccountWallets(aid)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*AccountWallet, 0, len(all))
+	for _, wl := range all {
+		if wl.Kind == "descriptor" && wl.Descriptor != "" {
+			out = append(out, wl)
+		}
+	}
+	return out, nil
+}
+
+func (s *Store) DeleteAccountWallet(id, aid string) error {
+	_, err := s.db.Exec(`DELETE FROM account_wallets WHERE id = ? AND aid = ?`, id, aid)
+	return err
+}
+
+func scanAccountWallet(row *sql.Row) (*AccountWallet, error) {
+	var wl AccountWallet
+	err := row.Scan(&wl.ID, &wl.AID, &wl.Kind, &wl.Descriptor, &wl.XOnly, &wl.EnclaveAID,
+		&wl.Label, &wl.Proof, &wl.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &wl, nil
+}

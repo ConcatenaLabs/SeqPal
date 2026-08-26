@@ -221,3 +221,67 @@ func (s *server) walletDescriptors(pasted string) (display, verify string, err e
 	}
 	return display, verify, nil
 }
+
+// canonicalDescriptor canonicalises ANY descriptor at the node, without the
+// shape rules a WALLET descriptor has to satisfy. A single-key descriptor like
+// pkh(02ab..) is the case that needs this: it names one key rather than a
+// wallet, so it has no ranged receive chain and demanding one would reject it.
+// The private-key refusal still applies, because that is about what must never
+// be sent, not about shape.
+func (s *server) canonicalDescriptor(desc string) (string, error) {
+	d := strings.TrimSpace(desc)
+	if d == "" {
+		return "", fmt.Errorf("a descriptor is required")
+	}
+	if err := checkNoPrivateKey(d); err != nil {
+		return "", err
+	}
+	res, err := s.nodeRPC("getdescriptorinfo", d)
+	if err != nil {
+		return "", fmt.Errorf("that is not a descriptor this network understands: %v", err)
+	}
+	var out struct {
+		Descriptor string `json:"descriptor"`
+		Checksum   string `json:"checksum"`
+		HasPrivate bool   `json:"hasprivatekeys"`
+	}
+	if err := json.Unmarshal(res, &out); err != nil || out.Descriptor == "" {
+		return "", fmt.Errorf("the node did not recognise that descriptor")
+	}
+	if out.HasPrivate {
+		return "", fmt.Errorf("that descriptor contains a PRIVATE key; SeqPal never wants one")
+	}
+	if strings.Contains(out.Descriptor, "#") {
+		return out.Descriptor, nil
+	}
+	if out.Checksum == "" {
+		return "", fmt.Errorf("the node returned no checksum for that descriptor")
+	}
+	return out.Descriptor + "#" + out.Checksum, nil
+}
+
+// walletAddressRange derives a run of a descriptor's addresses. Used to decide
+// whether a key a holder claims is one their own wallet derives, which is the
+// cheapest honest proof available when the descriptor itself was already proven
+// at sign-in.
+func (s *server) walletAddressRange(canonicalDesc string, count int) ([]string, error) {
+	if count < 1 {
+		count = 1
+	}
+	desc := canonicalDesc
+	if !strings.Contains(desc, "#") {
+		var err error
+		if desc, err = s.canonicalWalletDescriptor(desc); err != nil {
+			return nil, err
+		}
+	}
+	res, err := s.nodeRPC("deriveaddresses", desc, []int{0, count - 1})
+	if err != nil {
+		return nil, fmt.Errorf("could not derive addresses from that descriptor: %v", err)
+	}
+	var addrs []string
+	if err := json.Unmarshal(res, &addrs); err != nil {
+		return nil, fmt.Errorf("the node derived no addresses from that descriptor")
+	}
+	return addrs, nil
+}

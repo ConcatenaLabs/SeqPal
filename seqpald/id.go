@@ -60,7 +60,7 @@ func (s *server) handleIDVerify(w http.ResponseWriter, r *http.Request) {
 	// not gated on the policy server. Its eligibility is recorded here and
 	// pushed the moment an enclave is attached (handleAttachEnclave).
 	aid := acct.AID
-	if acct.HasEnclave() {
+	if s.hasEnclave(acct) {
 		registered, err := s.registerUser(acct.XOnly)
 		if err != nil {
 			writeErr(w, 502, "register with the policy server: %v", err)
@@ -169,7 +169,7 @@ func (s *server) handleIDVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var cats []string
-	if acct.HasEnclave() {
+	if s.hasEnclave(acct) {
 		cats, err = s.writeCategories(aid)
 		if err != nil {
 			s.st.Audit(aid, "id.verify.stamp_failed", map[string]any{"error": err.Error()})
@@ -239,7 +239,7 @@ func (s *server) handleIDPassport(w http.ResponseWriter, r *http.Request) {
 	// report zero categories for a holder who is verified -- which is how the
 	// passport came to show "Verified" and "Categories carried: 0" at once.
 	var user openampUser
-	if acct.HasEnclave() {
+	if s.hasEnclave(acct) {
 		_ = s.callOpenAMP("GET", "/v1/users/"+acct.AID, "", nil, &user)
 	} else {
 		user.Categories = projectCategories(claims, time.Now().Unix())
@@ -289,7 +289,7 @@ func (s *server) handleIDPassport(w http.ResponseWriter, r *http.Request) {
 		// What kind of account this is, so the passport can stop calling a
 		// wallet-backed id an enclave account id.
 		"identity":       acct.Identity,
-		"has_enclave":    acct.HasEnclave(),
+		"has_enclave":    s.hasEnclave(acct),
 		"aid":            acct.AID,
 		"enclave_key":    acct.XOnly,
 		"status":         status,
