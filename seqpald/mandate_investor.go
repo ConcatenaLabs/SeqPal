@@ -74,23 +74,19 @@ func (s *server) handleInvestorMandate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	signer := strings.TrimSpace(req.SignerXOnly)
-	if signer == "" {
-		signer = acct.XOnly
-	}
-	if signer != acct.XOnly {
+	if named := strings.TrimSpace(req.SignerXOnly); named != "" && !strings.EqualFold(named, acct.XOnly) {
 		writeErr(w, 403, "the mandate must be signed by your own SeqPal ID key")
 		return
 	}
+	signer := acct.XOnly
 	statement := investorMandateStatement(acct.AID, chain, req.Asset, addr)
 	if strings.TrimSpace(req.Signature) == "" {
-		writeJSON(w, 200, map[string]any{
-			"sign_this": string(statement), "tag": mandateTag,
-			"note": "sign these canonical bytes with your SeqPal ID key, then resubmit with signature",
-		})
+		writeJSON(w, 200, withNote(mandateTag, statement,
+			"sign these canonical bytes with your SeqPal ID key, then resubmit with signature; an "+
+				"ordinary wallet signs sign_this_message as a message instead"))
 		return
 	}
-	if err := s.verifyKeyStatement(signer, mandateTag, statement, req.Signature); err != nil {
+	if err := s.verifyAccountStatement(acct, mandateTag, statement, req.Signature); err != nil {
 		writeErr(w, 400, "the mandate signature does not verify for your key")
 		return
 	}

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Icon } from './icons'
 import { Badge } from './ui'
 import CopyId from './CopyId'
+import OfflineSignature from './OfflineSignature'
 import * as api from '../lib/api'
 import { usePoll } from '../lib/poll'
 import { useStore } from '../lib/store'
@@ -43,6 +44,10 @@ export default function InvestorMandateCard() {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
   const [warn, setWarn] = useState(null)
+  // What to sign, and the signature, when there is no wallet connected to sign
+  // it here: a SeqPal ID that is only a wallet signs elsewhere and pastes.
+  const [prep, setPrep] = useState(null)
+  const [sig, setSig] = useState('')
 
   const current = data?.mandate
 
@@ -55,22 +60,23 @@ export default function InvestorMandateCard() {
       setErr(issue)
       return
     }
-    if (!hasKey) {
-      setErr('Connect your Sequentia wallet to sign the mandate.')
-      return
-    }
     setBusy(true)
     try {
       // Phase 1: ask seqpald for the exact canonical bytes to sign. This also runs
       // the authoritative address validation and the enclave-address rejection, so
       // a bad address is refused here before anything is signed.
-      const prep = await api.investorMandate({ chain: 'sequentia', address: addr })
-      if (!prep.sign_this) {
+      const got = await api.investorMandate({ chain: 'sequentia', address: addr })
+      if (!got.sign_this) {
         refresh()
         return
       }
-      const sig = await signMandateStmt(prep.sign_this)
-      if (!sig) {
+      if (!hasKey) {
+        // Nothing here can sign it. Show the exact characters instead.
+        setPrep(got)
+        return
+      }
+      const signature = await signMandateStmt(got.sign_this)
+      if (!signature) {
         setErr('Connect your Sequentia wallet to sign the mandate.')
         return
       }
@@ -78,7 +84,7 @@ export default function InvestorMandateCard() {
       await api.investorMandate({
         chain: 'sequentia',
         address: addr,
-        signature: sig,
+        signature,
         signer_xonly: xonly,
       })
       setAddress('')
@@ -86,6 +92,26 @@ export default function InvestorMandateCard() {
     } catch (e) {
       // The server's refusal message (invalid address, enclave address, signature)
       // is user-presentable and shown verbatim.
+      setErr(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const registerSigned = async () => {
+    setErr(null)
+    setBusy(true)
+    try {
+      await api.investorMandate({
+        chain: 'sequentia',
+        address: address.trim(),
+        signature: sig.trim(),
+      })
+      setAddress('')
+      setSig('')
+      setPrep(null)
+      refresh()
+    } catch (e) {
       setErr(e.message)
     } finally {
       setBusy(false)
@@ -135,21 +161,23 @@ export default function InvestorMandateCard() {
           />
         </div>
         {warn && address.trim() && <p className="text-xs text-amber-700">{warn}</p>}
-        {!hasKey && (
-          <p className="text-xs text-amber-700">
-            No Sequentia wallet is connected. Sign in again with your wallet before signing the
-            mandate.
-          </p>
-        )}
         {err && <p className="text-sm font-medium text-rose-600">{err}</p>}
         <button
           onClick={register}
-          disabled={busy || !address.trim() || !hasKey}
+          disabled={busy || !address.trim()}
           className="btn-primary w-full disabled:opacity-60"
         >
           <Icon.shield width={16} height={16} />
           {busy ? 'Signing…' : 'Sign and register payout address'}
         </button>
+        <OfflineSignature
+          prep={prep}
+          sig={sig}
+          onSig={setSig}
+          onSubmit={registerSigned}
+          busy={busy}
+          label="Register payout address"
+        />
       </div>
 
       <p className="mt-3 text-[11px] leading-relaxed text-ink-700/55">

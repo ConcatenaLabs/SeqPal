@@ -46,6 +46,10 @@ func newWalletNode(t *testing.T, signedOK bool) *httptest.Server {
 			}
 		case "verifymessage":
 			reply(signedOK)
+		case "validateaddress":
+			var p []string
+			_ = json.Unmarshal(req.Params, &p)
+			reply(map[string]any{"isvalid": len(p) > 0 && p[0] != ""})
 		default:
 			_ = json.NewEncoder(w).Encode(map[string]any{"result": nil,
 				"error": map[string]any{"code": -32601, "message": "no such method: " + req.Method}})

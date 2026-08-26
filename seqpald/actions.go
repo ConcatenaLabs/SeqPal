@@ -456,10 +456,10 @@ func (s *server) handleActionClaim(w http.ResponseWriter, r *http.Request) {
 	stmt := holdingProofStatement(a, outpoints, payoutAddress, choice, acct.AID)
 	digest := sha256.Sum256(stmt)
 	if strings.TrimSpace(req.Sig) == "" {
-		writeJSON(w, 200, map[string]any{
-			"sign_this": string(stmt), "tag": holdingProofTag,
-			"note": "sign sha256 of these canonical bytes under the tag with the key controlling the outpoints, then resubmit as sig",
-		})
+		writeJSON(w, 200, withNoteOf(holdingProofTag, stmt, digest[:],
+			"sign sha256 of these canonical bytes under the tag with the key controlling the "+
+				"outpoints, then resubmit as sig; an ordinary wallet signs sign_this_message "+
+				"as a message instead"))
 		return
 	}
 	if err := s.verifyKeyStatement(xonly, holdingProofTag, digest[:], req.Sig); err != nil {

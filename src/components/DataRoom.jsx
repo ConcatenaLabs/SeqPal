@@ -5,6 +5,7 @@ import { Badge } from './ui'
 import CopyId from './CopyId'
 import * as api from '../lib/api'
 import { useStore } from '../lib/store'
+import OfflineSignature from './OfflineSignature'
 
 // The data room (M4). seqpald generates a deterministic, content-addressed
 // offering document set and binds its manifest INTO the terms object, so the
@@ -69,9 +70,13 @@ function kindMeta(kind) {
 }
 
 function DocRow({ doc, offerOpen, canSign }) {
-  const { signDoc } = useStore()
+  const { signDoc, hasKey } = useStore()
   const [sigCount, setSigCount] = useState(null)
   const [state, setState] = useState({ busy: false, err: null, ok: false })
+  // A SeqPal ID that is only a wallet has nothing here that can sign: it is
+  // handed the exact characters and pastes the signature back.
+  const [prep, setPrep] = useState(null)
+  const [sig, setSig] = useState('')
   const meta = kindMeta(doc.kind)
 
   const loadSigs = () => {
@@ -93,8 +98,13 @@ function DocRow({ doc, offerOpen, canSign }) {
     try {
       // The label only names the document in the wallet's prompt; the
       // signature commits to the hash, which is what seqpald verifies.
-      const sig = await signDoc(doc.hash, meta.label)
-      if (!sig) {
+      if (!hasKey) {
+        setPrep(await api.signDocumentSig(doc.hash, ''))
+        setState({ busy: false, ok: false, err: null })
+        return
+      }
+      const signature = await signDoc(doc.hash, meta.label)
+      if (!signature) {
         setState({
           busy: false,
           ok: false,
@@ -102,7 +112,20 @@ function DocRow({ doc, offerOpen, canSign }) {
         })
         return
       }
-      await api.signDocumentSig(doc.hash, sig)
+      await api.signDocumentSig(doc.hash, signature)
+      setState({ busy: false, ok: true, err: null })
+      loadSigs()
+    } catch (e) {
+      setState({ busy: false, ok: false, err: e.message })
+    }
+  }
+
+  const signPasted = async () => {
+    setState({ busy: true, err: null, ok: false })
+    try {
+      await api.signDocumentSig(doc.hash, sig.trim())
+      setSig('')
+      setPrep(null)
       setState({ busy: false, ok: true, err: null })
       loadSigs()
     } catch (e) {
@@ -159,6 +182,14 @@ function DocRow({ doc, offerOpen, canSign }) {
         </div>
       </div>
       {state.err && <p className="mt-2 text-xs text-rose-700">{state.err}</p>}
+      <OfflineSignature
+        prep={prep}
+        sig={sig}
+        onSig={setSig}
+        onSubmit={signPasted}
+        busy={state.busy}
+        label="Record the signature"
+      />
       {!offerOpen && (
         <p className="mt-2 text-[11px] text-ink-700/55">
           Offer window closed: this preimage is public.

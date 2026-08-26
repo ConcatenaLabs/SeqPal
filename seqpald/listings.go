@@ -63,15 +63,12 @@ func (s *server) handleGrantListing(w http.ResponseWriter, r *http.Request) {
 	}
 	l.Venues, _ = json.Marshal(venues)
 	if sig := strings.TrimSpace(req.Signature); sig != "" {
-		signer := strings.TrimSpace(req.SignerXOnly)
-		if signer == "" {
-			signer = acct.XOnly
-		}
-		if signer != acct.XOnly {
+		if named := strings.TrimSpace(req.SignerXOnly); named != "" && !strings.EqualFold(named, acct.XOnly) {
 			writeErr(w, 403, "the listing authorization must be signed by the issuer's own key")
 			return
 		}
-		if err := s.verifyKeyStatement(signer, listingTag, listingStatement(iss.AssetID, req.Authorized, venues), sig); err != nil {
+		signer := acct.XOnly
+		if err := s.verifyAccountStatement(acct, listingTag, listingStatement(iss.AssetID, req.Authorized, venues), sig); err != nil {
 			writeErr(w, 400, "the listing signature does not verify for the issuer key")
 			return
 		}

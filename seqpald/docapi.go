@@ -363,6 +363,16 @@ func (s *server) handleSignDocument(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "document hash must decode to 32 bytes")
 		return
 	}
+	// Asked with no signature, this says exactly what to sign. A wallet that knows
+	// SeqPal's tags hashes the document hash under the tag itself; an ordinary
+	// wallet signs sign_this_message as a message, which is the same commitment
+	// written out.
+	if strings.TrimSpace(req.Sig) == "" {
+		writeJSON(w, 200, withNoteOf(documentTag, []byte(hash), msg,
+			"sign the document hash under the tag with your SeqPal ID key, then resubmit as sig; "+
+				"an ordinary wallet signs sign_this_message as a message instead"))
+		return
+	}
 	// The e-signature is a real BIP340 signature over the tagged document hash by
 	// the signer's enclave key. The e-signature PROVIDER is a labeled simulation;
 	// the signature is cryptographically real.

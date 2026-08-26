@@ -37,6 +37,10 @@ registrar steps are simulated so the flow can be walked end to end.
   network-enforced asset, naming a holding key from a wallet it has linked, but
   not a freely-tradable one, because that is supervised by a key that signs its
   freezes and an ordinary wallet cannot make such a signature.
+  Everywhere SeqPal asks such an ID for a signature — a payout mandate, an
+  offering document, a market-abuse acknowledgment, a claim on a distribution —
+  it shows the exact characters to sign and takes the signature back as a paste,
+  because that wallet is not in the browser to be asked.
   Attaching an OpenAMP account later keeps the same SeqPal ID.
 - One SeqPal ID holds as many **wallets** as its holder can prove, and signing in
   with any of them lands in the same account: a web wallet and a browser

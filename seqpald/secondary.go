@@ -63,15 +63,12 @@ func (s *server) handleMarketAbuseAck(w http.ResponseWriter, r *http.Request) {
 	statement := marketAbuseAckStatement(acct.AID)
 	ack := &MarketAbuseAck{AID: acct.AID, Version: marketAbuseAckVersion, AckHash: sha256Hex(statement)}
 	if sig := strings.TrimSpace(req.Signature); sig != "" {
-		signer := strings.TrimSpace(req.SignerXOnly)
-		if signer == "" {
-			signer = acct.XOnly
-		}
-		if signer != acct.XOnly {
+		if named := strings.TrimSpace(req.SignerXOnly); named != "" && !strings.EqualFold(named, acct.XOnly) {
 			writeErr(w, 403, "the acknowledgment must be signed by your own SeqPal ID key")
 			return
 		}
-		if err := s.verifyKeyStatement(signer, marketAbuseTag, statement, sig); err != nil {
+		signer := acct.XOnly
+		if err := s.verifyAccountStatement(acct, marketAbuseTag, statement, sig); err != nil {
 			writeErr(w, 400, "the acknowledgment signature does not verify for your key")
 			return
 		}
@@ -97,10 +94,9 @@ func (s *server) handleMarketAbuseAckGet(w http.ResponseWriter, r *http.Request)
 		writeErr(w, 500, "store error")
 		return
 	}
-	out := map[string]any{
-		"acknowledged": ack != nil, "version": marketAbuseAckVersion,
-		"sign_this": string(marketAbuseAckStatement(acct.AID)), "tag": marketAbuseTag,
-	}
+	out := signable(marketAbuseTag, marketAbuseAckStatement(acct.AID))
+	out["acknowledged"] = ack != nil
+	out["version"] = marketAbuseAckVersion
 	if ack != nil {
 		out["at"] = ack.CreatedAt
 	}

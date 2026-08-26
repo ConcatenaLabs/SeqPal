@@ -73,6 +73,17 @@ rule that catches something that actually breaks.
   signed message from that key), or a verified holder could launder eligibility onto somebody
   else's key. Approving is a decision; `included` is only ever set when a published policy
   change carried the key (`noteWhitelistInclusions`, unfreeze only -- a freeze REMOVES keys).
+- **Every statement has two signable forms, and every surface offers both.** `signable` /
+  `signableOf` (`seqpald/statement_proof.go`) put `sign_this` (the canonical bytes, hashed
+  under `tag` by a wallet that knows SeqPal's tags), `tag`, and `sign_this_message` (the exact
+  characters an ordinary wallet signs: tag, newline, statement or `hex:` digest) in one
+  response. `verifyAccountStatement` accepts either. Anything that asks a HOLDER for a
+  signature -- mandates, closing, market-abuse, documents, attestations, holding proofs -- must
+  go through those two, never `verifyKeyStatement(acct.XOnly, ...)`: an ID that is only a
+  wallet has no `acct.XOnly`, and comparing against it turns the surface into a dead end that
+  reports "does not verify". `verifyKeyStatement` is for a statement that must come from one
+  SPECIFIC key regardless of who is signed in -- the holding-proof key over its own outpoints,
+  and the whitelist-request key. In the SPA, `OfflineSignature` is that panel.
 - **A wallet is never handed a digest to sign.** Application statements are domain-TAGGED, and
   an enclave spend is sent as the TRANSACTION so the wallet recomputes each sighash itself. The
   enclave key is half of the 2-of-2 every restricted asset sits behind, so a digest signer over

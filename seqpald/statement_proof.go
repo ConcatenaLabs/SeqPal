@@ -142,3 +142,44 @@ func (s *server) accountSigningAddresses(acct *Account) []string {
 	}
 	return out
 }
+
+// signable is what a surface tells the holder to sign. There are two forms, and
+// which one applies is a property of the wallet doing the signing rather than of
+// the statement:
+//
+//	sign_this          the canonical bytes, signed under `tag` as a BIP340
+//	                   signature over a tagged hash. What a wallet that knows
+//	                   SeqPal's tags does, and what the browser extension does.
+//	sign_this_message  the exact characters an ordinary wallet signs with its
+//	                   "sign message" button, tag and statement together.
+//
+// Returning only the first left a SeqPal ID that is a plain wallet with nothing
+// it could actually sign: the tag was a separate field, and a holder pasting the
+// statement alone produced a signature that could never verify.
+// Some surfaces sign a DIGEST of the statement rather than the statement, so the
+// two arguments are separate: `shown` is the canonical statement a tag-aware
+// wallet is handed and hashes itself, `signed` is the exact bytes the signature
+// covers.
+func signableOf(tag string, shown, signed []byte) map[string]any {
+	return map[string]any{
+		"sign_this":         string(shown),
+		"tag":               tag,
+		"sign_this_message": classicStatementMessage(tag, signed),
+	}
+}
+
+func signable(tag string, msg []byte) map[string]any { return signableOf(tag, msg, msg) }
+
+// withNote is signable plus the sentence a surface wants to say about it.
+func withNote(tag string, msg []byte, note string) map[string]any {
+	out := signable(tag, msg)
+	out["note"] = note
+	return out
+}
+
+// withNoteOf is signableOf plus that sentence.
+func withNoteOf(tag string, shown, signed []byte, note string) map[string]any {
+	out := signableOf(tag, shown, signed)
+	out["note"] = note
+	return out
+}

@@ -4,6 +4,7 @@ import { Badge } from './ui'
 import * as api from '../lib/api'
 import { usePoll } from '../lib/poll'
 import { useStore } from '../lib/store'
+import OfflineSignature from './OfflineSignature'
 import { MARKET_ABUSE_TAG } from '../lib/statements'
 
 // The once-per-investor market-abuse / insider-dealing acknowledgment (contract
@@ -18,6 +19,9 @@ export default function MarketAbuseGate({ children }) {
   const { data, refresh, loading } = usePoll(() => api.marketAbuseAckGet(), { intervalMs: 30000 })
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
+  // An ID with no wallet connected here signs the same characters elsewhere.
+  const [offline, setOffline] = useState(false)
+  const [sig, setSig] = useState('')
 
   const acknowledged = !!data?.acknowledged
 
@@ -28,15 +32,16 @@ export default function MarketAbuseGate({ children }) {
       const body = {}
       if (withSignature) {
         if (!hasKey) {
+          // Nothing here can sign it: show the characters and take a paste.
+          setOffline(true)
+          return
+        }
+        const signature = await signWithKey(MARKET_ABUSE_TAG, data?.sign_this || '')
+        if (!signature) {
           setErr('Connect your Sequentia wallet to sign the acknowledgment.')
           return
         }
-        const sig = await signWithKey(MARKET_ABUSE_TAG, data?.sign_this || '')
-        if (!sig) {
-          setErr('Connect your Sequentia wallet to sign the acknowledgment.')
-          return
-        }
-        body.signature = sig
+        body.signature = signature
         body.signer_xonly = xonly
       }
       await api.marketAbuseAck(body)
@@ -49,6 +54,21 @@ export default function MarketAbuseGate({ children }) {
   }
 
   if (acknowledged) return children
+
+  const acknowledgeSigned = async () => {
+    setErr(null)
+    setBusy(true)
+    try {
+      await api.marketAbuseAck({ signature: sig.trim() })
+      setSig('')
+      setOffline(false)
+      refresh()
+    } catch (e) {
+      setErr(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
 
   return (
     <div className="card border-amber-200 p-6">
@@ -82,18 +102,22 @@ export default function MarketAbuseGate({ children }) {
         </button>
         <button
           onClick={() => acknowledge(true)}
-          disabled={busy || loading || !hasKey}
+          disabled={busy || loading}
           className="btn-outline disabled:opacity-60"
-          title={hasKey ? 'Also record a signature by your SeqPal ID key' : 'Connect your Sequentia wallet to sign'}
+          title="Also record a signature against this acknowledgment"
         >
           <Icon.shield width={15} height={15} /> Acknowledge and sign
         </button>
       </div>
-      {!hasKey && (
-        <p className="mt-2 text-xs text-amber-700">
-          A signed acknowledgment needs your unlocked SeqPal ID key. You can acknowledge without a
-          signature now, or sign in again with your wallet.
-        </p>
+      {offline && (
+        <OfflineSignature
+          prep={data}
+          sig={sig}
+          onSig={setSig}
+          onSubmit={acknowledgeSigned}
+          busy={busy}
+          label="Record the signed acknowledgment"
+        />
       )}
     </div>
   )

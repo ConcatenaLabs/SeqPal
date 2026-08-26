@@ -53,7 +53,7 @@ func (s *server) handleOffering(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{
 			"issuance_id": iss.ID, "gated": true, "teaser": teaser,
 			"enforcement": iss.Enforcement, "ticker": iss.Ticker,
-			"cta":         "verification required to view offering details",
+			"cta": "verification required to view offering details",
 		})
 		return
 	}

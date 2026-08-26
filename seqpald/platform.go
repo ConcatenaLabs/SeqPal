@@ -233,26 +233,22 @@ func (s *server) handleMandate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Verify the mandate signature by the issuer's enclave key.
-	signer := strings.TrimSpace(req.SignerXOnly)
-	if signer == "" {
-		signer = acct.XOnly
-	}
-	if signer != acct.XOnly {
+	if named := strings.TrimSpace(req.SignerXOnly); named != "" && !strings.EqualFold(named, acct.XOnly) {
 		writeErr(w, 403, "the mandate must be signed by the issuer's own SeqPal ID key")
 		return
 	}
+	signer := acct.XOnly
 	statement, _ := canonicalJSON(map[string]any{
 		"issuance_id": iss.ID, "chain": chain, "asset": req.Asset, "address": addr,
 	})
 	if strings.TrimSpace(req.Signature) == "" {
 		// No signature yet: return the exact bytes to sign (the SPA / wallet signs).
-		writeJSON(w, 200, map[string]any{
-			"sign_this": string(statement), "tag": mandateTag,
-			"note": "sign these canonical bytes with your SeqPal ID key, then resubmit with signature",
-		})
+		writeJSON(w, 200, withNote(mandateTag, statement,
+			"sign these canonical bytes with your SeqPal ID key, then resubmit with signature; an "+
+				"ordinary wallet signs sign_this_message as a message instead"))
 		return
 	}
-	if err := s.verifyKeyStatement(signer, mandateTag, statement, req.Signature); err != nil {
+	if err := s.verifyAccountStatement(acct, mandateTag, statement, req.Signature); err != nil {
 		writeErr(w, 400, "the mandate signature does not verify for your key")
 		return
 	}

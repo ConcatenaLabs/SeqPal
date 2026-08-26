@@ -6,6 +6,7 @@ import { fmtAssetAmount } from '../lib/format'
 import * as api from '../lib/api'
 import { usePoll } from '../lib/poll'
 import { useStore } from '../lib/store'
+import OfflineSignature from './OfflineSignature'
 import { fmtRail, subStateChip, settlementModel } from '../lib/money'
 
 // A short investor AID for the book.
@@ -49,6 +50,8 @@ export default function ClosingCard({ iss }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
   const [results, setResults] = useState(null)
+  const [prep, setPrep] = useState(null)
+  const [sig, setSig] = useState('')
 
   const subs = book?.subscriptions || []
   const ledger = book?.ledger || []
@@ -63,18 +66,39 @@ export default function ClosingCard({ iss }) {
     setErr(null)
     setBusy(true)
     try {
-      const prep = await api.close(iss.id, {})
-      if (!prep.sign_this) {
+      const got = await api.close(iss.id, {})
+      if (!got.sign_this) {
         refreshBook()
         return
       }
-      const sig = await signCloseStmt(prep.sign_this)
-      if (!sig) {
+      if (!hasKey) {
+        setPrep(got)
+        return
+      }
+      const signature = await signCloseStmt(got.sign_this)
+      if (!signature) {
         setErr('Connect your Sequentia wallet to sign the closing authorization.')
         return
       }
-      const res = await api.close(iss.id, { signature: sig, signer_xonly: xonly })
+      const res = await api.close(iss.id, { signature, signer_xonly: xonly })
       setResults(res.results || [])
+      refreshBook()
+      refreshSettle()
+    } catch (e) {
+      setErr(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const closeSigned = async () => {
+    setErr(null)
+    setBusy(true)
+    try {
+      const res = await api.close(iss.id, { signature: sig.trim() })
+      setResults(res.results || [])
+      setSig('')
+      setPrep(null)
       refreshBook()
       refreshSettle()
     } catch (e) {
@@ -201,17 +225,20 @@ export default function ClosingCard({ iss }) {
 
       <button
         onClick={close}
-        disabled={busy || inEscrow.length === 0 || !hasKey}
+        disabled={busy || inEscrow.length === 0}
         className="btn-primary mt-4 w-full disabled:opacity-60"
       >
         <Icon.check width={16} height={16} />
         {busy ? 'Closing…' : `Sign closing authorization${inEscrow.length ? ` (${inEscrow.length} to settle)` : ''}`}
       </button>
-      {!hasKey && (
-        <p className="mt-2 text-center text-xs text-amber-700">
-          Connect your Sequentia wallet to sign the closing authorization.
-        </p>
-      )}
+      <OfflineSignature
+        prep={prep}
+        sig={sig}
+        onSig={setSig}
+        onSubmit={closeSigned}
+        busy={busy}
+        label="Authorize closing"
+      />
       {ledger.length > 0 && (
         <details className="mt-4">
           <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-ink-700/60">
