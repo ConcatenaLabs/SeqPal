@@ -135,6 +135,18 @@ func (s *server) isInvestorEnclaveAddress(investorAID, addr string) (bool, error
 	if addr == "" {
 		return false, nil
 	}
+	// An ID with no OpenAMP account holds nothing in an enclave, so no address of
+	// theirs can be one. Probing anyway asks the policy server about an account it
+	// has never heard of, which fails for every asset -- and this check fails
+	// closed, so it refused every payout address such a holder ever named, for
+	// good. The KYC-gated distributions are most of what that kind of ID is for.
+	acct, err := s.st.AccountByAID(investorAID)
+	if err != nil {
+		return false, fmt.Errorf("enclave check: account: %w", err)
+	}
+	if acct == nil || !s.hasEnclave(acct) {
+		return false, nil
+	}
 	issuances, err := s.st.LiveIssuances()
 	if err != nil {
 		return false, fmt.Errorf("enclave check: live issuances: %w", err)
@@ -144,11 +156,12 @@ func (s *server) isInvestorEnclaveAddress(investorAID, addr string) (bool, error
 		if iss.AssetID == "" {
 			continue
 		}
-		// A bearer (supervised) asset has no enclave: it is minted through the
-		// node's raw path and the policy server never learns it, so there is no
-		// enclave address to resolve for it and a probe would fail closed for no
-		// reason, refusing every payout address while any bearer asset is live.
-		if iss.Enforcement == "bearer" {
+		// Neither a bearer (supervised) nor a network-enforced asset has an enclave:
+		// one is minted through the node's raw path and the other holds its coins at
+		// their own on-chain addresses, and the policy server keeps no enclave for
+		// either. A probe would fail closed for no reason, refusing every payout
+		// address for every holder while any such asset is live.
+		if iss.Enforcement == "bearer" || iss.Enforcement == "network" {
 			continue
 		}
 		var out struct {

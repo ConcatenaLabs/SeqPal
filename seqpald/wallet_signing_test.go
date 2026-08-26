@@ -81,3 +81,34 @@ func TestTheMarketAbuseAckOffersTheMessageForm(t *testing.T) {
 		t.Fatalf("a signed acknowledgment from a linked wallet must be accepted: %d %s", res.code, res.raw)
 	}
 }
+
+// The payout-address check asks the policy server for each of the holder's
+// enclave addresses, to refuse a mandate that would pay one. A SeqPal ID with
+// no OpenAMP account has none, and the policy server has never heard of it, so
+// every probe failed -- and the check fails closed, which turned "we cannot be
+// sure" into "no payout address, ever" for exactly the holders whose claim on a
+// distribution is the point of having the ID.
+func TestAWalletBackedIDCanNameAPayoutAddress(t *testing.T) {
+	h := newHarness(t)
+	h.s.cfg.nodeURL = newWalletNode(t, true).URL
+	h.s.screen = newScreener("")
+	session, aid := walletSession(t, h, testPKH)
+
+	// A live serviced issuance exists, so the probe has something to ask about.
+	seedIssuanceOfKind(t, h.s, aid, "serviced")
+
+	addr := "tb1qnzten2u3ayqmnqtdul7z00v3uvapet7dv2789z"
+	prep := h.do("POST", "/api/mandates/investor", session,
+		map[string]any{"chain": "sequentia", "address": addr})
+	if prep.code != 200 {
+		t.Fatalf("prepare: %d %s", prep.code, prep.raw)
+	}
+	res := h.do("POST", "/api/mandates/investor", session, map[string]any{
+		"chain": "sequentia", "address": addr,
+		"signature": "H1uL0Y2ZwOaKf3wRZ5NnwF0oJp0V1sV+Xu3QW6mV2mYbTGYr9k1J2bV0wq1mM4pV",
+	})
+	if res.code != 200 {
+		t.Fatalf("registering a payout address must not depend on an OpenAMP account: %d %s",
+			res.code, res.raw)
+	}
+}

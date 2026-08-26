@@ -11,7 +11,7 @@
 // The acceptance driver in scripts/e2e uses it for the same reason: it plays a
 // holder, so it needs a wallet. Nothing here is imported by the application, and
 // test/logic.test.js fails if anything ever is.
-import { schnorr } from '@noble/curves/secp256k1'
+import { schnorr, secp256k1 } from '@noble/curves/secp256k1'
 import { bytesToHex, hexToBytes } from '@noble/curves/abstract/utils'
 import { sha256 } from '@noble/hashes/sha256'
 import {
@@ -88,4 +88,56 @@ export function computeAID(xonlyHexes) {
   h.update(enc.encode('openamp-aid-v1'))
   for (const pk of [...xonlyHexes].sort()) h.update(enc.encode(pk))
   return bytesToHex(h.digest().slice(0, 20))
+}
+
+// ── the OTHER kind of wallet ─────────────────────────────────────────────────
+//
+// A SeqPal ID that is only a wallet has no OpenAMP key and signs nothing under
+// SeqPal's tags. It signs the way every wallet has always been able to: an
+// ordinary message, with the private key of one of its addresses, in the format
+// `verifymessage` checks. The node is the authority on that format; this is the
+// same construction, so the drill can play that holder instead of describing it.
+//
+// The magic string is Bitcoin's, unchanged in this node (`MESSAGE_MAGIC` in
+// src/util/message.cpp), and the digest is its double-sha256. The signature is
+// the 65-byte compact recoverable form, base64, with the recovery id offset by
+// 27 (+4 when the address is for a compressed key, which every modern one is).
+
+function varint(n) {
+  if (n < 0xfd) return Uint8Array.of(n)
+  if (n <= 0xffff) return Uint8Array.of(0xfd, n & 0xff, (n >> 8) & 0xff)
+  throw new Error('message too long for this drill')
+}
+
+function concat(...parts) {
+  const total = parts.reduce((n, p) => n + p.length, 0)
+  const out = new Uint8Array(total)
+  let i = 0
+  for (const p of parts) {
+    out.set(p, i)
+    i += p.length
+  }
+  return out
+}
+
+export function messageDigest(message) {
+  const magic = enc.encode('Bitcoin Signed Message:\n')
+  const body = enc.encode(message)
+  return sha256(sha256(concat(varint(magic.length), magic, varint(body.length), body)))
+}
+
+// Sign as an ordinary wallet does. Returns the base64 signature `verifymessage`
+// takes, for the address of the COMPRESSED public key of this private key.
+export function signWalletMessage(privHex, message) {
+  const sig = secp256k1.sign(messageDigest(message), hexToBytes(privHex))
+  const compact = sig.toCompactRawBytes()
+  const out = new Uint8Array(65)
+  out[0] = 27 + 4 + sig.recovery
+  out.set(compact, 1)
+  return Buffer.from(out).toString('base64')
+}
+
+// The compressed public key, which is what a pkh(...) descriptor is built from.
+export function compressedOf(privHex) {
+  return bytesToHex(secp256k1.getPublicKey(hexToBytes(privHex), true))
 }
