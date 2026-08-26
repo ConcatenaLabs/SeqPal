@@ -1411,9 +1411,10 @@ export function Step6Compliance({ data, update }) {
             <Icon.lock width={16} height={16} className="text-ink-600" /> Mandatory floors
           </div>
           <p className="mt-1.5 text-xs leading-relaxed text-ink-700/70">
-            SeqPal ID verification, continuous sanctions screening, and OFAC/FATF-aligned
-            blocks, including OFAC and EU territorial sanctions for the occupied Ukrainian
-            territories, are always enforced and cannot be loosened.
+            SeqPal ID verification, the watchlist checks the verification provider runs as
+            part of it, and OFAC/FATF-aligned blocks, including OFAC and EU territorial
+            sanctions for the occupied Ukrainian territories, are always enforced and cannot
+            be loosened.
           </p>
         </div>
       </div>
