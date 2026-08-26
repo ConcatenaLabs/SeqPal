@@ -674,3 +674,55 @@ func TestVerificationWaitsForTheRealLists(t *testing.T) {
 		t.Fatalf("verify: %d %s", ok.code, ok.raw)
 	}
 }
+
+// Verifying a company is a compliance decision like verifying a person, and it
+// hands out a treasury enclave. It did neither of the two things that makes it
+// one: it never screened the company's name, and it never asked whether the
+// person doing it was verified. So a listed company could be approved while a
+// listed person could not get past verification, and a person parked or refused
+// could route around their own refusal -- make a company, verify the company,
+// hold assets in the company's treasury.
+func TestVerifyingACompanyIsAComplianceDecision(t *testing.T) {
+	h := newHarness(t)
+	h.s.cfg.nodeURL = newWalletNode(t, true).URL
+	h.s.screen = newScreener("")
+	session, aid := walletSession(t, h, testPKH)
+
+	ent := h.do("POST", "/api/entities", session, map[string]any{
+		"name": "Listed Holdings SA", "jurisdiction": "HN",
+	})
+	if ent.code != 200 {
+		t.Fatalf("create entity: %d %s", ent.code, ent.raw)
+	}
+	entity, _ := ent.body["entity"].(map[string]any)
+	entityID, _ := entity["id"].(string)
+
+	// An unverified controller cannot vouch for a company.
+	res := h.do("POST", "/api/id/entities/"+entityID+"/verify", session, map[string]any{})
+	if res.code != 403 {
+		t.Fatalf("an unverified controller must be refused, got %d %s", res.code, res.raw)
+	}
+
+	if v := h.do("POST", "/api/id/verify", session, map[string]any{
+		"residence": "AE", "screening_name": "Wallet Wendy", "base_eligibility": "ret",
+	}); v.code != 200 {
+		t.Fatalf("verify: %d %s", v.code, v.raw)
+	}
+
+	// And a company on a list is not approved, whoever controls it.
+	h.s.screen.mu.Lock()
+	h.s.screen.names["eu_consolidated"][normalizeName("Listed Holdings SA")] = true
+	h.s.screen.mu.Unlock()
+
+	res = h.do("POST", "/api/id/entities/"+entityID+"/verify", session, map[string]any{})
+	if res.code != 409 {
+		t.Fatalf("a listed company must not be approved, got %d %s", res.code, res.raw)
+	}
+	if reviews, _ := h.s.st.PendingReviewsByAID(aid); len(reviews) == 0 {
+		t.Fatal("a company that matches a list must be put in front of a reviewer")
+	}
+	// Nothing was provisioned for it.
+	if k, _ := h.s.st.EnclaveKeyByRef(enclaveEntityTreasury, entityID); k != nil {
+		t.Fatal("a refused KYB must not leave a treasury enclave behind")
+	}
+}

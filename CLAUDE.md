@@ -73,6 +73,14 @@ rule that catches something that actually breaks.
   signed message from that key), or a verified holder could launder eligibility onto somebody
   else's key. Approving is a decision; `included` is only ever set when a published policy
   change carried the key (`noteWhitelistInclusions`, unfreeze only -- a freeze REMOVES keys).
+- **Screening is real, and it decides.** The document review is simulated and labelled; the
+  sanctions screening is not. So: nothing is verified while `s.screen.ready()` is false (an
+  instance with a cache directory loads the real lists at startup before it serves), a match
+  parks the identity and only a reviewer moves it (`handleIDVerify` refuses to re-run over a
+  live match -- screening reads a name the holder declares, so re-running was a way to be
+  verified under a different one), and verifying a COMPANY is the same decision: the
+  controller must be eligible, and the company's own name is screened, because most of the EU
+  list is enterprises.
 - **A compliance action must bind every kind of SeqPal ID.** The policy server only knows
   accounts with an OpenAMP key, so `callOpenAMP` fails for an ID that is only a wallet -- and
   a caller that returns on that error has skipped whatever came after it. A confirmed sanctions
