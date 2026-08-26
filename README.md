@@ -58,9 +58,12 @@ registrar steps are simulated so the flow can be walked end to end.
   gated per deployment (`SEQPALD_CONFIDENTIAL`); without it a confidential
   transfer is refused with a 501, never silently downgraded. Supervised
   (freely-tradable) assets are always transparent, by consensus.
-- The setup fee is invoiced in USDX and must be paid before deploy: seqpald's
-  chain watcher confirms the receipt, and `POST /api/deploy` is refused until it
-  has.
+- The setup fee is a real gate: it is invoiced in USDX, seqpald's chain watcher
+  confirms the receipt, and `POST /api/deploy` is refused with a 402 until it
+  has. What it costs is configuration (`SEQPALD_SETUP_FEE_USD`), and a fee of
+  zero marks itself paid, so a deployment can charge nothing without the gate
+  being any less real. `GET /api/health` reports the configured amount, which is
+  what the checkout screen shows rather than asserting one.
 - Escrow and settlement. Subscriptions fund a segregated per-offering escrow in
   USDX on Sequentia or in native tBTC on Bitcoin testnet4 (the BTC rail is on
   only when `SEQPALD_BTC_RPC_URL` is set). At closing the tokens leave the

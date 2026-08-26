@@ -1953,6 +1953,18 @@ export function Step7Checkout({ data, update, onDeployed }) {
   // before we navigate to the new issuance page.
   const { createIssuance, patchIssuance, deployIssuance, xonly, account, hasKey, signBearerStmt } =
     useStore()
+  // What this deployment actually charges, rather than what was true wherever
+  // the note was written. null until it is known, so nothing is asserted early.
+  const [setupFeeUsd, setSetupFeeUsd] = useState(null)
+  useEffect(() => {
+    let cancelled = false
+    health()
+      .then((h) => !cancelled && setSetupFeeUsd(typeof h.setup_fee_usd === 'number' ? h.setup_fee_usd : null))
+      .catch(() => !cancelled && setSetupFeeUsd(null))
+    return () => {
+      cancelled = true
+    }
+  }, [])
   const s = getStructure(data.structureId)
   const cost = computeSetupCost(data.structureId, data.isPublic, {
     raise: data.raise,
@@ -2271,8 +2283,12 @@ export function Step7Checkout({ data, update, onDeployed }) {
             </p>
           </div>
           <DemoNote className="mt-5">
-            The setup fee is SIMULATED and nothing is charged. The deploy below is real and
-            mints on the Sequentia testnet.
+            {setupFeeUsd === 0
+              ? 'No setup fee is charged on this deployment, so the deploy below runs straight away.'
+              : setupFeeUsd > 0
+                ? `The setup fee is $${setupFeeUsd.toLocaleString()} and the deploy is refused until it is paid.`
+                : 'The deploy below is real and mints on the Sequentia testnet.'}{' '}
+            The deploy below is real and mints on the Sequentia testnet.
           </DemoNote>
           {err && (
             <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm">
