@@ -5,6 +5,7 @@ import { SectionHeading, DemoNote } from '../../components/ui'
 import { AuthPanel, Field, ErrorNote, Spinner } from '../../components/IdAuth'
 import { useStore } from '../../lib/store'
 import { idVerify, idPassport } from '../../lib/api'
+import VerificationFeeCard from '../../components/VerificationFeeCard'
 import { RESIDENCE_OPTIONS } from '../../data/jurisdictions'
 
 // sha256 hex of a file, computed in the browser. The accreditation artifact
@@ -41,6 +42,8 @@ function VerifyStep({ account, onVerified }) {
   const [artifact, setArtifact] = useState(null) // File
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
+  // The provider bills per check, so the check is bought before it is submitted.
+  const [feePaid, setFeePaid] = useState(false)
   const [result, setResult] = useState(null) // { status, categories, valid_until, screening, message }
   const pollRef = useRef(null)
 
@@ -52,10 +55,9 @@ function VerifyStep({ account, onVerified }) {
     return () => clearInterval(pollRef.current)
   }, [])
 
-  // While an ID sits in manual review, poll the passport: the labeled-simulated
-  // auto-reviewer resolves the deterministic TEST personas after a short delay,
-  // and a human reviewer can act first. A real hit stays pending until a human
-  // clears or confirms it.
+  // The provider decides in their own time, so the submission returns nothing
+  // decided and the outcome arrives on their callback. This polls the passport
+  // for it, which is what the holder is waiting on.
   const startPolling = () => {
     clearInterval(pollRef.current)
     let tries = 0
@@ -386,22 +388,27 @@ function VerifyStep({ account, onVerified }) {
         />
       </Field>
 
+      <VerificationFeeCard onPaid={() => setFeePaid(true)} />
+
       <DemoNote>
-        Document and PEP review are SIMULATED with real states (approved, rejected, needs
-        info). Sanctions screening is real, against the public OFAC SDN, OFAC consolidated, EU
-        consolidated, and UN Security Council lists. A name match parks the ID in review; it is
-        never auto-refused.
+        Verification is run by an independent provider. On this demo that provider is SIMULATED,
+        behind the same interface a real one plugs into: the check is submitted, and the outcome --
+        approved, refused, or more information needed -- arrives asynchronously on their callback.
       </DemoNote>
       <ErrorNote>{err}</ErrorNote>
-      <button type="submit" disabled={busy} className="btn-primary w-full disabled:opacity-50">
+      <button
+        type="submit"
+        disabled={busy || !feePaid}
+        className="btn-primary w-full disabled:opacity-50"
+      >
         {busy ? (
           <>
             <Spinner />
-            Screening and reviewing
+            Submitting to the provider
           </>
         ) : (
           <>
-            Verify my identity
+            {feePaid ? 'Verify my identity' : 'Pay the verification fee to continue'}
             <Icon.arrowRight width={16} height={16} />
           </>
         )}

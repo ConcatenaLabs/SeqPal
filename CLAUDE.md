@@ -83,7 +83,14 @@ rule that catches something that actually breaks.
   verification anywhere else, and never make it synchronous: real providers are not, and the
   point of this shape is that swapping one in is an adapter, not a redesign. A refusal cannot
   be submitted away (`handleIDVerify` refuses over `refused` and `submitted`); `needs_info` is
-  the one not-verified state that invites another try.
+  the one not-verified state that invites another try. The provider bills per check either
+  way, so a check is PAID FOR before it is submitted: `requireVerificationFee` gates both
+  submit paths on an account-scoped invoice (`kyc`, or `kyb` per business, in `fee_invoices`
+  keyed by `aid` and `subject`), and an unpaid caller is refused with a 402 having written
+  nothing. Never move that gate after the submit -- the cost is incurred the moment the check
+  is created, and a fee asked for afterwards is one the platform can be refused. Submitted is
+  not verified anywhere, including in the passport: an entity's treasury key and UBO link exist
+  from submission, and `verified` comes from the entity's own check.
 - **A SeqPal ID has TWO account ids, and openampd knows only one of them.** `accounts.aid` is
   the id the ID was founded with and never changes; the policy server knows the account the
   enclave key derives. They coincide only for an ID founded ON an enclave. Never pass

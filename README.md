@@ -75,6 +75,13 @@ registrar steps are simulated so the flow can be walked end to end.
   zero marks itself paid, so a deployment can charge nothing without the gate
   being any less real. `GET /api/health` reports the configured amount, which is
   what the checkout screen shows rather than asserting one.
+- Verification fees are the same kind of gate, on the account rather than on an
+  offering. The identity-verification provider bills per check whether it clears
+  or refuses, so an identity check (`SEQPALD_KYC_FEE_USD`) and each business
+  check (`SEQPALD_KYB_FEE_USD`) are invoiced and collected before the check is
+  submitted; submitting without paying is refused with a 402. They are payable on
+  the same rails as every other fee, and one paid check covers a resubmission the
+  provider asks for. A fee of zero charges nothing and the gate simply opens.
 - Escrow and settlement. Subscriptions fund a segregated per-offering escrow in
   USDX on Sequentia or in native tBTC on Bitcoin testnet4 (the BTC rail is on
   only when `SEQPALD_BTC_RPC_URL` is set). At closing the tokens leave the

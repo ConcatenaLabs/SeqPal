@@ -35,6 +35,7 @@ export const REAL = [
   'Corporate-action snapshots and claims: the register snapshot is taken from the chain at the first pass at or after the record height, and a claim is a real signed holding proof over named outpoints',
   'The recovery key for a freely-tradable asset: a second Sequentia wallet the issuer names before deploy, whose public half is registered on the asset and whose private half SeqPal never sees',
   'The bearer attestation: a real signature by the issuer’s own key over the two US-exposure statements, recorded before a freely-tradable deploy is accepted',
+  'The verification fee gate: the provider bills per check, so an identity or business check is invoiced and collected before it is submitted, and submitting without paying is refused. The money is testnet money; the gate is not',
 ]
 
 export const SIMULATED = [

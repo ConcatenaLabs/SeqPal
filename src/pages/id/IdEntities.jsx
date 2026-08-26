@@ -6,6 +6,7 @@ import SignInGate from '../../components/SignInGate'
 import { Field, ErrorNote, Spinner } from '../../components/IdAuth'
 import { useStore } from '../../lib/store'
 import { verifyEntity, idPassport } from '../../lib/api'
+import VerificationFeeCard from '../../components/VerificationFeeCard'
 import { RESIDENCE_OPTIONS } from '../../data/jurisdictions'
 
 const UBO_TAG = 'seqpal-ubo-v1'
@@ -96,11 +97,20 @@ function EntityCard({ entity, link, onChanged }) {
   const { signWithKey } = useStore()
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
-  // Local view of the link, seeded from the passport and updated as we act.
-  const [state, setState] = useState(link || null)
+  // The provider bills per business, so the check is bought before it is sent.
+  const [feePaid, setFeePaid] = useState(false)
+  // What we know locally (the UBO statement, which the passport does not return)
+  // merged under what the server says, which wins.
+  const [local, setLocal] = useState({})
+  const state = { ...local, ...(link || {}) }
 
-  const verified = !!state?.treasury_aid
-  const uboSigned = !!state?.ubo_signed
+  // Submitted is not verified. The treasury key and the UBO link exist from the
+  // moment the check goes to the provider -- the statement names the treasury --
+  // and the provider decides afterwards, in their own time.
+  const submitted = !!state.treasury_aid
+  const verified = !!state.verified
+  const result = state.verification?.result
+  const uboSigned = !!state.ubo_signed
 
   // First verification: provisions the treasury enclave and records the link.
   const verify = async () => {
@@ -108,10 +118,11 @@ function EntityCard({ entity, link, onChanged }) {
     setBusy(true)
     try {
       const res = await verifyEntity(entity.id, {})
-      setState({
+      setLocal({
         treasury_aid: res.treasury_aid,
         ubo_signed: !!res.ubo_link?.sig,
         statement: res.ubo_link?.statement,
+        verification: { status: 'submitted' },
       })
       onChanged?.()
     } catch (e) {
@@ -130,7 +141,7 @@ function EntityCard({ entity, link, onChanged }) {
     try {
       // The statement names the treasury AID; if it is not in local state (e.g.
       // after a reload) re-run the idempotent verify to obtain it.
-      let statement = state?.statement
+      let statement = state.statement
       if (!statement) {
         const seed = await verifyEntity(entity.id, {})
         statement = seed.ubo_link?.statement
@@ -140,11 +151,12 @@ function EntityCard({ entity, link, onChanged }) {
       if (!sig)
         throw new Error('No Sequentia wallet is connected. Sign in again with your wallet, then sign the declaration.')
       const res = await verifyEntity(entity.id, { ubo_sig: sig })
-      setState({
+      setLocal((l) => ({
+        ...l,
         treasury_aid: res.treasury_aid,
         ubo_signed: !!res.ubo_link?.sig,
         statement: res.ubo_link?.statement,
-      })
+      }))
       onChanged?.()
     } catch (e) {
       setErr(e.message)
@@ -169,12 +181,16 @@ function EntityCard({ entity, link, onChanged }) {
           <Badge color="emerald">
             <Icon.check width={12} height={12} /> Verified
           </Badge>
+        ) : result === 'reject' ? (
+          <Badge color="rose">Refused</Badge>
+        ) : submitted ? (
+          <Badge color="amber">With the provider</Badge>
         ) : (
           <Badge color="slate">Unverified</Badge>
         )}
       </div>
 
-      {verified && (
+      {submitted && (
         <div className="mt-4 space-y-1.5 rounded-xl border border-ink-900/10 bg-ink-900/[0.02] px-4 py-3 text-xs">
           <div className="flex justify-between gap-4">
             <span className="text-ink-700/70">Treasury enclave (AID)</span>
@@ -191,17 +207,31 @@ function EntityCard({ entity, link, onChanged }) {
 
       <ErrorNote>{err}</ErrorNote>
 
+      {!submitted && (
+        <div className="mt-4">
+          <VerificationFeeCard
+            kind="business"
+            entityId={entity.id}
+            onPaid={() => setFeePaid(true)}
+          />
+        </div>
+      )}
+
       <div className="mt-4 flex flex-wrap gap-2">
-        {!verified ? (
-          <button onClick={verify} disabled={busy} className="btn-primary disabled:opacity-50">
+        {!submitted ? (
+          <button
+            onClick={verify}
+            disabled={busy || !feePaid}
+            className="btn-primary disabled:opacity-50"
+          >
             {busy ? (
               <>
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                Provisioning treasury
+                Submitting to the provider
               </>
             ) : (
               <>
-                Verify company (KYB)
+                {feePaid ? 'Verify company (KYB)' : 'Pay the verification fee to continue'}
                 <Icon.arrowRight width={16} height={16} />
               </>
             )}
@@ -250,6 +280,19 @@ export default function IdEntities() {
     if (isSignedIn) loadLinks()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSignedIn])
+
+  // A business with the provider is decided on their schedule, not on a reload:
+  // poll while any check is outstanding, and stop once they have all been
+  // decided.
+  const waiting = Object.values(links).some(
+    (e) => e.verification?.status === 'submitted' || (e.treasury_aid && !e.verification)
+  )
+  useEffect(() => {
+    if (!isSignedIn || !waiting) return
+    const t = setInterval(loadLinks, 5000)
+    return () => clearInterval(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSignedIn, waiting])
 
   if (loading) {
     return (

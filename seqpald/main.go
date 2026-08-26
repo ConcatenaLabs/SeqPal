@@ -73,6 +73,8 @@ type config struct {
 	escrowConfs  int64         // confirmations before a deposit becomes in_escrow
 	atomicClose  bool          // M6: settle USDX subscriptions as ONE atomic DvP tx (closing v2); v1 fallback otherwise
 	setupFeeUSD  float64       // SeqPal platform setup fee (USD), blocks deploy until paid
+	kycFeeUSD    float64       // identity verification fee (USD), blocks the check until paid
+	kybFeeUSD    float64       // business verification fee (USD), charged per business
 	escrowFeeBps int64         // SeqPal escrow fee in basis points, deducted at release
 	fiatSettle   time.Duration // simulated fiat pending->settled delay
 
@@ -243,6 +245,10 @@ func main() {
 	}
 	cfg.damp = env("SEQPALD_DAMP", "") == "1" || strings.EqualFold(env("SEQPALD_DAMP", ""), "true")
 	cfg.setupFeeUSD = envFloat("SEQPALD_SETUP_FEE_USD", 500)
+	// The provider bills per check either way, so the fee is what recoups it. A
+	// deployment that sets either to zero simply does not charge for that check.
+	cfg.kycFeeUSD = envFloat("SEQPALD_KYC_FEE_USD", 25)
+	cfg.kybFeeUSD = envFloat("SEQPALD_KYB_FEE_USD", 150)
 	// A rate outside 0..100% is a typo -- an extra digit on a percentage -- and
 	// it would charge a fee larger than the deposit it comes out of. The release
 	// paths already refuse to pay out less than nothing, but the LEDGER would
@@ -484,6 +490,8 @@ func (s *server) handler() http.Handler {
 	// verified, so it is never open.
 	mux.HandleFunc("POST /api/id/verify/callback", s.handleIDVCallback)
 	mux.HandleFunc("GET /api/id/passport", s.requireSession(s.handleIDPassport))
+	mux.HandleFunc("GET /api/id/fees", s.requireSession(s.handleVerificationFees))
+	mux.HandleFunc("POST /api/id/fees/pay", s.requireSession(s.handlePayVerificationFee))
 	mux.HandleFunc("POST /api/id/entities/{id}/verify", s.requireSession(s.handleEntityVerify))
 
 	// Manual-review surface (session + admin).

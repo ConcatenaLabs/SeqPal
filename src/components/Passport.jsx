@@ -78,7 +78,7 @@ export default function Passport({ account, entity }) {
           ))}
         <div className="flex flex-wrap items-center gap-2 border-t border-white/10 pt-3 text-xs text-white/60">
           <span className="inline-flex items-center gap-1.5">
-            <Icon.shield width={14} height={14} className="text-seq-400" /> Screening
+            <Icon.shield width={14} height={14} className="text-seq-400" /> Verification provider
             simulated in this build
           </span>
           {!isCorp && p.accredited && p.accreditation_basis && (

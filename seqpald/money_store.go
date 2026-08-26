@@ -325,9 +325,17 @@ func scanFiatInto(sc scanner) (*FiatPayment, error) {
 // "setup") must be paid before deploy; the escrow fee (kind "escrow") accrues on
 // real balances and is deducted at release. Rail is the issuer's choice.
 type FeeInvoice struct {
-	ID             string  `json:"id"`
-	IssuanceID     string  `json:"issuance_id"`
-	Kind           string  `json:"kind"` // setup | escrow
+	ID string `json:"id"`
+	// Exactly one of these owns the invoice: an issuance for a platform fee, an
+	// account for a verification fee. A verification is bought by a person, not
+	// by an offering.
+	IssuanceID string `json:"issuance_id,omitempty"`
+	AID        string `json:"aid,omitempty"`
+	// Which check the fee buys: empty for the account holder's own identity, the
+	// entity id for one of their businesses. An account can own several
+	// businesses, and the provider charges for each.
+	Subject        string  `json:"subject,omitempty"`
+	Kind           string  `json:"kind"` // setup | escrow | kyc | kyb
 	Rail           string  `json:"rail,omitempty"`
 	AmountUSD      float64 `json:"amount_usd"`
 	Amount         uint64  `json:"amount,omitempty"` // in rail base units once a rail is chosen
@@ -343,10 +351,10 @@ type FeeInvoice struct {
 func (s *Store) InsertFeeInvoice(f *FeeInvoice) error {
 	f.CreatedAt = time.Now().Unix()
 	_, err := s.db.Exec(
-		`INSERT INTO fee_invoices (id, issuance_id, kind, rail, amount_usd, amount, ccy, state, txid, address, funds_simulated, created_at, paid_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0)`,
-		f.ID, f.IssuanceID, f.Kind, f.Rail, f.AmountUSD, f.Amount, f.Ccy, f.State, f.Txid, f.Address,
-		boolInt(f.FundsSimulated), f.CreatedAt)
+		`INSERT INTO fee_invoices (id, issuance_id, aid, subject, kind, rail, amount_usd, amount, ccy, state, txid, address, funds_simulated, created_at, paid_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)`,
+		f.ID, f.IssuanceID, f.AID, f.Subject, f.Kind, f.Rail, f.AmountUSD, f.Amount, f.Ccy, f.State, f.Txid,
+		f.Address, boolInt(f.FundsSimulated), f.CreatedAt)
 	return err
 }
 
@@ -400,7 +408,7 @@ func (s *Store) UnpaidOnchainFees() ([]*FeeInvoice, error) {
 	return out, rows.Err()
 }
 
-const feeInvoiceSelect = `SELECT id, issuance_id, kind, rail, amount_usd, amount, ccy, state, txid, address, funds_simulated, created_at, paid_at FROM fee_invoices`
+const feeInvoiceSelect = `SELECT id, issuance_id, aid, subject, kind, rail, amount_usd, amount, ccy, state, txid, address, funds_simulated, created_at, paid_at FROM fee_invoices`
 
 func scanFeeInvoice(row *sql.Row) (*FeeInvoice, error) {
 	f, err := scanFeeInvoiceInto(row)
@@ -413,8 +421,8 @@ func scanFeeInvoice(row *sql.Row) (*FeeInvoice, error) {
 func scanFeeInvoiceInto(sc scanner) (*FeeInvoice, error) {
 	var f FeeInvoice
 	var sim int
-	err := sc.Scan(&f.ID, &f.IssuanceID, &f.Kind, &f.Rail, &f.AmountUSD, &f.Amount, &f.Ccy, &f.State,
-		&f.Txid, &f.Address, &sim, &f.CreatedAt, &f.PaidAt)
+	err := sc.Scan(&f.ID, &f.IssuanceID, &f.AID, &f.Subject, &f.Kind, &f.Rail, &f.AmountUSD, &f.Amount, &f.Ccy,
+		&f.State, &f.Txid, &f.Address, &sim, &f.CreatedAt, &f.PaidAt)
 	if err != nil {
 		return nil, err
 	}
@@ -665,4 +673,16 @@ func (s *Store) updateFields(table, keyCol, keyVal string, fields map[string]any
 	args = append(args, time.Now().Unix(), keyVal)
 	_, err := s.db.Exec(`UPDATE `+table+` SET `+set+` WHERE `+keyCol+` = ?`, args...)
 	return err
+}
+
+// AccountFee is the verification fee an account owes for one check, or nil if it
+// has never been raised.
+func (s *Store) AccountFee(aid, kind, subject string) (*FeeInvoice, error) {
+	f, err := scanFeeInvoice(s.db.QueryRow(
+		feeInvoiceSelect+` WHERE aid = ? AND kind = ? AND subject = ? ORDER BY created_at DESC LIMIT 1`,
+		aid, kind, subject))
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return f, err
 }
