@@ -73,6 +73,13 @@ rule that catches something that actually breaks.
   signed message from that key), or a verified holder could launder eligibility onto somebody
   else's key. Approving is a decision; `included` is only ever set when a published policy
   change carried the key (`noteWhitelistInclusions`, unfreeze only -- a freeze REMOVES keys).
+- **A stored descriptor cannot be derived from without canonicalising it first.**
+  `toPKH` drops the checksum (it covered different text), and `deriveaddresses` refuses a
+  descriptor with no checksum. Go through `pkhForm`. Three callers did not, and because each
+  reads a failed derivation as an ordinary negative, the failure was silent: correct
+  signatures "did not verify", and no key ever "derived from" a linked wallet. The test node
+  requires a checksum for this reason -- keep it that way, and keep the openamp stub answering
+  only accounts that were registered.
 - **Every statement has two signable forms, and every surface offers both.** `signable` /
   `signableOf` (`seqpald/statement_proof.go`) put `sign_this` (the canonical bytes, hashed
   under `tag` by a wallet that knows SeqPal's tags), `tag`, and `sign_this_message` (the exact
