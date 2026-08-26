@@ -87,8 +87,10 @@ export default function Holdings() {
             ) : (
               <>
                 This page shows balances held in an OpenAMP account. This SeqPal ID has none
-                attached, so there is nothing here to show; freely-tradable stocks and
-                network-enforced assets live in your own wallet, which is where you see them.
+                attached, so there is nothing here to show. A freely-tradable stock is an
+                ordinary coin and appears in your own wallet. A network-enforced holding does
+                not: it sits at its own covenant address, which ordinary wallet software neither
+                displays nor spends, and the token's own page is where you see it.
               </>
             )}
           </p>

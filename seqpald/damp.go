@@ -52,6 +52,7 @@ type dampDeployParams struct {
 
 	whitelist      []string
 	verifierAmount uint64
+	holderKey      string
 
 	userCMR     string
 	verifierCMR string
@@ -111,6 +112,43 @@ const dampParamsMissing = "this deployment is prepared but not minted: your regi
 // it.
 const maxCoinsPerTransfer = 2
 
+// initialHolderKey settles where a network-enforced mint lands. The key must be
+// one this account can sign with, because a network-enforced coin is spent by
+// signing with the key its covenant address is built from, and nothing -- not
+// the issuer, not this platform -- can move it otherwise. An account with an
+// OpenAMP account has such a key already. A SeqPal ID that is only a wallet
+// names one instead, and it is taken only once the server has derived it from a
+// wallet the account proved it holds.
+func (s *server) initialHolderKey(acct *Account, named string) (string, int, error) {
+	named = strings.ToLower(strings.TrimSpace(named))
+	own := strings.ToLower(strings.TrimSpace(acct.XOnly))
+
+	if named == "" {
+		if validXOnly(own) {
+			return own, 0, nil
+		}
+		return "", 400, errors.New("a network-enforced token mints to a holding key, and this " +
+			"SeqPal ID is a wallet with no OpenAMP account to supply one. Name a holding key " +
+			"from a wallet you have linked")
+	}
+	if !validXOnly(named) {
+		return "", 400, errors.New("the holding key must be a 32-byte x-only public key in hex")
+	}
+	if named == own {
+		return named, 0, nil
+	}
+	derives, err := s.keyDerivesFromAccount(acct, named)
+	if err != nil {
+		return "", 500, errors.New("store error")
+	}
+	if !derives {
+		return "", 403, errors.New("that holding key does not derive from any wallet linked to " +
+			"this SeqPal ID, and the supply would mint where you cannot sign. Link the wallet " +
+			"it comes from, or name a key from one you have already linked")
+	}
+	return named, 0, nil
+}
+
 func (s *server) deployNetwork(w http.ResponseWriter, acct *Account, iss *Issuance, p dampDeployParams) {
 	refuse := func(code int, reason string) {
 		s.st.Audit(acct.AID, "deploy.refused", map[string]any{
@@ -119,11 +157,15 @@ func (s *server) deployNetwork(w http.ResponseWriter, acct *Account, iss *Issuan
 		writeErr(w, code, "%s", reason)
 	}
 
-	// The session key is the initial holder: the mint lands where the issuer can
-	// already spend from, with no platform-held key anywhere in the path.
-	holder := strings.ToLower(strings.TrimSpace(acct.XOnly))
-	if !validXOnly(holder) {
-		refuse(500, "this account has no usable holding key")
+	// The mint lands where the issuer can already sign from, with no platform-held
+	// key anywhere in the path. For an account with an OpenAMP account that is its
+	// own key, and naming none is the ordinary case. A SeqPal ID that is only a
+	// wallet has no such key and names one of its own instead, which must derive
+	// from a wallet this account has linked -- otherwise the supply would mint to
+	// a key belonging to someone else, irreversibly.
+	holder, code, err := s.initialHolderKey(acct, p.holderKey)
+	if err != nil {
+		refuse(code, err.Error())
 		return
 	}
 	whitelist, err := normalizeWhitelist(p.whitelist, holder)
