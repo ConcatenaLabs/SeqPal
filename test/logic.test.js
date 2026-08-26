@@ -34,7 +34,14 @@ import {
   taggedHash,
   signChallenge,
 } from '../scripts/e2e/lib/wallet-signer.mjs'
-import { computeAID, isAid, isXonly, looksLikeDescriptor } from '../src/lib/statements.js'
+import {
+  bearerAttestationDigest,
+  computeAID,
+  holdingProofDigest,
+  isAid,
+  isXonly,
+  looksLikeDescriptor,
+} from '../src/lib/statements.js'
 import { schnorr } from '@noble/curves/secp256k1'
 import { bytesToHex, hexToBytes } from '@noble/curves/abstract/utils'
 import { sha256 } from '@noble/hashes/sha256'
@@ -406,4 +413,39 @@ test('the classic statement text matches what the server verifies', () => {
   // A canonical statement never begins with the digest marker, so the two forms
   // cannot be confused for one another.
   assert.ok(!'{"a":1}'.startsWith('hex:'))
+})
+
+// The two digests a wallet actually signs, pinned to fixed bytes.
+//
+// seqpald rebuilds these from its own code (seqpald/vectors_test.go asserts the
+// SAME constants) and checks the holder's signature against the result. The two
+// constructions have to produce identical bytes: a field renamed, reordered or
+// added on one side changes what is signed, both sides still agree with
+// themselves, and every signature stops verifying -- or covers bytes the holder
+// was never shown. Changing a statement means changing both, deliberately.
+test('the digests a wallet signs are fixed on both sides of the wire', () => {
+  assert.equal(
+    bearerAttestationDigest({
+      issuance_id: '11223344556677889900aabb',
+      no_us_nexus: true,
+      risk_accepted: true,
+      aid: 'c80cdf9652c0621b4cc70a856c82ed1c99582032',
+    }),
+    'dd4f59f9bb5a4996d48639ee5cf88957136dfe8382ccad9df7eae447e2b26867',
+  )
+
+  // Deliberately out of order: the construction sorts them, so a signature never
+  // depends on the order a holder happened to select their coins in.
+  assert.equal(
+    holdingProofDigest({
+      action_id: 'act0123456789abcdef012345',
+      asset: 'cc'.repeat(32),
+      record_height: 100000,
+      outpoints: ['bb'.repeat(32) + ':1', 'aa'.repeat(32) + ':0'],
+      purpose: 'dividend',
+      aid: 'c80cdf9652c0621b4cc70a856c82ed1c99582032',
+      payout_address: 'tb1qnzten2u3ayqmnqtdul7z00v3uvapet7dv2789z',
+    }),
+    '9dfde23596857df2e4a76be48068939322880b5d134b13e30ddc177029cb61ea',
+  )
 })

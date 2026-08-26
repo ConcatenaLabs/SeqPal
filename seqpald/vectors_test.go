@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"testing"
@@ -191,5 +192,50 @@ func TestXOnlyVectors(t *testing.T) {
 	}
 	if got := xonlyHex(t, vecPriv2); got != vecXOnly2 {
 		t.Fatalf("xonly(priv2) = %s, want %s", got, vecXOnly2)
+	}
+}
+
+// The two digests a wallet actually signs, pinned to fixed bytes on BOTH sides
+// of the wire.
+//
+// The browser builds these from src/lib/statements.js and the holder signs the
+// result; seqpald rebuilds them here and checks the signature against it. The
+// two constructions have to produce identical bytes, and nothing proved they
+// did: a field renamed, reordered or added on one side would change what is
+// signed, both sides would still agree with themselves, every test would pass,
+// and every signature would stop verifying -- or worse, cover bytes the holder
+// was never shown.
+//
+// The same constants are asserted in test/logic.test.js. Changing a statement
+// means changing both, deliberately, which is the point.
+func TestTheDigestsAWalletSignsAreFixed(t *testing.T) {
+	const (
+		issuanceID = "11223344556677889900aabb"
+		aid        = "c80cdf9652c0621b4cc70a856c82ed1c99582032"
+		asset      = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+		actionID   = "act0123456789abcdef012345"
+		payout     = "tb1qnzten2u3ayqmnqtdul7z00v3uvapet7dv2789z"
+
+		wantAttestation  = "dd4f59f9bb5a4996d48639ee5cf88957136dfe8382ccad9df7eae447e2b26867"
+		wantHoldingProof = "9dfde23596857df2e4a76be48068939322880b5d134b13e30ddc177029cb61ea"
+	)
+
+	att := sha256.Sum256(bearerAttestationStatement(issuanceID, aid))
+	if got := hex.EncodeToString(att[:]); got != wantAttestation {
+		t.Fatalf("the bearer attestation digest changed:\n got  %s\n want %s\nIf this was deliberate, "+
+			"change src/lib/statements.js and test/logic.test.js in the same breath", got, wantAttestation)
+	}
+
+	action := &CorporateAction{ID: actionID, AssetID: asset, RecordHeight: 100000, Kind: "dividend"}
+	// Deliberately out of order: the construction sorts them, and a signature
+	// must not depend on the order a holder happened to select them in.
+	outpoints := []string{
+		"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:1",
+		"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:0",
+	}
+	hp := sha256.Sum256(holdingProofStatement(action, outpoints, payout, "", aid))
+	if got := hex.EncodeToString(hp[:]); got != wantHoldingProof {
+		t.Fatalf("the holding-proof digest changed:\n got  %s\n want %s\nIf this was deliberate, "+
+			"change src/lib/statements.js and test/logic.test.js in the same breath", got, wantHoldingProof)
 	}
 }
