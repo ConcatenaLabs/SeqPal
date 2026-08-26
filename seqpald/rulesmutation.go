@@ -47,6 +47,21 @@ func canonicalRulesHash(raw json.RawMessage) (string, error) {
 	return sha256Hex(canon), nil
 }
 
+// isEmptyRules reports whether a serialized rule set carries no rules at all:
+// absent, null, or an object with no keys.
+func isEmptyRules(raw json.RawMessage) bool {
+	if len(raw) == 0 {
+		return true
+	}
+	var obj map[string]any
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		// Unreadable is not empty, and this check must not be the thing that
+		// decides an unreadable rule set is safe to replace.
+		return false
+	}
+	return len(obj) == 0
+}
+
 // onchainRulesRaw returns the asset's rules exactly as openampd serializes them.
 func (s *server) onchainRulesRaw(assetID string) (json.RawMessage, error) {
 	var out struct {
@@ -86,6 +101,19 @@ func (s *server) applyRulesMutation(iss *Issuance, newRules any, basis string, e
 	rulesJSON, err := json.Marshal(newRules)
 	if err != nil {
 		return nil, fmt.Errorf("marshal new rules: %w", err)
+	}
+	// Every rules change in this platform comes through here, so this is where to
+	// refuse the one shape that is never intended: replacing a live rule set with
+	// an empty one. A caller that could not read the current rules and started
+	// from nothing would otherwise publish an asset with no allowed categories,
+	// no denies, no caps and no primary AIDs -- and record it as an amendment.
+	// Removing rules deliberately is a different thing and still allowed; what is
+	// refused is removing ALL of them.
+	if isEmptyRules(rulesJSON) {
+		if current, err := s.onchainRulesRaw(iss.AssetID); err == nil && !isEmptyRules(current) {
+			return nil, fmt.Errorf("this would replace the asset's entire rule set with an empty " +
+				"one, which no amendment intends; nothing was published")
+		}
 	}
 	prior, _ := s.onchainRulesHash(iss.AssetID)
 
