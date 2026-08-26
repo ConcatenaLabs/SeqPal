@@ -84,8 +84,10 @@ native-BTC escrow rail is off unless `SEQPALD_BTC_RPC_URL` is set.
 | `SEQPALD_CONFIDENTIAL` (`-confidential`) | unset | `1`/`true`: accept per-transfer confidential transfers |
 | `SEQPALD_WEBROOT` (`-webroot`) | empty | built SPA directory served at `/` (empty = API only) |
 | `SEQPALD_DEV_ORIGINS` (`-devorigins`) | empty | comma-separated extra CORS origins for local development |
-| `SEQPALD_ADMIN_AIDS` (`-adminaids`) | empty | comma-separated AIDs allowed to use the manual-review surface. This surface stands in for an identity provider's adjudication, which is where that decision belongs; on a deployment without one it is the only way to release an identity a sanctions name match has parked, so set it or leave those identities parked |
-| `SEQPALD_SCREEN_DIR` (`-screendir`) | `./sanctions-cache` | cache directory for downloaded sanctions lists. Set it: an instance with one loads the real lists at startup and refuses to verify anyone until it has them, while an instance without one screens against the bundled fixture and finds no match against anybody |
+| `SEQPALD_ADMIN_AIDS` (`-adminaids`) | empty | comma-separated AIDs allowed to use the admin surface (re-delivery) |
+| `SEQPALD_IDV_PROVIDER` | `simulated` | which identity-verification provider adjudicates. Only `simulated` ships; a real one is an adapter satisfying the same interface |
+| `SEQPALD_IDV_CALLBACK_SECRET` | minted per process | what authenticates the provider's callback, which is the thing that decides who is verified. Required for any provider but the simulator, which is handed the per-process one and is the only caller that could know it |
+| `SEQPALD_IDV_DECISION_SECS` | `3` | how long the simulated provider takes to answer. A real one takes as long as it takes |
 | `SEQPALD_BLOCKS_PER_DAY` (`-blocksperday`) | `1440` | assumed Sequentia blocks per day for lockup height conversion (60-second spacing: 1440). Below 1 is refused: a lockup measured in zero blocks expires the moment it is stamped |
 | `SEQPALD_TIP_HEIGHT` (`-tipheight`) | `0` | fallback tip height when no node RPC is configured |
 | `SEQPALD_NODE_URL` (`-nodeurl`) | empty | Sequentia node JSON-RPC URL: chain watcher, tip height, supervision RPCs, bearer mints |
@@ -191,14 +193,17 @@ Then in the browser: sign in with a Sequentia wallet (SeqPal holds no key and
 makes none), run an issuance through onboarding, and deploy. The asset id and
 txid returned are real and resolve against `GET /openamp/v1/assets/{id}`.
 
-One more thing nothing will remind you of: a name match on a sanctions list parks
-the identity with no eligibility, and only an adjudication releases it. That
-decision belongs to an identity-verification provider, and this deployment has
-none, so the only thing that can make it is the manual-review surface behind
-`SEQPALD_ADMIN_AIDS`. Set it to the account ids that may act on the queue, or
-accept that a parked identity stays parked. The built-in auto-reviewer will not
-help: it resolves only the deterministic test personas, and deliberately leaves a
-genuine match alone.
+Identity verification is a provider's, and the demo ships a simulated one. Check
+that its decisions are arriving:
+
+```
+journalctl -u seqpald --since -5min | grep -iE "idv|verify"
+# a submitted check, then the decision landing on the callback
+```
+
+A verification that stays "submitted" means the callback never arrived. The
+simulator calls back over loopback to this process's own listener, so the usual
+cause is `SEQPALD_LISTEN` naming an address the process cannot reach itself on.
 
 ## 6. Backup and restore (the DB is books and records)
 

@@ -38,8 +38,14 @@ type config struct {
 	devOrigins   []string // extra allowed CORS origins for local development
 
 	// M2 compliance engine.
-	screenDir string          // cache dir for downloaded sanctions lists
-	adminAIDs map[string]bool // AIDs allowed to use the manual-review surface
+	// Identity verification is a provider's job. idvProvider selects the adapter
+	// ("simulated" until a real one is wired up), idvSecret authenticates the
+	// callback that carries their decision, and idvDecision is how long the
+	// simulator takes to answer -- a real provider takes as long as it takes.
+	idvProvider string
+	idvSecret   string
+	idvDecision time.Duration
+	adminAIDs   map[string]bool // AIDs allowed to use the manual-review surface
 
 	// Chain-derived compile inputs. Tip height comes from the node RPC when
 	// configured, else assumedTip. The M3 chain watcher uses the same node RPC.
@@ -71,8 +77,6 @@ type config struct {
 	fiatSettle   time.Duration // simulated fiat pending->settled delay
 
 	// Cron cadences (fast defaults so a demo runs unattended).
-	screenRefresh   time.Duration // re-download the lists
-	screenInterval  time.Duration // re-screen all identities
 	expiryInterval  time.Duration // category expiry sweep
 	autoReviewEvery time.Duration // auto-reviewer poll
 	autoReviewDelay time.Duration // grace before the auto-reviewer acts
@@ -99,7 +103,7 @@ type server struct {
 	rl     *rateLimiter
 	chalRL *windowLimiter
 	catMu  *keyedMutex // serializes openampd category writes per AID
-	screen *screener   // sanctions lists
+	idv    idvProvider // identity-verification provider
 
 	// M3 chain surfaces.
 	sse         *sseBroker  // SSE fan-out (lazily built via bus())
@@ -185,7 +189,6 @@ func main() {
 	flag.StringVar(&devOrigins, "devorigins", env("SEQPALD_DEV_ORIGINS", ""), "comma-separated extra CORS origins for local development")
 	var adminAIDs string
 	flag.StringVar(&adminAIDs, "adminaids", env("SEQPALD_ADMIN_AIDS", ""), "comma-separated AIDs allowed to use the manual-review surface")
-	flag.StringVar(&cfg.screenDir, "screendir", env("SEQPALD_SCREEN_DIR", "./sanctions-cache"), "cache directory for downloaded sanctions lists")
 	flag.Int64Var(&cfg.blocksPerDay, "blocksperday", envInt("SEQPALD_BLOCKS_PER_DAY", 1440), "assumed Sequentia blocks per day for lockup height conversion (60-second spacing: 1440)")
 	flag.Int64Var(&cfg.assumedTip, "tipheight", envInt("SEQPALD_TIP_HEIGHT", 0), "fallback tip height when no node RPC is configured")
 	flag.StringVar(&cfg.nodeURL, "nodeurl", env("SEQPALD_NODE_URL", ""), "Sequentia node JSON-RPC URL for the chain watcher and tip height (optional)")
@@ -220,6 +223,24 @@ func main() {
 		log.Printf("blocks per day is %d; using 1440, because a lockup measured in zero blocks is not a lockup", cfg.blocksPerDay)
 		cfg.blocksPerDay = 1440
 	}
+	cfg.idvProvider = strings.ToLower(strings.TrimSpace(env("SEQPALD_IDV_PROVIDER", "simulated")))
+	cfg.idvSecret = env("SEQPALD_IDV_CALLBACK_SECRET", "")
+	cfg.idvDecision = interval("SEQPALD_IDV_DECISION_SECS", 3)
+	if cfg.idvSecret == "" {
+		// The callback decides who is verified, so it is never open. With no
+		// secret configured there is nothing to authenticate against, and a
+		// deployment running the simulator has nobody to share one with anyway --
+		// so one is minted for this process and handed to the simulator alone. A
+		// real provider needs a configured secret, and will not get this one.
+		secret, err := randHex(32)
+		if err != nil {
+			log.Fatalf("could not mint a verification callback secret: %v", err)
+		}
+		cfg.idvSecret = secret
+		if cfg.idvProvider != "simulated" {
+			log.Fatalf("SEQPALD_IDV_CALLBACK_SECRET is required for the %q provider", cfg.idvProvider)
+		}
+	}
 	cfg.damp = env("SEQPALD_DAMP", "") == "1" || strings.EqualFold(env("SEQPALD_DAMP", ""), "true")
 	cfg.setupFeeUSD = envFloat("SEQPALD_SETUP_FEE_USD", 500)
 	// A rate outside 0..100% is a typo -- an extra digit on a percentage -- and
@@ -229,8 +250,6 @@ func main() {
 	cfg.escrowFeeBps = clampBps(envInt("SEQPALD_ESCROW_FEE_BPS", 50), "SEQPALD_ESCROW_FEE_BPS")
 
 	cfg.adminAIDs = adminSet(adminAIDs)
-	cfg.screenRefresh = 24 * time.Hour
-	cfg.screenInterval = 24 * time.Hour
 	cfg.expiryInterval = time.Hour
 	cfg.autoReviewEvery = 5 * time.Second
 	cfg.autoReviewDelay = 10 * time.Second
@@ -289,7 +308,7 @@ func main() {
 		rl:          newRateLimiter(),
 		chalRL:      newWindowLimiter(challengesPerKeyPerHour, challengesGlobalPerHour, time.Hour),
 		catMu:       newKeyedMutex(),
-		screen:      newScreener(cfg.screenDir),
+		idv:         newIDVProvider(cfg),
 		escrow:      newEscrowState(),
 		closeMu:     newKeyedMutex(),
 		distMu:      newKeyedMutex(),
@@ -460,12 +479,14 @@ func (s *server) handler() http.Handler {
 
 	// SeqPal ID surface.
 	mux.HandleFunc("POST /api/id/verify", s.requireSession(s.handleIDVerify))
+	// No session: the caller is the verification provider, not the holder. It is
+	// authenticated by the secret they were given, and it is what decides who is
+	// verified, so it is never open.
+	mux.HandleFunc("POST /api/id/verify/callback", s.handleIDVCallback)
 	mux.HandleFunc("GET /api/id/passport", s.requireSession(s.handleIDPassport))
 	mux.HandleFunc("POST /api/id/entities/{id}/verify", s.requireSession(s.handleEntityVerify))
 
 	// Manual-review surface (session + admin).
-	mux.HandleFunc("GET /api/admin/review-queue", s.requireSession(s.requireAdmin(s.handleReviewQueue)))
-	mux.HandleFunc("POST /api/admin/review/{id}", s.requireSession(s.requireAdmin(s.handleReviewDecide)))
 
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodOptions {

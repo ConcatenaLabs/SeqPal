@@ -46,41 +46,28 @@ func (s *server) handleIDVerify(w http.ResponseWriter, r *http.Request) {
 		name = acct.DisplayName
 	}
 	if name == "" {
-		writeErr(w, 400, "a registered name is required to screen this identity")
+		writeErr(w, 400, "a registered name is required to verify this identity")
 		return
 	}
 
-	// Screening is the whole of what verification decides. An instance whose
-	// lists have not loaded would find no match against anyone and grant
-	// eligibility to all of them, which is worse than making the holder wait a
-	// few seconds and try again.
-	if !s.screen.ready() {
-		s.st.Audit(acct.AID, "id.verify.deferred", map[string]any{"reason": "sanctions lists not loaded"})
-		writeErr(w, 503, "sanctions screening is still loading on this instance. Nothing is decided "+
-			"about an identity until it can be screened properly; try again in a moment")
-		return
-	}
-
-	// A sanctions match already on this identity is not something re-verifying
-	// can walk past. Screening runs over the name the holder declares, so an
-	// identity parked for review -- or refused after one -- could simply submit
-	// again under a different name and be verified, while the review item it was
-	// parked by sat in the queue. The decision belongs to the reviewer who has
-	// it, and until they make it there is nothing to re-run.
+	// A decision already made is not re-run. A refusal is the provider's, and
+	// there is no reviewer here to appeal it to; a check already with the
+	// provider is simply not finished. Only needs_info invites another
+	// submission, which is what a provider asking for one means.
 	if prior, err := s.st.ClaimsByAID(acct.AID); err != nil {
 		writeErr(w, 500, "store error")
 		return
 	} else if prior != nil {
 		switch prior.Status {
-		case "pending_review":
+		case "submitted":
 			s.st.Audit(acct.AID, "id.verify.blocked", map[string]any{"status": prior.Status})
-			writeErr(w, 409, "a name match on this identity is with a reviewer, and verification "+
-				"cannot be re-run while it is. This page shows the outcome when they decide")
+			writeErr(w, 409, "this identity is already with the verification provider. This page "+
+				"shows the outcome when they decide")
 			return
 		case "refused":
 			s.st.Audit(acct.AID, "id.verify.blocked", map[string]any{"status": prior.Status})
-			writeErr(w, 409, "verification of this identity was refused, and running it again does "+
-				"not change that. Only a reviewer can reopen it")
+			writeErr(w, 409, "verification of this identity was refused by the verification "+
+				"provider, and submitting again does not change that")
 			return
 		}
 	}
@@ -108,19 +95,6 @@ func (s *server) handleIDVerify(w http.ResponseWriter, r *http.Request) {
 		aid = registered
 	}
 
-	// Real sanctions screening against all four public lists.
-	results := s.screen.Screen(name)
-	var hits []ScreeningResult
-	for _, rslt := range results {
-		if err := s.st.UpsertScreening(aid, rslt); err != nil {
-			writeErr(w, 500, "store error")
-			return
-		}
-		if rslt.Matched {
-			hits = append(hits, rslt)
-		}
-	}
-
 	now := time.Now()
 	usPerson := res == "US" || strings.EqualFold(strings.TrimSpace(req.Citizenship), "US")
 	if req.USPerson != nil {
@@ -134,6 +108,10 @@ func (s *server) handleIDVerify(w http.ResponseWriter, r *http.Request) {
 	if req.Accredited && req.AccredArtifact != "" {
 		accredValid = now.Add(accreditedValidity).Unix()
 	}
+	// Recorded now, granted nothing yet: the claims exist so the provider's
+	// decision has something to land on, and they carry no eligibility until it
+	// does. projectCategories yields nothing for any status but "verified", so
+	// every gate on this platform already refuses a submitted identity.
 	claims := &Claims{
 		AID:              aid,
 		Residence:        res,
@@ -147,82 +125,49 @@ func (s *server) handleIDVerify(w http.ResponseWriter, r *http.Request) {
 		TaxResidencies:   req.TaxResidencies,
 		ValidUntil:       now.Add(identityValidity).Unix(),
 		VocabVersion:     vocabVersion,
+		Status:           "submitted",
 	}
-
-	// A sanctions hit does NOT auto-refuse: it parks the ID in review and stamps
-	// nothing. The SIMULATED auto-reviewer (or a human on the admin page) resolves it.
-	if len(hits) > 0 {
-		claims.Status = "pending_review"
-		if err := s.st.UpsertClaims(claims); err != nil {
-			writeErr(w, 500, "store error")
-			return
-		}
-		for _, h := range hits {
-			id, _ := randHex(12)
-			_ = s.st.InsertReview(&ReviewItem{
-				ID: id, AID: aid, List: h.List, MatchedEntry: h.MatchedEntry,
-				State: "pending", Disposition: s.screen.disposition(h.List, h.MatchedEntry),
-				CreatedAt: now.Unix(),
-			})
-		}
-		s.st.Audit(aid, "id.verify.pending_review", map[string]any{"lists": listsOf(hits)})
-		writeJSON(w, 200, map[string]any{
-			"status": "pending_review", "aid": aid, "screening": results,
-			"message": "a sanctions-list name match was found; the identity is in manual review and no eligibility has been granted",
-		})
-		return
-	}
-
-	// No sanctions hit: run the labeled-simulated document/selfie review.
-	switch personaDisposition(name) {
-	case "reject":
-		claims.Status = "refused"
-		_ = s.st.UpsertClaims(claims)
-		s.st.Audit(aid, "id.verify.refused", map[string]any{"reason": "document review rejected (SIMULATED)"})
-		writeJSON(w, 200, map[string]any{"status": "refused", "aid": aid,
-			"message": "document review was rejected (SIMULATED review)"})
-		return
-	case "needs_info":
-		claims.Status = "needs_info"
-		_ = s.st.UpsertClaims(claims)
-		s.st.Audit(aid, "id.verify.needs_info", map[string]any{})
-		writeJSON(w, 200, map[string]any{"status": "needs_info", "aid": aid,
-			"message": "additional information is required to complete the review (SIMULATED review)"})
-		return
-	}
-
-	claims.Status = "verified"
-	claims.VerifiedAt = now.Unix()
-	sig, err := s.signClaims(claims)
-	if err != nil {
-		writeErr(w, 500, "could not sign the claims record")
-		return
-	}
-	claims.ClaimsSig = sig
 	if err := s.st.UpsertClaims(claims); err != nil {
 		writeErr(w, 500, "store error")
 		return
 	}
-	var cats []string
-	if s.hasEnclave(acct) {
-		cats, err = s.writeCategories(aid)
-		if err != nil {
-			s.st.Audit(aid, "id.verify.stamp_failed", map[string]any{"error": err.Error()})
-			writeErr(w, 502, "categories could not be stamped on the policy server: %v", err)
-			return
-		}
-	} else {
-		// Projected the same way, just not pushed anywhere yet.
-		cats = projectCategories(claims, time.Now().Unix())
-		if cats == nil {
-			cats = []string{}
-		}
+
+	check, err := s.submitVerification(aid, "identity", name, "")
+	if err != nil {
+		s.st.Audit(aid, "id.verify.submit_failed", map[string]any{"error": err.Error()})
+		writeErr(w, 502, "the verification provider could not be reached: %v", err)
+		return
 	}
-	s.st.Audit(aid, "id.verify.approved", map[string]any{"categories": cats})
-	writeJSON(w, 200, map[string]any{
-		"status": "verified", "aid": aid, "categories": cats,
-		"valid_until": claims.ValidUntil, "screening": results,
+	s.st.Audit(aid, "id.verify.submitted", map[string]any{
+		"check": check.ID, "provider": check.Provider,
 	})
+	writeJSON(w, 200, map[string]any{
+		"status": "submitted", "aid": aid, "check_id": check.ID, "provider": check.Provider,
+		"message": "your details are with the verification provider. Nothing is granted until " +
+			"they decide, and this page shows the outcome when they do",
+	})
+}
+
+// submitVerification records a check and hands it to the provider. The row is
+// written BEFORE the provider is called, because a provider fast enough to
+// answer first still needs something to answer about.
+func (s *server) submitVerification(aid, kind, name, entityID string) (*VerificationCheck, error) {
+	check := &VerificationCheck{
+		ID: mustID(), AID: aid, Kind: kind, SubjectName: name, EntityID: entityID,
+		Provider: s.idv.Name(), Status: "submitted", CreatedAt: time.Now().Unix(),
+	}
+	if err := s.st.InsertVerificationCheck(check); err != nil {
+		return nil, err
+	}
+	ref, err := s.idv.CreateCheck(check)
+	if err != nil {
+		return nil, err
+	}
+	check.ProviderRef = ref
+	if err := s.st.SetVerificationCheckRef(check.ID, ref); err != nil {
+		return nil, err
+	}
+	return check, nil
 }
 
 // personaDisposition is the SIMULATED document-review outcome, made deterministic
@@ -279,7 +224,7 @@ func (s *server) handleIDPassport(w http.ResponseWriter, r *http.Request) {
 	} else {
 		user.Categories = projectCategories(claims, time.Now().Unix())
 	}
-	screening, _ := s.st.ScreeningByAID(acct.AID)
+	latestCheck, _ := s.st.LatestVerificationCheck(acct.AID)
 
 	now := time.Now().Unix()
 	validUntil := int64(0)
@@ -334,15 +279,17 @@ func (s *server) handleIDPassport(w http.ResponseWriter, r *http.Request) {
 		// founded on an OpenAMP account, and a different one for an ID founded as
 		// a wallet that attached one later -- so a holder quoting "their AID" to a
 		// venue needs to be shown which is which, not one labelled as the other.
-		"enclave_aid":    s.enclaveAIDOf(acct),
-		"enclave_key":    acct.XOnly,
-		"status":         status,
-		"categories":     cats,
-		"valid_until":    validUntil,
-		"screening":      screening,
-		"lists_screened": sanctionsLists,
-		"frozen":         user.Frozen,
-		"entities":       linked,
+		"enclave_aid": s.enclaveAIDOf(acct),
+		"enclave_key": acct.XOnly,
+		"status":      status,
+		"categories":  cats,
+		"valid_until": validUntil,
+		// Where this identity's verification stands, and who decided it. The
+		// platform used to report which sanctions lists IT had screened against;
+		// it screens against none, because that is the provider's work.
+		"verification": verificationView(latestCheck),
+		"frozen":       user.Frozen,
+		"entities":     linked,
 		"accepted": map[string]any{
 			"assets": eligibleAssets,
 			"venues": honoringVenues(),
@@ -404,42 +351,12 @@ func (s *server) handleEntityVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// An entity has a name, and a sanctions list has entities on it -- most of
-	// the EU consolidated list's rows are marked "enterprise" rather than
-	// "person". Only the personal path screened, so a listed company could be
-	// approved and handed a treasury while a listed person could not get past
-	// verification.
-	if !s.screen.ready() {
-		writeErr(w, 503, "sanctions screening is still loading on this instance; try again in a moment")
-		return
-	}
-	var entityHits []ScreeningResult
-	for _, rslt := range s.screen.Screen(e.Name) {
-		_ = s.st.UpsertScreening(acct.AID, rslt)
-		if rslt.Matched {
-			entityHits = append(entityHits, rslt)
-		}
-	}
-	if len(entityHits) > 0 {
-		for _, h := range entityHits {
-			rid, _ := randHex(12)
-			_ = s.st.InsertReview(&ReviewItem{
-				ID: rid, AID: acct.AID, List: h.List, MatchedEntry: h.MatchedEntry,
-				State: "pending", Disposition: s.screen.disposition(h.List, h.MatchedEntry),
-				CreatedAt: time.Now().Unix(),
-			})
-		}
-		s.st.Audit(acct.AID, "entity.verify.refused", map[string]any{
-			"entity_id": id, "reason": "sanctions name match on the entity", "lists": listsOf(entityHits),
-		})
-		writeErr(w, 409, "this entity's name matches a sanctions list, so nothing was provisioned "+
-			"for it. A reviewer decides whether it is the same entity or a false positive")
-		return
-	}
-
-	// KYB approval mints the entity a treasury enclave: its own key (custodied by
-	// seqpald) registered with openampd. This is the entity treasury AID that goes
-	// into rules.primary_aids for the entity's offerings.
+	// The entity treasury: its own key (custodied by seqpald) registered with
+	// openampd, and the AID that goes into rules.primary_aids for the entity's
+	// offerings. Provisioned now rather than on approval, because the UBO
+	// statement below NAMES it and cannot be signed before it exists. A key is
+	// not an approval: the entity counts as verified only when the provider says
+	// so, and an entity they refuse is left holding nothing but an unused key.
 	treasury, err := s.createEnclave(enclaveEntityTreasury, e.ID)
 	if err != nil {
 		writeErr(w, 502, "provision the entity treasury: %v", err)
@@ -464,12 +381,26 @@ func (s *server) handleEntityVerify(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, "store error")
 		return
 	}
-	s.st.Audit(acct.AID, "entity.verify.approved", map[string]any{
-		"entity_id": e.ID, "treasury_aid": treasury.AID, "ubo_signed": link.Sig != "",
+	// Business verification is the provider's too, and asynchronous for the same
+	// reason: they run the checks and tell us. Nothing about this entity counts
+	// as verified until they do.
+	check, err := s.submitVerification(acct.AID, "business", e.Name, e.ID)
+	if err != nil {
+		s.st.Audit(acct.AID, "entity.verify.submit_failed", map[string]any{
+			"entity_id": e.ID, "error": err.Error(),
+		})
+		writeErr(w, 502, "the verification provider could not be reached: %v", err)
+		return
+	}
+	s.st.Audit(acct.AID, "entity.verify.submitted", map[string]any{
+		"entity_id": e.ID, "check": check.ID, "provider": check.Provider,
+		"treasury_aid": treasury.AID, "ubo_signed": link.Sig != "",
 	})
 	writeJSON(w, 200, map[string]any{
 		"entity": e, "treasury_aid": treasury.AID, "ubo_link": link,
-		"message": "entity verified (SIMULATED KYB); a treasury enclave was provisioned",
+		"status": "submitted", "check_id": check.ID, "provider": check.Provider,
+		"message": "this entity is with the verification provider. Its treasury key exists so the " +
+			"control statement could be signed, but nothing is verified until they decide",
 	})
 }
 
@@ -694,12 +625,4 @@ func anyIn(have, want []string) bool {
 		}
 	}
 	return false
-}
-
-func listsOf(hits []ScreeningResult) []string {
-	out := make([]string, 0, len(hits))
-	for _, h := range hits {
-		out = append(out, h.List)
-	}
-	return out
 }

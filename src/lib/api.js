@@ -152,9 +152,9 @@ export const compileIssuance = (id, body) =>
   req(`/issuances/${encodeURIComponent(id)}/compile`, { method: 'POST', body })
 
 // ── SeqPal ID (M2) ─────────────────────────────────────────────────────────
-// Run KYC (labeled-simulated document review, real states) plus real sanctions
-// screening on the signed-in identity, then stamp categories on approval.
-// Returns { status, aid, categories?, valid_until?, screening[] }.
+// Submit the signed-in identity to the verification provider. Nothing is
+// granted here: the provider decides, and their decision arrives on a callback.
+// Returns { status: "submitted", aid, check_id, provider }.
 export const idVerify = (body) => req('/id/verify', { method: 'POST', body })
 
 // The passport: { aid, enclave_key, status, categories[], valid_until,
@@ -550,8 +550,3 @@ export const getAction = (actionId) => req(`/actions/${encodeURIComponent(action
 export const claimAction = (actionId, body) =>
   req(`/actions/${encodeURIComponent(actionId)}/claim`, { method: 'POST', body })
 
-// ── platform reviewer (admin-session only) ──────────────────────────────────
-export const reviewQueue = () => req('/admin/review-queue')
-
-export const reviewDecide = (id, body) =>
-  req(`/admin/review/${encodeURIComponent(id)}`, { method: 'POST', body })

@@ -15,7 +15,6 @@ import (
 func TestAWalletBackedIDCanSignWhatItIsAsked(t *testing.T) {
 	h := newHarness(t)
 	h.s.cfg.nodeURL = newWalletNode(t, true).URL
-	h.s.screen = newScreener("")
 	session, _ := walletSession(t, h, testPKH)
 
 	// Phase one: what to sign. The tagged form is for a wallet that knows
@@ -64,7 +63,6 @@ func TestAWalletBackedIDCanSignWhatItIsAsked(t *testing.T) {
 func TestTheMarketAbuseAckOffersTheMessageForm(t *testing.T) {
 	h := newHarness(t)
 	h.s.cfg.nodeURL = newWalletNode(t, true).URL
-	h.s.screen = newScreener("")
 	session, _ := walletSession(t, h, testPKH)
 
 	get := h.do("GET", "/api/id/market-abuse-ack", session, nil)
@@ -92,7 +90,6 @@ func TestTheMarketAbuseAckOffersTheMessageForm(t *testing.T) {
 func TestAWalletBackedIDCanNameAPayoutAddress(t *testing.T) {
 	h := newHarness(t)
 	h.s.cfg.nodeURL = newWalletNode(t, true).URL
-	h.s.screen = newScreener("")
 	session, aid := walletSession(t, h, testPKH)
 
 	// A live serviced issuance exists, so the probe has something to ask about.
@@ -123,7 +120,6 @@ func TestAWalletBackedIDCanNameAPayoutAddress(t *testing.T) {
 func TestBothPayoutChecksFailClosed(t *testing.T) {
 	h := newHarness(t)
 	h.s.cfg.nodeURL = newWalletNode(t, true).URL
-	h.s.screen = newScreener("")
 	session, aid := walletSession(t, h, testPKH)
 	iss := seedIssuanceOfKind(t, h.s, aid, "serviced")
 
@@ -155,7 +151,6 @@ func TestBothPayoutChecksFailClosed(t *testing.T) {
 func TestARecordedSignatureCanBeChecked(t *testing.T) {
 	h := newHarness(t)
 	h.s.cfg.nodeURL = newWalletNode(t, true).URL
-	h.s.screen = newScreener("")
 	session, aid := walletSession(t, h, testPKH)
 	iss := seedIssuanceOfKind(t, h.s, aid, "serviced")
 
@@ -211,7 +206,6 @@ func TestARecordedSignatureCanBeChecked(t *testing.T) {
 func TestEveryStoredSignatureSaysWhatChecksIt(t *testing.T) {
 	h := newHarness(t)
 	h.s.cfg.nodeURL = newWalletNode(t, true).URL
-	h.s.screen = newScreener("")
 	session, aid := walletSession(t, h, testPKH)
 	const walletSig = "H1uL0Y2ZwOaKf3wRZ5NnwF0oJp0V1sV+Xu3QW6mV2mYbTGYr9k1J2bV0wq1mM4pV"
 

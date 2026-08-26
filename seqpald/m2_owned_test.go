@@ -273,7 +273,7 @@ func newOWHarness(t *testing.T) *owHarness {
 		rl:     newRateLimiter(),
 		chalRL: newWindowLimiter(challengesPerKeyPerHour, challengesGlobalPerHour, time.Hour),
 		catMu:  newKeyedMutex(),
-		screen: newScreener(""),
+		idv:    &testIDV{},
 	}
 	return &owHarness{t: t, s: s, h: s.handler(), oa: oa}
 }
@@ -658,18 +658,23 @@ func auditCount(t *testing.T, s *server, aid, action string) int {
 // Deliverable 3: /id/verify -> categories -> /eligibility, including sanctions.
 // ============================================================================
 
-func TestOwnedVerifyEligibilityAndSanctions(t *testing.T) {
+func TestOwnedVerifyEligibilityAndRefusal(t *testing.T) {
 	h := newOWHarness(t)
 
-	// A clean DE retail identity verifies and gets exactly [j:DE:ret] stamped.
+	// A clean DE retail identity is submitted, granted nothing yet, and stamped
+	// exactly [j:DE:ret] once the provider clears it.
 	session, aid, _ := h.register(vecPriv, "Katherine Johnson", "DE")
 	v := h.do("POST", "/api/id/verify", session, map[string]any{"residence": "DE", "base_eligibility": "ret"})
 	if v.code != 200 {
 		t.Fatalf("verify: %d %s", v.code, v.errMsg())
 	}
-	if got, _ := v.body["status"].(string); got != "verified" {
-		t.Fatalf("status = %q, want verified", got)
+	if got, _ := v.body["status"].(string); got != "submitted" {
+		t.Fatalf("status = %q, want submitted", got)
 	}
+	if cats := h.oa.userCategories(aid); len(cats) != 0 {
+		t.Fatalf("nothing is granted before the provider decides, got %v", cats)
+	}
+	h.adjudicate(aid, idvClear)
 	if cats := h.oa.userCategories(aid); !eqStrSet(cats, []string{"j:DE:ret"}) {
 		t.Fatalf("stamped categories = %v, want [j:DE:ret]", cats)
 	}
@@ -690,27 +695,26 @@ func TestOwnedVerifyEligibilityAndSanctions(t *testing.T) {
 		t.Fatalf("an ineligible verdict must carry a reason: %s", no.raw)
 	}
 
-	// A sanctions CONFIRM persona lands in review, gets nothing stamped, and once
-	// the labeled auto-reviewer confirms, is frozen and refused, and now fails
-	// eligibility for the very asset a clean DE holder passed.
-	sSession, sAID, _ := h.register(vecPriv2, "OFAC SDN TEST PERSONA CONFIRM", "DE")
+	// An identity the provider REFUSES is frozen and refused, and now fails
+	// eligibility for the very asset the cleared holder passed. There is no
+	// SeqPal reviewer to appeal to: the provider's decision is the decision.
+	sSession, sAID, _ := h.register(vecPriv2, "Somebody Else", "DE")
 	sv := h.do("POST", "/api/id/verify", sSession, map[string]any{"residence": "DE", "base_eligibility": "ret"})
-	if got, _ := sv.body["status"].(string); got != "pending_review" {
-		t.Fatalf("sanctioned verify status = %q, want pending_review (%s)", got, sv.raw)
+	if got, _ := sv.body["status"].(string); got != "submitted" {
+		t.Fatalf("verify status = %q, want submitted (%s)", got, sv.raw)
 	}
 	if cats := h.oa.userCategories(sAID); len(cats) != 0 {
-		t.Fatalf("a flagged identity must have nothing stamped, got %v", cats)
+		t.Fatalf("a submitted identity must have nothing stamped, got %v", cats)
 	}
-	// The passport reflects the pending, unstamped, un-frozen state.
 	pass := h.do("GET", "/api/id/passport", sSession, nil)
-	if got, _ := pass.body["status"].(string); got != "pending_review" {
-		t.Fatalf("passport status = %q, want pending_review", got)
+	if got, _ := pass.body["status"].(string); got != "submitted" {
+		t.Fatalf("passport status = %q, want submitted", got)
 	}
 
-	h.s.runAutoReview(0) // delay 0: resolve the deterministic TEST persona now.
+	h.adjudicate(sAID, idvReject)
 
 	if !h.oa.frozen(sAID) {
-		t.Fatalf("a confirmed sanctions hit must freeze the AID")
+		t.Fatalf("a refusal must freeze the AID")
 	}
 	claims, _ := h.s.st.ClaimsByAID(sAID)
 	if claims == nil || claims.Status != "refused" {
@@ -726,27 +730,37 @@ func TestOwnedVerifyEligibilityAndSanctions(t *testing.T) {
 	}
 }
 
-// TestOwnedSanctionsFalsePositiveClears proves the other branch: a fixture entry
-// tagged "clear" is a false positive; the auto-reviewer clears it and the parked
-// verification completes with categories stamped and no freeze.
-func TestOwnedSanctionsFalsePositiveClears(t *testing.T) {
+// A provider that asks for more rather than deciding leaves the identity able to
+// try again -- the one not-verified state that is not final, and the reason the
+// re-submission guard lets it through.
+func TestOwnedProviderCanAskForMore(t *testing.T) {
 	h := newOWHarness(t)
-	session, aid, _ := h.register(vecPriv, "SEQPAL EU TEST FALSE POSITIVE CLEAR", "FR")
+	session, aid, _ := h.register(vecPriv, "Needs More Documents", "FR")
 
-	v := h.do("POST", "/api/id/verify", session, map[string]any{"residence": "FR", "base_eligibility": "ret"})
-	if got, _ := v.body["status"].(string); got != "pending_review" {
-		t.Fatalf("status = %q, want pending_review (%s)", got, v.raw)
+	if v := h.do("POST", "/api/id/verify", session, map[string]any{
+		"residence": "FR", "base_eligibility": "ret",
+	}); v.code != 200 {
+		t.Fatalf("verify: %d %s", v.code, v.errMsg())
 	}
-	h.s.runAutoReview(0)
-	if h.oa.frozen(aid) {
-		t.Fatalf("a cleared false positive must not freeze")
-	}
-	if cats := h.oa.userCategories(aid); !eqStrSet(cats, []string{"j:FR:ret"}) {
-		t.Fatalf("cleared identity categories = %v, want [j:FR:ret]", cats)
-	}
+	h.adjudicate(aid, idvResubmit)
+
 	claims, _ := h.s.st.ClaimsByAID(aid)
-	if claims == nil || claims.Status != "verified" {
-		t.Fatalf("claims status = %v, want verified", claims)
+	if claims == nil || claims.Status != "needs_info" {
+		t.Fatalf("claims status = %v, want needs_info", claims)
+	}
+	if cats := h.oa.userCategories(aid); len(cats) != 0 {
+		t.Fatalf("an unfinished verification grants nothing, got %v", cats)
+	}
+
+	// And submitting again is allowed, unlike after a refusal.
+	if again := h.do("POST", "/api/id/verify", session, map[string]any{
+		"residence": "FR", "base_eligibility": "ret",
+	}); again.code != 200 {
+		t.Fatalf("a holder asked for more must be able to submit again: %d %s", again.code, again.errMsg())
+	}
+	h.adjudicate(aid, idvClear)
+	if cats := h.oa.userCategories(aid); len(cats) == 0 {
+		t.Fatalf("a cleared resubmission must stamp categories")
 	}
 }
 
@@ -780,6 +794,7 @@ func TestOwnedEscrowEnclave(t *testing.T) {
 	}); v.code != 200 {
 		t.Fatalf("controller verify: %d %s", v.code, v.errMsg())
 	}
+	h.adjudicate(issuerAID, idvClear)
 
 	// A corporate entity, then KYB verify to provision its treasury enclave.
 	ent := h.do("POST", "/api/entities", session, map[string]any{"name": "Acme Holdings", "jurisdiction": "HN"})
@@ -872,5 +887,18 @@ func TestOwnedEscrowEnclave(t *testing.T) {
 	}
 	if got, _ := dep.body["holder_aid"].(string); got != escrowKey.AID {
 		t.Fatalf("deploy response holder_aid = %s, want %s", got, escrowKey.AID)
+	}
+}
+
+// adjudicate delivers a provider decision for this harness, the way the callback
+// would.
+func (h *owHarness) adjudicate(aid string, decision idvDecision) {
+	h.t.Helper()
+	check, err := h.s.st.LatestVerificationCheck(aid)
+	if err != nil || check == nil {
+		h.t.Fatalf("no verification check for %s: %v", aid, err)
+	}
+	if err := h.s.applyAdjudication(check, decision, ""); err != nil {
+		h.t.Fatalf("adjudicate %s as %s: %v", aid, decision, err)
 	}
 }

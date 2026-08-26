@@ -8,7 +8,7 @@ const pillars = [
   {
     icon: Icon.shield,
     title: 'Compliance built into the asset',
-    body: 'Issuers choose who enforces the rules. Have this platform service every transfer and eligibility is checked on each one \u2014 jurisdiction, accreditation and sanctions screening travelling with the asset; have the network enforce them and the chain checks a published holder list instead; or issue a freely-tradable token anyone can hold. Verify once with SeqPal ID, whichever you pick.',
+    body: 'Issuers choose who enforces the rules. Have this platform service every transfer and eligibility is checked on each one \u2014 jurisdiction and accreditation travelling with the asset; have the network enforce them and the chain checks a published holder list instead; or issue a freely-tradable token anyone can hold. Verify once with SeqPal ID, whichever you pick.',
   },
   {
     icon: Icon.users,

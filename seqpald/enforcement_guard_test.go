@@ -35,7 +35,6 @@ func seedIssuanceOfKind(t *testing.T, s *server, ownerAID, kind string) *Issuanc
 func TestSubscribingToABearerTokenIsRefused(t *testing.T) {
 	h := newHarness(t)
 	h.s.cfg.nodeURL = newWalletNode(t, true).URL
-	h.s.screen = newScreener("")
 	session, _, _ := m3SeedAccount(t, h.s, vecPriv, "Investor Ivy")
 	_, ownerAID, _ := m3SeedAccount(t, h.s, vecPriv2, "Issuer Ida")
 	iss := seedIssuanceOfKind(t, h.s, ownerAID, "bearer")
@@ -57,7 +56,6 @@ func TestSubscribingToABearerTokenIsRefused(t *testing.T) {
 func TestTheRefusalNamesTheTokenNotTheInvestor(t *testing.T) {
 	h := newHarness(t)
 	h.s.cfg.nodeURL = newWalletNode(t, true).URL
-	h.s.screen = newScreener("")
 	session, _ := walletSession(t, h, testPKH) // no enclave at all
 	_, ownerAID, _ := m3SeedAccount(t, h.s, vecPriv, "Issuer Ida")
 	iss := seedIssuanceOfKind(t, h.s, ownerAID, "bearer")
@@ -115,7 +113,6 @@ func TestClosingABearerIssuanceIsRefused(t *testing.T) {
 func TestAWalletBackedIDCannotIssueASupervisedToken(t *testing.T) {
 	h := newHarness(t)
 	h.s.cfg.nodeURL = newWalletNode(t, true).URL
-	h.s.screen = newScreener("")
 	session, aid := walletSession(t, h, testPKH)
 
 	iss := seedIssuanceOfKind(t, h.s, aid, "bearer")
@@ -153,7 +150,6 @@ func TestANetworkDeployNamesAHoldingKey(t *testing.T) {
 	h := newHarness(t)
 	h.s.cfg.damp = true
 	h.s.cfg.nodeURL = newWalletNode(t, true).URL
-	h.s.screen = newScreener("")
 	session, aid := walletSession(t, h, testPKH)
 
 	iss := seedIssuanceOfKind(t, h.s, aid, "network")
@@ -243,7 +239,6 @@ func TestANamedHoldingKeyFromALinkedWalletIsTaken(t *testing.T) {
 	h := newHarness(t)
 	h.s.cfg.damp = true
 	h.s.cfg.nodeURL = newWalletNode(t, true).URL
-	h.s.screen = newScreener("")
 	session, aid := walletSession(t, h, testPKH)
 
 	iss := seedIssuanceOfKind(t, h.s, aid, "network")
