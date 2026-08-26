@@ -1134,6 +1134,23 @@ CREATE UNIQUE INDEX idx_fee_invoices_unspent ON fee_invoices(aid, kind, subject)
   WHERE aid != '' AND check_id = '';
 CREATE INDEX idx_fee_invoices_account ON fee_invoices(aid, kind, subject) WHERE aid != '';
 `,
+	// Invoices paid before an invoice recorded what it bought are sitting
+	// unspent, which reads as a check still owed to the holder -- so every one of
+	// those accounts holds a free provider check. Record the check each payment
+	// actually bought: the earliest one for that account, kind and subject. An
+	// account that paid and never submitted has genuinely not used its check, and
+	// keeps it.
+	`
+UPDATE fee_invoices
+SET check_id = COALESCE((
+  SELECT vc.id FROM verification_checks vc
+  WHERE vc.aid = fee_invoices.aid
+    AND vc.kind = CASE fee_invoices.kind WHEN 'kyb' THEN 'business' ELSE 'identity' END
+    AND vc.entity_id = fee_invoices.subject
+  ORDER BY vc.created_at ASC, vc.rowid ASC LIMIT 1
+), '')
+WHERE aid != '' AND state = 'paid' AND check_id = '';
+`,
 }
 
 // Store is seqpald's persistent state. Every financial fact the UI shows is
