@@ -209,7 +209,11 @@ func main() {
 	flag.Parse()
 	cfg.damp = env("SEQPALD_DAMP", "") == "1" || strings.EqualFold(env("SEQPALD_DAMP", ""), "true")
 	cfg.setupFeeUSD = envFloat("SEQPALD_SETUP_FEE_USD", 500)
-	cfg.escrowFeeBps = envInt("SEQPALD_ESCROW_FEE_BPS", 50)
+	// A rate outside 0..100% is a typo -- an extra digit on a percentage -- and
+	// it would charge a fee larger than the deposit it comes out of. The release
+	// paths already refuse to pay out less than nothing, but the LEDGER would
+	// still carry the fee that was never taken, and the ledger is the books.
+	cfg.escrowFeeBps = clampBps(envInt("SEQPALD_ESCROW_FEE_BPS", 50), "SEQPALD_ESCROW_FEE_BPS")
 
 	cfg.adminAIDs = adminSet(adminAIDs)
 	cfg.screenRefresh = 24 * time.Hour
@@ -535,6 +539,21 @@ func (s *server) originAllowed(origin string, r *http.Request) bool {
 		}
 	}
 	return false
+}
+
+// clampBps holds a configured rate inside 0..100%, saying so when it has to.
+// Silently correcting an operator's number would leave them believing the one
+// they set.
+func clampBps(v int64, name string) int64 {
+	switch {
+	case v < 0:
+		log.Printf("%s is %d, which is not a rate; using 0", name, v)
+		return 0
+	case v > 10000:
+		log.Printf("%s is %d basis points, which is more than 100%%; using 10000", name, v)
+		return 10000
+	}
+	return v
 }
 
 func readJSON(r *http.Request, v any) error {

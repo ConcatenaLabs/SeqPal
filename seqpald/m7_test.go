@@ -838,3 +838,36 @@ func TestWithholdingCanNeverExceedTheGross(t *testing.T) {
 		}
 	}
 }
+
+// A fee comes out of a deposit, so it can never be larger than one. The rate is
+// configured, and a rate outside 0..100% is a typo -- an extra digit on a
+// percentage -- which would charge more than was deposited. The release paths
+// already refuse to pay out less than nothing, but the ledger would still carry
+// a fee that was never taken, and the ledger is the books.
+func TestAFeeCanNeverExceedWhatItCameFrom(t *testing.T) {
+	if got := clampBps(-1, "test"); got != 0 {
+		t.Fatalf("a negative rate clamped to %d, want 0", got)
+	}
+	if got := clampBps(50_000, "test"); got != 10000 {
+		t.Fatalf("500%% clamped to %d, want 10000", got)
+	}
+	if got := clampBps(50, "test"); got != 50 {
+		t.Fatalf("an ordinary rate was changed to %d", got)
+	}
+
+	for _, deposited := range []uint64{0, 1, 1000, 1 << 40, ^uint64(0) >> 2} {
+		for _, bps := range []int64{-500, 0, 50, 10000, 50_000} {
+			sub := &Subscription{DepositedAtoms: deposited}
+			fee, net := escrowFeeSplit(sub, bps)
+			if fee > deposited {
+				t.Fatalf("fee %d out of a deposit of %d (%d bps)", fee, deposited, bps)
+			}
+			if net > deposited {
+				t.Fatalf("net %d exceeds the deposit of %d (%d bps)", net, deposited, bps)
+			}
+			if fee+net != deposited {
+				t.Fatalf("fee %d + net %d != deposit %d (%d bps)", fee, net, deposited, bps)
+			}
+		}
+	}
+}
