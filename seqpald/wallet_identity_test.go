@@ -16,6 +16,11 @@ func TestWalletDescriptorAcceptsARealOne(t *testing.T) {
 	if err := validWalletDescriptor(realPKH); err != nil {
 		t.Fatalf("a real pkh descriptor must be accepted, got: %v", err)
 	}
+	// The wallet's OWN form is the one a holder is most likely to paste, since
+	// it is the one labelled "this wallet's addresses".
+	if err := validWalletDescriptor(strings.Replace(realPKH, "pkh(", "wpkh(", 1)); err != nil {
+		t.Fatalf("a wpkh descriptor must be accepted, got: %v", err)
+	}
 	// Without the checksum too: the node adds it, holders paste either.
 	if err := validWalletDescriptor(strings.Split(realPKH, "#")[0]); err != nil {
 		t.Fatalf("unchecksummed descriptor must be accepted, got: %v", err)
@@ -42,7 +47,7 @@ func TestWalletDescriptorRefusesPrivateKeys(t *testing.T) {
 func TestWalletDescriptorShapeRules(t *testing.T) {
 	cases := []struct{ desc, want string }{
 		{"", "required"},
-		{"wpkh([78a58319/84'/1'/0']tpubDDHKaUMdxcPoU3qdWiPVj43Ntt9jAd5ENym6WrXyAAZpACNDhCff2CKAgv92ReEnNckSxcTE1CcDPMB4WWwDpNfE5Go/0/*)", "pkh("},
+		{"tr([78a58319/86'/1'/0']tpubDCxfK778pheRPiuDBUsDRJydJHexhabABJNoLPyvUaJaw1e3LWJGAy7rW13vWA97AwvF1E6knt4utxmuRHK2ZuMQgRFXT/0/*)", "wpkh(...)"},
 		{"pkh([78a58319/44'/1'/0']tpubDCTudosJmS58rksmdnazbWxbQyCAcxncXqT9cQy5rpg94dyseRE5oNF99AhMxgn1bLxU94UeSxfUj6M2WwPRnxHjHkPaqoTXWkfigM2vcd1)", "ranged receive chain"},
 		{"pkh([78a58319/44'/1'/0']tpubDCTudosJmS58rksmdnazbWxbQyCAcxncXqT9cQy5rpg94dyseRE5oNF99AhMxgn1bLxU94UeSxfUj6M2WwPRnxHjHkPaqoTXWkfigM2vcd1/0'/0/*)", "hardened"},
 	}
@@ -77,5 +82,21 @@ func TestWalletIDIsNotAnAID(t *testing.T) {
 	// the id of an enclave account.
 	if walletIDTag == aidTag {
 		t.Fatal("the wallet id tag must differ from the OpenAMP AID tag")
+	}
+}
+
+// One wallet, one account, whichever form of the descriptor is pasted: the key
+// is the account, the script type is only how its addresses are written.
+func TestPKHNormalisationCollapsesTheForms(t *testing.T) {
+	wpkh := strings.Replace(realPKH, "pkh(", "wpkh(", 1)
+	if toPKH(wpkh) != toPKH(realPKH) {
+		t.Fatalf("wpkh and pkh of one key must normalise to the same descriptor:\n  %s\n  %s",
+			toPKH(wpkh), toPKH(realPKH))
+	}
+	if strings.Contains(toPKH(wpkh), "#") {
+		t.Fatal("the checksum belongs to the text it was computed over; it must be dropped")
+	}
+	if !strings.HasPrefix(toPKH(wpkh), "pkh(") {
+		t.Fatalf("normalised form must be pkh, got %.20s", toPKH(wpkh))
 	}
 }

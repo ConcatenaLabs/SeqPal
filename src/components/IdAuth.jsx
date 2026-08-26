@@ -296,18 +296,21 @@ function DescriptorProof({ descriptor, onDone, onBack }) {
       {chal && (
         <>
           <p className="text-sm leading-relaxed text-ink-700/80">
-            Sign this challenge with the address below, in that wallet, and paste the signature
-            back. In a Sequentia node that is{' '}
-            <span className="font-mono text-xs">signmessage</span>; in most wallets it is a
-            &ldquo;sign message&rdquo; button. SeqPal never sees a key.
+            In that wallet, find its &ldquo;sign a message&rdquo; screen, pick the address below,
+            and sign the message below with it. In a Sequentia node the same thing is{' '}
+            <span className="font-mono text-xs">signmessage</span>. SeqPal never sees a key.
           </p>
-          <dl className="space-y-2 rounded-xl border border-ink-900/10 bg-ink-900/[0.02] p-4 text-xs">
+          <dl className="space-y-3 rounded-xl border border-ink-900/10 bg-ink-900/[0.02] p-4 text-xs">
             <div>
-              <dt className="text-ink-700/70">Address to sign with</dt>
+              <dt className="text-ink-700/70">
+                Address to sign with{typeof chal.index === 'number' ? ` (address ${chal.index})` : ''}
+              </dt>
               <dd className="mt-1 break-all font-mono text-ink-900">{chal.address}</dd>
             </div>
             <div>
-              <dt className="text-ink-700/70">Message to sign</dt>
+              <dt className="font-semibold text-ink-900">
+                Message to sign, and nothing else in that box
+              </dt>
               <dd className="mt-1 break-all font-mono text-ink-900">{chal.challenge}</dd>
             </div>
           </dl>
@@ -418,7 +421,7 @@ function LinkWallet({ onIdentity, onBack, onDone, busy }) {
       <Field
         id="link-account"
         label="Your account, as your wallet shows it"
-        hint="An account id (40 hex), an account key (64 hex), or a public descriptor like pkh([…]tpub…/0/*). All three are public. Never paste a descriptor containing a private key."
+        hint="An account id (40 hex), an account key (64 hex), or the public descriptor your wallet exports for its own addresses (the wpkh one; its legacy pkh form works too). All are public. Never paste a descriptor containing a private key."
       >
         <textarea
           id="link-account"

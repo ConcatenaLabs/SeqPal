@@ -81,9 +81,9 @@ func validWalletDescriptor(desc string) error {
 	if err := checkNoPrivateKey(d); err != nil {
 		return err
 	}
-	if !strings.HasPrefix(d, "pkh(") {
-		return fmt.Errorf("SeqPal needs the pkh(...) descriptor, the legacy one. It is the only " +
-			"kind a wallet can sign a message for, which is how you prove the wallet is yours")
+	if !strings.HasPrefix(d, "pkh(") && !strings.HasPrefix(d, "wpkh(") {
+		return fmt.Errorf("SeqPal takes the wpkh(...) descriptor, the one for the addresses your " +
+			"wallet hands out, or the pkh(...) legacy form of the same key")
 	}
 	// A hardened step BELOW the account level cannot be derived from public data.
 	// Only the path segments are inspected: the key itself is base58, which
@@ -108,6 +108,27 @@ func validWalletDescriptor(desc string) error {
 			"first address to prove it with")
 	}
 	return nil
+}
+
+// A descriptor names a key AND a script type, and the two are not the same
+// question. The key is the account; the script type is only how addresses for it
+// are written. So an account is identified by the key, normalised to one script
+// type, or a holder who pastes wpkh today and pkh tomorrow would arrive at two
+// different SeqPal IDs for one wallet.
+//
+// pkh is the normal form, because it is the one that has to exist anyway:
+// verifymessage takes a P2PKH address and refuses everything else.
+func toPKH(desc string) string {
+	d := strings.TrimSpace(desc)
+	if strings.HasPrefix(d, "wpkh(") {
+		d = "pkh(" + strings.TrimPrefix(d, "wpkh(")
+	}
+	// The checksum belongs to the text it was computed over, so drop it and let
+	// the node compute the one for this form.
+	if i := strings.Index(d, "#"); i >= 0 {
+		d = d[:i]
+	}
+	return d
 }
 
 // canonicalWalletDescriptor validates the descriptor at the node and returns it
@@ -170,4 +191,26 @@ func (s *server) verifyWalletMessage(address, signature, message string) error {
 			"exactly as shown, with the address SeqPal named and no other")
 	}
 	return nil
+}
+
+// Which address of the wallet proves it. Address 0 is the one a holder can
+// always reach: every wallet has it, and a Sign tab that opens on whatever
+// address was last used still lets them type the index.
+const walletProofIndex = 0
+
+// walletDescriptors canonicalises what the holder pasted and returns two forms
+// of it: the one to SHOW them, in the script type their own wallet uses, and the
+// pkh one to VERIFY against, because verifymessage takes a P2PKH address and
+// refuses everything else. They are the same key at the same path; only the
+// script differs, which is why the holder never needs to see the second.
+func (s *server) walletDescriptors(pasted string) (display, verify string, err error) {
+	display, err = s.canonicalWalletDescriptor(pasted)
+	if err != nil {
+		return "", "", err
+	}
+	verify, err = s.canonicalWalletDescriptor(toPKH(pasted))
+	if err != nil {
+		return "", "", err
+	}
+	return display, verify, nil
 }

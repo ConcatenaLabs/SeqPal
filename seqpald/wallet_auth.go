@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -29,17 +30,20 @@ func (s *server) handleWalletChallenge(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "bad request body")
 		return
 	}
-	desc, err := s.canonicalWalletDescriptor(req.Descriptor)
+	desc, verifyDesc, err := s.walletDescriptors(req.Descriptor)
 	if err != nil {
 		writeErr(w, 400, "%v", err)
 		return
 	}
-	address, err := s.walletAddressAt(desc, 0)
+	// Two addresses for one key: the one the holder's wallet shows them, which
+	// is what they have to recognise and select, and the legacy form the node
+	// needs, which they never see and should not have to.
+	address, err := s.walletAddressAt(desc, walletProofIndex)
 	if err != nil {
 		writeErr(w, 502, "%v", err)
 		return
 	}
-	id := walletIDFor(desc)
+	id := walletIDFor(verifyDesc)
 	// The challenge is keyed by the account id, not by a key: a wallet account
 	// has no enclave key to key it on.
 	challenge, exp, err := s.st.CreateChallenge(id, challengeTTL)
@@ -56,12 +60,13 @@ func (s *server) handleWalletChallenge(w http.ResponseWriter, r *http.Request) {
 		"account_id": id,
 		"descriptor": desc,
 		"address":    address,
+		"index":      walletProofIndex,
 		"challenge":  challenge,
 		"expires_at": exp,
 		"registered": existing != nil,
-		"note": "sign the challenge with this address in your wallet (signmessage), then post the " +
-			"signature back. SeqPal never sees a key, and the address is derived from the " +
-			"descriptor you gave, from public data alone",
+		"note": "sign the challenge with this address in your wallet, then post the signature " +
+			"back. The address is address " + fmt.Sprint(walletProofIndex) + " of the descriptor " +
+			"you gave, derived from public data alone; SeqPal never sees a key",
 	})
 }
 
@@ -79,15 +84,19 @@ type walletAuthReq struct {
 // authenticateWallet consumes the challenge and checks the signed message.
 // Returns the canonical descriptor, the account id and the address that signed.
 func (s *server) authenticateWallet(req *walletAuthReq) (desc, id, address string, err error) {
-	desc, err = s.canonicalWalletDescriptor(req.Descriptor)
+	desc, verifyDesc, err := s.walletDescriptors(req.Descriptor)
 	if err != nil {
 		return "", "", "", err
 	}
-	id = walletIDFor(desc)
+	id = walletIDFor(verifyDesc)
 	if err = s.st.ConsumeChallenge(req.Challenge, id); err != nil {
 		return "", "", "", err
 	}
-	address, err = s.walletAddressAt(desc, 0)
+	// The signature is checked against the LEGACY form of the same key, because
+	// that is the only form verifymessage accepts. The holder signed with the
+	// address their wallet showed them; this is the same key, written the way
+	// the verifier needs.
+	address, err = s.walletAddressAt(verifyDesc, walletProofIndex)
 	if err != nil {
 		return "", "", "", err
 	}

@@ -32,7 +32,16 @@ func newWalletNode(t *testing.T, signedOK bool) *httptest.Server {
 			}
 			reply(map[string]any{"descriptor": d, "checksum": "0wcatm2p", "hasprivatekeys": false})
 		case "deriveaddresses":
-			reply([]string{"2ds6y7euxH5WNMGRzTCxUDtYdd8EaCSAqD2"})
+			// The two forms of one key give two different addresses, which is the
+			// whole point: the holder sees the wpkh one, the node verifies the
+			// pkh one.
+			var p []any
+			_ = json.Unmarshal(req.Params, &p)
+			if d, _ := p[0].(string); strings.HasPrefix(d, "wpkh(") {
+				reply([]string{"ert1qnzten2u3ayqmnqtdul7z00v3uvapet7dv2789z"})
+			} else {
+				reply([]string{"2ds6y7euxH5WNMGRzTCxUDtYdd8EaCSAqD2"})
+			}
 		case "verifymessage":
 			reply(signedOK)
 		default:
@@ -170,5 +179,43 @@ func TestWalletAccountIsRefusedOpenAMPButNotTheRest(t *testing.T) {
 	}
 	if ent := h.do("POST", "/api/entities", session, map[string]any{"name": "Acme", "jurisdiction": "PZ"}); ent.code >= 500 || ent.code == 403 {
 		t.Fatalf("creating an entity must not be behind the enclave gate, got %d %s", ent.code, ent.raw)
+	}
+}
+
+// The bug this fixes: SeqPal told a holder to sign with a legacy m-prefixed
+// address their wallet never shows and cannot produce a receive address for.
+// The address to sign with must be the one their own wallet displays; the
+// legacy form is SeqPal's business, not theirs.
+func TestWalletChallengeNamesTheAddressTheWalletShows(t *testing.T) {
+	h := newHarness(t)
+	h.s.cfg.nodeURL = newWalletNode(t, true).URL
+	wpkh := strings.Replace(testPKH, "pkh(", "wpkh(", 1)
+
+	ch := h.do("POST", "/api/auth/wallet/challenge", "", map[string]any{"descriptor": wpkh})
+	if ch.code != 200 {
+		t.Fatalf("a wpkh descriptor must be accepted: %d %s", ch.code, ch.raw)
+	}
+	if got, _ := ch.body["address"].(string); got != "ert1qnzten2u3ayqmnqtdul7z00v3uvapet7dv2789z" {
+		t.Fatalf("the address shown must be the wallet's own form, got %q", got)
+	}
+	if ch.body["index"] == nil {
+		t.Fatal("the address index must be stated: a Sign tab asks for it")
+	}
+}
+
+// One wallet is one SeqPal ID, whichever form of its descriptor gets pasted.
+func TestBothDescriptorFormsAreTheSameAccount(t *testing.T) {
+	h := newHarness(t)
+	h.s.cfg.nodeURL = newWalletNode(t, true).URL
+	wpkh := strings.Replace(testPKH, "pkh(", "wpkh(", 1)
+
+	a := h.do("POST", "/api/auth/wallet/challenge", "", map[string]any{"descriptor": testPKH})
+	b := h.do("POST", "/api/auth/wallet/challenge", "", map[string]any{"descriptor": wpkh})
+	if a.code != 200 || b.code != 200 {
+		t.Fatalf("both forms must be accepted: %d / %d", a.code, b.code)
+	}
+	if a.body["account_id"] != b.body["account_id"] {
+		t.Fatalf("pkh and wpkh of one key must be ONE account: %v vs %v",
+			a.body["account_id"], b.body["account_id"])
 	}
 }
