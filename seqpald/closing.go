@@ -52,6 +52,15 @@ func (s *server) handleClose(w http.ResponseWriter, r *http.Request) {
 		"This token's rules are enforced by the network, so this platform cannot deliver it: delivery goes to each investor's own holding address and only the issuer's own wallet can sign it. Closing runs for tokens whose transfers this platform services.") {
 		return
 	}
+	if s.refuseForBearer(w, acct.AID, iss, "close",
+		"This token is freely tradable and was never sold through an escrow here, so there is nothing to close: it has no offering escrow enclave to release from.") {
+		return
+	}
+	if !s.hasEnclave(acct) {
+		writeErr(w, 403, "closing releases tokens from an OpenAMP escrow, and this SeqPal ID has "+
+			"no OpenAMP account attached")
+		return
+	}
 	var req closeReq
 	if err := readJSON(r, &req); err != nil {
 		writeErr(w, 400, "bad request body")

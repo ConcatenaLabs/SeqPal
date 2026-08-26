@@ -98,6 +98,23 @@ func (s *server) refuseForNetwork(w http.ResponseWriter, aid string, iss *Issuan
 	return true
 }
 
+// refuseForBearer is refuseForNetwork's counterpart for freely-tradable assets.
+// A bearer token is an ordinary on-chain holding: there is no enclave escrow to
+// deliver from, no policy server to co-sign, and no transfer agent. Flows built
+// on those must say so, rather than proceeding to fail somewhere further in
+// where the message is about a missing escrow enclave and the reader has to
+// work out that the asset was never that kind in the first place.
+func (s *server) refuseForBearer(w http.ResponseWriter, aid string, iss *Issuance, flow, reason string) bool {
+	if iss == nil || iss.Enforcement != "bearer" {
+		return false
+	}
+	s.st.Audit(aid, flow+".refused", map[string]any{
+		"issuance_id": iss.ID, "asset": iss.AssetID, "enforcement": "bearer", "reason": reason,
+	})
+	writeJSON(w, 409, map[string]any{"error": reason, "enforcement": "bearer", "flow": flow})
+	return true
+}
+
 // networkIssuance loads an owned issuance and requires it to be a live
 // network-enforced asset. Holder-list controls exist for no other kind: a
 // serviced asset is policed by the platform's own transfer checks, and a bearer

@@ -114,6 +114,22 @@ func (s *server) handleCreateDistribution(w http.ResponseWriter, r *http.Request
 		writeErr(w, 409, "this issuance is not live on chain")
 		return
 	}
+	// A distribution pays holders through the transfer agent, reading the register
+	// the policy server keeps. Neither of the other two kinds has one: a
+	// freely-tradable token pays its holders through a corporate action, read from
+	// the chain, and a network-enforced one is not serviced here at all.
+	if s.refuseForNetwork(w, acct.AID, iss, "distribution",
+		"This token's rules are enforced by the network and its transfers are not serviced here, so there is no register to pay from.") {
+		return
+	}
+	if s.refuseForBearer(w, acct.AID, iss, "distribution",
+		"This token is freely tradable, so its holders are read from the chain rather than from a register here. Pay them with a corporate action, which snapshots the chain at a record height.") {
+		return
+	}
+	if !s.hasEnclave(acct) {
+		writeErr(w, 403, "a distribution pays from an OpenAMP account and this SeqPal ID has none attached")
+		return
+	}
 	if s.cfg.nodeURL == "" {
 		writeErr(w, 503, "the USDX servicing rail is not available on this deployment")
 		return
