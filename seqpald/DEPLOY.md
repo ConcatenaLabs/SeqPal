@@ -178,8 +178,21 @@ handle /seqpal/* {
 }
 ```
 
-`systemctl reload caddy`. seqpald sets the CSP and the security headers itself, so
-Caddy adds none.
+`systemctl reload caddy`. seqpald sets the CSP and the per-response security
+headers itself, so Caddy adds none of those.
+
+The one header Caddy does add is `Strict-Transport-Security`, on the site block
+rather than here: HSTS is a policy for a whole HOST, and this app is one path on
+a host that serves several. seqpald must not set it too. It is
+`max-age=2592000`, with no `includeSubDomains` (only the apex and `www` exist,
+and committing a subdomain nobody has created yet is how a future http-only
+service breaks) and no `preload` (which cannot be undone on our own schedule).
+
+Note what HSTS does NOT touch. The same host serves `/registry`, `/prices` and
+`/seqob` over plain http on purpose, because the Sequentia node links no TLS
+library and follows no redirects. HSTS is a browser mechanism; the node ignores
+it and keeps those routes. To wind HSTS back, serve `max-age=0` and leave that
+up for at least as long as the window it replaces.
 
 ## 6. Post-deploy probe and check
 
