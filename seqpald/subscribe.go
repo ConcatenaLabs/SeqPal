@@ -82,7 +82,7 @@ func (s *server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var user openampUser
-	if err := s.callOpenAMP("GET", "/v1/users/"+acct.AID, "", nil, &user); err != nil {
+	if err := s.callOpenAMP("GET", "/v1/users/"+s.enclaveAIDOf(acct), "", nil, &user); err != nil {
 		writeErr(w, 502, "could not read your policy-server registration: %v", err)
 		return
 	}

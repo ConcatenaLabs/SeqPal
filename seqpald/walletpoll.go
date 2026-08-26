@@ -170,7 +170,7 @@ func (s *server) resolveTransferBeneficiary(assetID, senderAID, txid string) str
 		var out struct {
 			Address string `json:"address"`
 		}
-		if err := s.callOpenAMP("GET", "/v1/users/"+aid+"/address?asset="+assetID, "", nil, &out); err != nil {
+		if err := s.callOpenAMP("GET", "/v1/users/"+s.openampAIDFor(aid)+"/address?asset="+assetID, "", nil, &out); err != nil {
 			continue
 		}
 		if out.Address != "" && outAddrs[out.Address] {

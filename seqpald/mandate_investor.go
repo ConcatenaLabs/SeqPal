@@ -144,7 +144,8 @@ func (s *server) isInvestorEnclaveAddress(investorAID, addr string) (bool, error
 	if err != nil {
 		return false, fmt.Errorf("enclave check: account: %w", err)
 	}
-	if acct == nil || !s.hasEnclave(acct) {
+	oaid := s.enclaveAIDOf(acct)
+	if acct == nil || oaid == "" {
 		return false, nil
 	}
 	issuances, err := s.st.LiveIssuances()
@@ -167,7 +168,7 @@ func (s *server) isInvestorEnclaveAddress(investorAID, addr string) (bool, error
 		var out struct {
 			Address string `json:"address"`
 		}
-		if err := s.callOpenAMP("GET", "/v1/users/"+investorAID+"/address?asset="+iss.AssetID, "", nil, &out); err != nil {
+		if err := s.callOpenAMP("GET", "/v1/users/"+oaid+"/address?asset="+iss.AssetID, "", nil, &out); err != nil {
 			// Remember the failure but keep probing: a later asset may still yield a
 			// definitive match. If none matches, an unresolved asset means we cannot
 			// be sure, so we return the error (fail closed).

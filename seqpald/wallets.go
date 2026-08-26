@@ -302,3 +302,63 @@ func (s *server) catchUpPolicyServer(acct *Account, xonly, enclaveAID string) {
 		})
 	}
 }
+
+// enclaveAIDOf is the account id the POLICY SERVER knows this SeqPal ID by.
+//
+// For an ID founded on an OpenAMP account the two are the same id, which is why
+// passing acct.AID to openampd worked everywhere for as long as that was the
+// only kind of ID there was. For an ID founded as a wallet that later attached
+// one they are different: the SeqPal account id is the one it was created with
+// and never changes, while the policy server knows only the account derived from
+// the enclave key. Asking openampd about the SeqPal id then asks about an
+// account it has never heard of, and the answer -- no categories, not
+// registered, no address -- is indistinguishable from a holder who has nothing.
+//
+// Returns "" when there is no OpenAMP account at all, which callers must treat
+// as "there is nothing to ask about" rather than as an id.
+func (s *server) enclaveAIDOf(acct *Account) string {
+	if acct == nil {
+		return ""
+	}
+	if wallets, err := s.st.AccountWallets(acct.AID); err == nil {
+		for _, wl := range wallets {
+			if wl.Kind == "enclave" && wl.EnclaveAID != "" {
+				return wl.EnclaveAID
+			}
+		}
+	}
+	// An account from before linked wallets: its own id IS the enclave id.
+	if acct.HasEnclave() && acct.XOnly != "" {
+		return acct.AID
+	}
+	return ""
+}
+
+// enclaveAIDFor is enclaveAIDOf by account id, for the paths that have one.
+func (s *server) enclaveAIDFor(aid string) string {
+	acct, err := s.st.AccountByAID(aid)
+	if err != nil || acct == nil {
+		return ""
+	}
+	return s.enclaveAIDOf(acct)
+}
+
+// openampAIDFor turns whatever account id a caller has into the one the policy
+// server answers about.
+//
+// A SeqPal account id maps to the enclave account that ID has linked, which is a
+// different id whenever the ID was founded as a wallet. An id that is not a
+// SeqPal account is already an openampd id (a venue quoting one, an escrow
+// enclave, a counterparty) and passes through unchanged. An ID with no OpenAMP
+// account maps to "", which every caller reads as "there is nothing there",
+// because that is exactly what it is.
+func (s *server) openampAIDFor(aid string) string {
+	if aid == "" {
+		return ""
+	}
+	acct, err := s.st.AccountByAID(aid)
+	if err != nil || acct == nil {
+		return aid
+	}
+	return s.enclaveAIDOf(acct)
+}
