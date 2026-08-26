@@ -386,7 +386,10 @@ export default function Verify() {
           log, and follow every identifier to the explorer. What stays a labeled simulation is the
           world outside the chain, the regulator relationship and the incorporation registry, marked
           as such on the Legal and Licensing page and the Status page. The signature on a document is
-          a real signature; the e-signature provider around it is simulated.
+          a real signature; the e-signature provider around it is simulated. Identity verification
+          is a provider's decision, and on this deployment that provider is simulated too, behind
+          the same interface a real one plugs into: what you can check here is that a decision was
+          applied, never that the person behind an identity is who they say they are.
         </p>
       </div>
 
