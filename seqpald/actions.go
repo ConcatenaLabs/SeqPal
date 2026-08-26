@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
@@ -372,7 +373,7 @@ func (s *server) handleActionClaim(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, "store error")
 		return
 	}
-	if claims == nil || claims.Status != "verified" {
+	if !eligibilityLive(claims, time.Now().Unix()) {
 		refuse(403, "claiming requires a verified SeqPal ID; verify at POST /api/id/verify first")
 		return
 	}

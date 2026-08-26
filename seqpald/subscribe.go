@@ -77,7 +77,7 @@ func (s *server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 
 	// Verified, eligible investor.
 	claims, _ := s.st.ClaimsByAID(acct.AID)
-	if claims == nil || claims.Status != "verified" {
+	if !eligibilityLive(claims, time.Now().Unix()) {
 		writeErr(w, 403, "a verified SeqPal ID is required to subscribe")
 		return
 	}

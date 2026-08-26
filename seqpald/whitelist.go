@@ -148,7 +148,7 @@ func (s *server) handleWhitelistRequest(w http.ResponseWriter, r *http.Request) 
 		writeErr(w, 500, "store error")
 		return
 	}
-	if claims == nil || claims.Status != "verified" {
+	if !eligibilityLive(claims, time.Now().Unix()) {
 		writeErr(w, 403, "verify your identity before asking to be admitted: an issuer is "+
 			"admitting an eligible holder, and that is what verification establishes")
 		return

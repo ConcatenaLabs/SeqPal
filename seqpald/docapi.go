@@ -167,7 +167,7 @@ func (s *server) docAccessAllowed(acct *Account, doc *StoredDoc) bool {
 // the eligible/attested state the gate requires.
 func (s *server) passedPromotionGate(aid string) bool {
 	c, err := s.st.ClaimsByAID(aid)
-	return err == nil && c != nil && c.Status == "verified"
+	return err == nil && eligibilityLive(c, time.Now().Unix())
 }
 
 // isHolder is a best-effort check that an AID appears in the asset's holder

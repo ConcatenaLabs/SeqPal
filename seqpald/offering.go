@@ -181,7 +181,7 @@ func (s *server) handleGate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	claims, _ := s.st.ClaimsByAID(acct.AID)
-	if claims == nil || claims.Status != "verified" {
+	if !eligibilityLive(claims, time.Now().Unix()) {
 		writeErr(w, 403, "a verified SeqPal ID is required")
 		return
 	}

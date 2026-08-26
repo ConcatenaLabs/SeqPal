@@ -97,7 +97,7 @@ func (s *server) hasValidGate(aid, issuanceID, kind string) bool {
 func (s *server) promotionGate(iss *Issuance, terms json.RawMessage, acct *Account, claims *Claims) (bool, []requirement, int, bool) {
 	var reqs []requirement
 	res := investorResidence(claims)
-	if claims == nil || claims.Status != "verified" || res == "" {
+	if !eligibilityLive(claims, time.Now().Unix()) || res == "" {
 		return false, []requirement{{Kind: "jurisdiction", Message: "a verified SeqPal ID is required to view this offering", Blocked: false}}, 0, false
 	}
 

@@ -54,7 +54,7 @@ func (s *Store) InsertWhitelistRequest(r *WhitelistRequest) error {
 
 func (s *Store) WhitelistRequestByID(id string) (*WhitelistRequest, error) {
 	return scanWhitelistRequest(s.db.QueryRow(
-		`SELECT ` + whitelistReqCols + ` FROM whitelist_requests WHERE id = ?`, id))
+		`SELECT `+whitelistReqCols+` FROM whitelist_requests WHERE id = ?`, id))
 }
 
 // OpenWhitelistRequest finds a live request for this holder and key, so asking
