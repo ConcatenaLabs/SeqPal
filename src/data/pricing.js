@@ -81,12 +81,12 @@ export const TRANSACTION_FEES = [
 export const ID_FEES = [
   {
     item: 'SeqPal ID, individual',
-    detail: 'One-time identity & accreditation passport',
+    detail: 'Identity & accreditation passport. Paid before the verification provider runs the check',
     amount: '$20',
   },
   {
     item: 'SeqPal ID, corporate',
-    detail: 'One-time KYB passport per entity',
+    detail: 'KYB passport, per entity. Paid before the provider runs that entity’s check',
     amount: '$150',
   },
 ]

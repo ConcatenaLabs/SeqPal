@@ -203,7 +203,8 @@ function VerifyStep({ account, onVerified }) {
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3.5 text-sm text-amber-900">
             <div className="font-semibold">More information needed</div>
             <p className="mt-1.5 leading-relaxed">
-              {result.message || 'The review needs additional information to continue (SIMULATED review).'}
+              {result.message ||
+                'The verification provider needs more from you before they can finish. Nothing extra is charged: this is the same check continuing.'}
             </p>
           </div>
           <button onClick={() => setResult(null)} className="btn-outline w-full">

@@ -254,8 +254,8 @@ func main() {
 	cfg.setupFeeUSD = envFloat("SEQPALD_SETUP_FEE_USD", 500)
 	// The provider bills per check either way, so the fee is what recoups it. A
 	// deployment that sets either to zero simply does not charge for that check.
-	cfg.kycFeeUSD = envFloat("SEQPALD_KYC_FEE_USD", 25)
-	cfg.kybFeeUSD = envFloat("SEQPALD_KYB_FEE_USD", 150)
+	cfg.kycFeeUSD = envFloat("SEQPALD_KYC_FEE_USD", defaultKYCFeeUSD)
+	cfg.kybFeeUSD = envFloat("SEQPALD_KYB_FEE_USD", defaultKYBFeeUSD)
 	// A rate outside 0..100% is a typo -- an extra digit on a percentage -- and
 	// it would charge a fee larger than the deposit it comes out of. The release
 	// paths already refuse to pay out less than nothing, but the LEDGER would
