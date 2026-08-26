@@ -13,6 +13,14 @@ import reactHooks from 'eslint-plugin-react-hooks'
 // directive for a rule that does not exist is itself an error.
 export default [
   {
+    // `eslint .` walks everything under the repo root, and this project's own
+    // workflow puts whole copies of the checkout in .claude/worktrees. Linting
+    // those reports errors from code that is not in this checkout, takes longer
+    // the more worktrees exist, and fails the gate for reasons the person
+    // running it cannot see in their own files.
+    ignores: ['.claude/**', 'dist/**', 'node_modules/**'],
+  },
+  {
     files: ['src/**/*.js', 'src/**/*.jsx', 'scripts/**/*.mjs', 'test/**/*.js'],
     plugins: { 'react-hooks': reactHooks },
     languageOptions: {
