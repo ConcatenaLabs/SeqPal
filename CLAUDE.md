@@ -92,7 +92,11 @@ rule that catches something that actually breaks.
   buys ONE check: the invoice records the check it bought (`check_id`) and the gate looks only
   for an unspent one, or a holder re-verifies forever on a single payment and runs up a bill
   this fee exists to recoup. The one free submission is the one the PROVIDER asked for
-  (`continuesAnOpenCheck`), which is the same check continuing. `GET /api/id/fees` raises
+  (`continuesAnOpenCheck`), which is the same check continuing. Both submit paths take
+  `verifyMu` for the account FIRST: everything after it reads where the check and the fee stand
+  and then acts on it, so without the lock two requests arriving together both read "nothing
+  open, one payment available" and the provider bills for every one of them (six, in the test
+  that proves it). `GET /api/id/fees` raises
   nothing -- quoting a price is not billing for it. Submitted is
   not verified anywhere, including in the passport: an entity's treasury key and UBO link exist
   from submission, and `verified` comes from the entity's own check.

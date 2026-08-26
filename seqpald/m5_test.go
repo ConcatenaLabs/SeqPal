@@ -1245,15 +1245,16 @@ func newM5Harness(t *testing.T, opts m5opts) *m5h {
 		cfg.btcURL = h.btc.srv.URL
 	}
 	s := &server{
-		cfg:     cfg,
-		st:      st,
-		http:    &http.Client{Timeout: 5 * time.Second},
-		rl:      newRateLimiter(),
-		chalRL:  newWindowLimiter(challengesPerKeyPerHour, challengesGlobalPerHour, time.Hour),
-		catMu:   newKeyedMutex(),
-		closeMu: newKeyedMutex(),
-		escrow:  newEscrowState(),
-		idv:     &testIDV{},
+		cfg:      cfg,
+		st:       st,
+		http:     &http.Client{Timeout: 5 * time.Second},
+		rl:       newRateLimiter(),
+		chalRL:   newWindowLimiter(challengesPerKeyPerHour, challengesGlobalPerHour, time.Hour),
+		catMu:    newKeyedMutex(),
+		verifyMu: newKeyedMutex(),
+		closeMu:  newKeyedMutex(),
+		escrow:   newEscrowState(),
+		idv:      &testIDV{},
 	}
 	h.s = s
 	h.h = s.handler()

@@ -111,6 +111,11 @@ type server struct {
 	chalRL *windowLimiter
 	catMu  *keyedMutex // serializes openampd category writes per AID
 	idv    idvProvider // identity-verification provider
+	// One submission at a time per account. The gate reads where a check stands,
+	// reads the fee, then submits: without this, two requests arriving together
+	// both see no open check and both see the same unpaid-for-once invoice, and
+	// the provider bills for every one of them.
+	verifyMu *keyedMutex
 
 	// M3 chain surfaces.
 	sse         *sseBroker  // SSE fan-out (lazily built via bus())
@@ -321,6 +326,7 @@ func main() {
 		rl:          newRateLimiter(),
 		chalRL:      newWindowLimiter(challengesPerKeyPerHour, challengesGlobalPerHour, time.Hour),
 		catMu:       newKeyedMutex(),
+		verifyMu:    newKeyedMutex(),
 		idv:         newIDVProvider(cfg),
 		escrow:      newEscrowState(),
 		closeMu:     newKeyedMutex(),

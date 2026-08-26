@@ -331,12 +331,13 @@ func newM3Server(t *testing.T, oaURL string) *server {
 			policyFeeSats: 1000,
 			adminAIDs:     map[string]bool{},
 		},
-		st:     st,
-		http:   &http.Client{Timeout: 5 * time.Second},
-		rl:     newRateLimiter(),
-		chalRL: newWindowLimiter(challengesPerKeyPerHour, challengesGlobalPerHour, time.Hour),
-		catMu:  newKeyedMutex(),
-		idv:    &testIDV{},
+		st:       st,
+		http:     &http.Client{Timeout: 5 * time.Second},
+		rl:       newRateLimiter(),
+		chalRL:   newWindowLimiter(challengesPerKeyPerHour, challengesGlobalPerHour, time.Hour),
+		catMu:    newKeyedMutex(),
+		verifyMu: newKeyedMutex(),
+		idv:      &testIDV{},
 	}
 }
 
