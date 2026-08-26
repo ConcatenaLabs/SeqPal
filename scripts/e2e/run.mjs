@@ -17,8 +17,7 @@
 //   node scripts/e2e/run.mjs --dry-run                 # offline validation (default box)
 //   node scripts/e2e/run.mjs --only m7,m8              # a subset of proofs, live
 //   BASE_URL=https://sequentiatestnet.com \
-//   ISSUER_ENVELOPE=/path/id.json ISSUER_PASSPHRASE=… \
-//   INVESTOR_ENVELOPE=/path/inv.json INVESTOR_PASSPHRASE=… \
+//   ISSUER_KEY=<32-byte hex> INVESTOR_KEY=<32-byte hex> \
 //   ISSUANCE_ID=<deployed-issuance> \
 //     node scripts/e2e/run.mjs --only m6 --fund-cmd './box-fund.sh'
 //
@@ -62,24 +61,22 @@ function loadConfig(flags) {
     only: flags.only,
     issuanceID: flags.issuance || process.env.ISSUANCE_ID || null,
     assetID: flags.asset || process.env.ASSET_ID || USDX,
-    issuerEnvelope: process.env.ISSUER_ENVELOPE || null,
-    issuerPass: process.env.ISSUER_PASSPHRASE || null,
-    investorEnvelope: process.env.INVESTOR_ENVELOPE || null,
-    investorPass: process.env.INVESTOR_PASSPHRASE || null,
+    issuerKey: process.env.ISSUER_KEY || null,
+    investorKey: process.env.INVESTOR_KEY || null,
   }
 }
 
 // Load a persisted SeqPal ID, or (dry-run) an ephemeral one. In live mode a real
 // identity backup + passphrase is required for any step that signs on behalf of a
 // real account; the driver refuses to invent an account it does not control.
-async function loadID(cfg, envPath, pass, label) {
-  if (envPath && pass) return SeqPalID.fromEnvelope(envPath, pass, label)
+async function loadID(cfg, privHex, label) {
+  if (privHex) return SeqPalID.fromPrivateKey(privHex, label)
   if (cfg.dryRun) {
     const id = SeqPalID.fresh(label)
     info(`${label}: ephemeral dry-run key (AID ${id.aid})`)
     return id
   }
-  throw new AssertError(`live run needs ${label.toUpperCase()}_ENVELOPE + ${label.toUpperCase()}_PASSPHRASE in the environment`)
+  throw new AssertError(`live run needs ${label.toUpperCase()}_KEY in the environment`)
 }
 
 // Show a request body the driver WOULD post (dry-run) or IS posting (live).
@@ -436,8 +433,8 @@ async function main() {
 
   // Identities. Live steps that sign as the issuer/investor require real backups.
   step('Load identities (a real wallet signer over the SPA statement bytes)')
-  const issuer = await loadID(cfg, cfg.issuerEnvelope, cfg.issuerPass, 'issuer')
-  const investor = await loadID(cfg, cfg.investorEnvelope, cfg.investorPass, 'investor')
+  const issuer = await loadID(cfg, cfg.issuerKey, 'issuer')
+  const investor = await loadID(cfg, cfg.investorKey, 'investor')
   evidence('issuer AID', issuer.aid)
   evidence('investor AID', investor.aid)
 
@@ -448,7 +445,7 @@ async function main() {
     // one cookie jar, so a run that needs both principals uses separate Http
     // instances in a full live run. For this single-jar driver the issuer session
     // drives the owner-scoped proofs; investor-scoped calls (mandate, ack, transfer)
-    // are run with the investor logged in when INVESTOR_ENVELOPE is supplied.
+    // are run with the investor logged in when INVESTOR_KEY is supplied.
     info('note: owner-scoped and investor-scoped steps each need their principal signed in; see README for the two-jar live sequence')
   }
 
@@ -488,10 +485,8 @@ Config (env; never inlined):
   BASE_URL              default https://sequentiatestnet.com
   ISSUANCE_ID           an existing deployed issuance for the M6/M7/M8 proofs
   ASSET_ID              read-probe asset (default USDX)
-  ISSUER_ENVELOPE       path to the issuer's exported SeqPal ID backup (JSON)
-  ISSUER_PASSPHRASE     its passphrase
-  INVESTOR_ENVELOPE     path to the investor's exported SeqPal ID backup (JSON)
-  INVESTOR_PASSPHRASE   its passphrase
+  ISSUER_KEY            the issuer's private key, 32 bytes of hex
+  INVESTOR_KEY          the investor's private key, 32 bytes of hex
   FUND_CMD / --fund-cmd a box-side funding command (env carries FUND_ADDRESS/AMOUNT/CCY)
 
 --dry-run signs + shapes every request and runs read-only probes, WITHOUT broadcasting.

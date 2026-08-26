@@ -29,8 +29,7 @@ node scripts/e2e/run.mjs --dry-run
 
 # one live proof; the operator funds the printed deposit address
 BASE_URL=https://sequentiatestnet.com \
-ISSUER_ENVELOPE=/secure/issuer-id.json  ISSUER_PASSPHRASE=… \
-INVESTOR_ENVELOPE=/secure/investor-id.json INVESTOR_PASSPHRASE=… \
+ISSUER_KEY=<32-byte hex>  INVESTOR_KEY=<32-byte hex> \
 ISSUANCE_ID=<deployed-issuance> \
   node scripts/e2e/run.mjs --only m7 --fund-cmd './box-fund.sh'
 ```
@@ -46,8 +45,8 @@ live run prints the deposit address and pauses for the operator on a TTY.
 | `BASE_URL` | origin (default `https://sequentiatestnet.com`) |
 | `ISSUANCE_ID` | an existing deployed issuance for the M6/M7/M8 proofs |
 | `ASSET_ID` | read-probe asset (default USDX) |
-| `ISSUER_ENVELOPE` / `ISSUER_PASSPHRASE` | the issuer's exported SeqPal ID backup + passphrase |
-| `INVESTOR_ENVELOPE` / `INVESTOR_PASSPHRASE` | the investor's backup + passphrase |
+| `ISSUER_KEY` | the issuer's private key, 32 bytes of hex |
+| `INVESTOR_KEY` | the investor's private key, 32 bytes of hex |
 | `FUND_CMD` | box-side funding command (or `--fund-cmd`) |
 
 ## Live sequencing note (two principals, two sessions)

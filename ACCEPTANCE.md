@@ -45,8 +45,9 @@ ISSUANCE_ID=<deployed-issuance> \
   node scripts/e2e/run.mjs --only m6 --fund-cmd './box-fund.sh'
 ```
 
-The driver reads its base URL, its identity keys, and any funding command from
-the environment. It never holds or prints a box credential.
+The driver reads its base URL, its identity keys (`ISSUER_KEY`, `INVESTOR_KEY`,
+32-byte hex), and any funding command from the environment. It never holds or
+prints a box credential.
 
 ---
 
