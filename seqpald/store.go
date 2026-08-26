@@ -1195,11 +1195,19 @@ type Store struct {
 	// requests that read before either wrote would each drop the other's quote --
 	// and a dropped quote is a deposit address nothing watches any more.
 	feeMu *keyedMutex
+	// Serializes work on one issuance. A deploy MINTS, and its idempotency key is
+	// read before the mint and written after it, so two deploys in flight
+	// together both find no prior deploy and the chain keeps both assets.
+	issMu *keyedMutex
 }
 
 // LockFee serializes work on one fee invoice. Call it before a read that a write
 // depends on, and release with the returned function.
 func (s *Store) LockFee(invoiceID string) func() { return s.feeMu.lock(invoiceID) }
+
+// LockIssuance serializes work on one issuance. A deploy takes it before it
+// looks for a prior deploy, because what it does about the answer is mint.
+func (s *Store) LockIssuance(issuanceID string) func() { return s.issMu.lock(issuanceID) }
 
 func openStore(path string) (*Store, error) {
 	dsn := "file:" + path + "?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)"
@@ -1213,7 +1221,7 @@ func openStore(path string) (*Store, error) {
 	if err := db.Ping(); err != nil {
 		return nil, err
 	}
-	s := &Store{db: db, feeMu: newKeyedMutex()}
+	s := &Store{db: db, feeMu: newKeyedMutex(), issMu: newKeyedMutex()}
 	if err := s.migrate(); err != nil {
 		db.Close()
 		return nil, err

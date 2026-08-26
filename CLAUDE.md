@@ -148,6 +148,12 @@ rule that catches something that actually breaks.
   account there, so a failure always means unreachable, never wallet-backed. Never downgrade
   either to a log line: a refused holder who was verified before still carries live categories
   at openampd until that freeze lands.
+- **A DEPLOY mints, so it takes `st.LockIssuance` before it asks whether it already
+  happened.** The idempotency key is read before the mint and written after it, so two deploys
+  in flight together are both told "no prior deploy" and the chain keeps both assets: five
+  concurrent calls minted five, in the test that proves it. The retry that key exists to make
+  safe IS the case where two are in flight. Never move that lock below the `DeployByIdem`
+  check, and never assume the primary key catches it -- it does, after the mint.
 - **A SeqPal ID has TWO account ids, and openampd knows only one of them.** `accounts.aid` is
   the id the ID was founded with and never changes; the policy server knows the account the
   enclave key derives. They coincide only for an ID founded ON an enclave. Never pass
