@@ -772,3 +772,53 @@ func TestTheSanctionsFloorIsEnforcedWhereTheRulesAreMade(t *testing.T) {
 		t.Fatal("excluding a floor jurisdiction was read as admitting it")
 	}
 }
+
+// The floor read through the DEPLOY endpoint, with the matrix in the request.
+//
+// The first version of this check read the issuance's stored terms, which for a
+// fresh draft are empty, so it never fired on the path anyone actually uses. The
+// unit test above did not catch that because it called the function directly.
+// This one posts a deploy.
+func TestADeployIsRefusedWhenItsMatrixAdmitsAFloorJurisdiction(t *testing.T) {
+	h := newHarness(t)
+	h.s.cfg.damp = true
+	h.s.cfg.nodeURL = newWalletNode(t, true).URL
+	h.s.screen = newScreener("")
+	session, aid := walletSession(t, h, testPKH)
+	iss := seedIssuanceOfKind(t, h.s, aid, "network")
+	if err := h.s.st.UpdateIssuanceFields(iss.ID, map[string]any{"status": "draft"}); err != nil {
+		t.Fatal(err)
+	}
+
+	res := h.do("POST", "/api/deploy", session, map[string]any{
+		"issuance_id": iss.ID, "enforcement": "network", "supply": 1000, "precision": 0,
+		"holder_key": strings.Repeat("d", 64),
+		"terms": map[string]any{"jurisdictions": map[string]any{
+			"IR": map[string]any{"access": "standard"},
+			"DE": map[string]any{"access": "standard"},
+		}},
+	})
+	if res.code != 422 {
+		t.Fatalf("a matrix admitting a floor jurisdiction must be refused, got %d %s", res.code, res.raw)
+	}
+	msg, _ := res.body["error"].(string)
+	if !strings.Contains(msg, "IR") {
+		t.Fatalf("the refusal must name which: %q", msg)
+	}
+	if !strings.Contains(msg, "nothing was minted") {
+		t.Fatalf("the refusal must say nothing happened: %q", msg)
+	}
+
+	// Excluding it is what a careful matrix does, and gets past this check.
+	res = h.do("POST", "/api/deploy", session, map[string]any{
+		"issuance_id": iss.ID, "enforcement": "network", "supply": 1000, "precision": 0,
+		"holder_key": strings.Repeat("d", 64),
+		"terms": map[string]any{"jurisdictions": map[string]any{
+			"IR": map[string]any{"access": "excluded"},
+			"DE": map[string]any{"access": "standard"},
+		}},
+	})
+	if res.code == 422 {
+		t.Fatalf("excluding a floor jurisdiction was refused as admitting it: %s", res.raw)
+	}
+}
