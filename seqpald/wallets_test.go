@@ -233,3 +233,41 @@ func TestMigratedKeysMatchComputedKeys(t *testing.T) {
 		t.Fatalf("one wallet, one key:\n  %s\n  %s", a, b)
 	}
 }
+
+// One enclave per SeqPal ID has to hold even when two requests arrive at once.
+// The handler checks before inserting, and between those two statements a
+// second request passes the same check: two enclave accounts on one ID, and no
+// answer to which one its restricted assets settle in.
+func TestOneEnclavePerAccountIsEnforcedInTheSchema(t *testing.T) {
+	st, err := openStore(filepath.Join(t.TempDir(), "seqpald.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	if err := st.CreateAccount(&Account{
+		AID: "acct1", Kind: "individual", XOnly: strings.Repeat("a", 64),
+		DisplayName: "A", CreatedAt: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	first := &AccountWallet{ID: "w1", AID: "acct1", Kind: "enclave",
+		XOnly: strings.Repeat("a", 64), EnclaveAID: "e1"}
+	if err := st.InsertAccountWallet(first); err != nil {
+		t.Fatalf("the first enclave must link: %v", err)
+	}
+	second := &AccountWallet{ID: "w2", AID: "acct1", Kind: "enclave",
+		XOnly: strings.Repeat("b", 64), EnclaveAID: "e2"}
+	if err := st.InsertAccountWallet(second); err == nil {
+		t.Fatal("a second enclave on one ID must be refused by the database, not just by a check")
+	}
+
+	// Descriptor wallets are not limited: they are places a holder keeps keys.
+	for i, d := range []string{"pkh(A/0/*)", "pkh(B/0/*)", "pkh(C/0/*)"} {
+		if err := st.InsertAccountWallet(&AccountWallet{
+			ID: "d" + string(rune('a'+i)), AID: "acct1", Kind: "descriptor", Descriptor: d,
+		}); err != nil {
+			t.Fatalf("descriptor wallet %d must link: %v", i, err)
+		}
+	}
+}
