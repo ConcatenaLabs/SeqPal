@@ -16,9 +16,9 @@ Every capability below is proven by one or more of:
 - a LIVE OPERATOR action on the box (a fund movement needing box-held keys), which
   the driver makes reproducible but cannot perform itself.
 
-The Section 7 simulated elements (KYC/KYB review content, sanctions vendor
-relationship, e-signature provider, incorporation/regulator, fiat rails, DR
-custodian, tax forms) are labeled where they appear; every fund movement below is
+The Section 7 simulated elements (the identity-verification provider itself,
+the e-signature provider, incorporation/regulator, fiat rails, DR custodian, tax
+forms) are labeled where they appear; every fund movement below is
 real USDX / tBTC on the Sequentia testnet, chain-derived, nothing final at 0-conf.
 
 ## Status legend
@@ -58,9 +58,11 @@ prints a box credential.
 | Check | Proof | Status |
 | --- | --- | --- |
 | Real BIP340 key, challenge-response register/login | `seqpald` auth tests + driver handshake (`id.mjs handshake`, `signChallenge`) | PASS / DRIVER |
-| SDN screen stamp; simulated document review with a visible pending state | `m2_test.go` (KYC states, sanctions screen) | PASS |
-| Corporate entity KYB queue, own enclave key + treasury AID, UBO-signed link | `m2_owned_test.go` (entity verify, UBO link) | PASS |
-| Sanctioned TEST persona lands in review, confirmed + refused live, freeze visible at `GET /v1/users/{aid}` | `m2_test.go` refusal path + `LIVE-OP` box review | PASS / LIVE-OP |
+| Identity verification is a provider's and asynchronous: submitted grants nothing, the decision arrives on an authenticated, idempotent callback, and one path applies it | `idv_test.go` (the callback seam), `m2_test.go` (KYC states) | PASS |
+| A check is paid for before it is submitted, per identity and per business, on any fee rail | `verificationfees_test.go` | PASS |
+| A decision that never arrives is chased, and a submission that never reached the provider leaves nothing behind | `idvreconcile_test.go` | PASS |
+| Corporate entity KYB, own enclave key + treasury AID, UBO-signed link, verified only when the provider says so | `m2_owned_test.go` (entity verify, UBO link), `verificationfees_test.go` (submitted is not verified) | PASS |
+| A refused identity is refused: no eligibility, the account frozen, and the freeze visible at `GET /v1/users/{aid}` | `m2_test.go` refusal path + `LIVE-OP` box check | PASS / LIVE-OP |
 
 ### 2. Structuring
 
