@@ -79,7 +79,11 @@ func (s *server) keyDerivesFromAccount(acct *Account, holdingKey string) (bool, 
 			continue
 		}
 		for _, wl := range wallets {
-			mine, err := s.walletAddressRange(toPKH(wl.Descriptor), whitelistScanWindow)
+			mineDesc, err := s.pkhForm(wl.Descriptor)
+			if err != nil {
+				continue
+			}
+			mine, err := s.walletAddressRange(mineDesc, whitelistScanWindow)
 			if err != nil {
 				continue
 			}
