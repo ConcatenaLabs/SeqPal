@@ -86,10 +86,28 @@ func withholdingFor(claims *Claims, gross uint64) (withheld uint64, treatyBps in
 		country = claims.Residence
 	}
 	treatyBps = simTreatyBps(country)
+	// A rate outside 0..100% would make withheld exceed gross, and net is computed
+	// as gross - withheld on unsigned integers: it would not go negative, it would
+	// WRAP, and the caller would pay out an astronomical amount on chain. The
+	// reconciliation check downstream cannot see it either, because modular
+	// arithmetic makes net + withheld == gross however far it wrapped.
+	//
+	// Nothing produces such a rate today. The trigger would be an edit to the rate
+	// table above, which reads like a data change rather than a code change, so
+	// the bound belongs here rather than in the reviewer's memory.
+	if treatyBps < 0 {
+		treatyBps = 0
+	}
+	if treatyBps > 10000 {
+		treatyBps = 10000
+	}
 	// mulDiv (big.Int) keeps floor(gross * bps / 10000) exact and overflow-safe for
 	// large pools, matching the pro-rata discipline; a naive gross*bps would wrap
 	// uint64 above a ~61M-USDX gross and corrupt the net = gross - withheld line.
 	withheld = mulDiv(gross, uint64(treatyBps), 10000)
+	if withheld > gross {
+		withheld = gross
+	}
 	return withheld, treatyBps, status
 }
 
