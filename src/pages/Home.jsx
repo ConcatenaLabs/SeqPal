@@ -8,7 +8,7 @@ const pillars = [
   {
     icon: Icon.shield,
     title: 'Compliance built into the asset',
-    body: 'Investor eligibility is checked on every transfer: jurisdiction, accreditation, and sanctions screening travel with the asset. Verify once with SeqPal ID, hold every asset you qualify for. Issuers choose who enforces the rules, and can even issue a freely-tradable token.',
+    body: 'Issuers choose who enforces the rules. Have this platform service every transfer and eligibility is checked on each one \u2014 jurisdiction, accreditation and sanctions screening travelling with the asset; have the network enforce them and the chain checks a published holder list instead; or issue a freely-tradable token anyone can hold. Verify once with SeqPal ID, whichever you pick.',
   },
   {
     icon: Icon.users,
@@ -31,7 +31,7 @@ const products = [
   {
     icon: Icon.id,
     name: 'SeqPal ID',
-    body: 'A consolidated KYC/KYB and accreditation passport, one flow for everyone. Verified once, it whitelists the holder for every SeqPal-managed asset their profile qualifies for.',
+    body: 'A consolidated KYC/KYB and accreditation passport, one flow for everyone. Verified once, it admits the holder to every serviced asset their profile qualifies for, and is the credential they present to be admitted to the rest.',
   },
   {
     icon: Icon.exchange,

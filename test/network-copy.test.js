@@ -186,3 +186,20 @@ test('the election says the deploy takes a registrar the issuer runs', () => {
   assert.match(src, /Issuing it takes two rounds/, 'the election names the two-round deploy')
   assert.match(src, /registrar is yours to run/, 'and says whose tool it is')
 })
+
+test('the front page does not promise one enforcement model for all three', () => {
+  // Eligibility is checked on every transfer for a SERVICED token. A
+  // network-enforced one is checked against a published holder list; a
+  // freely-tradable one is not checked at all. Promising the first of the three
+  // as though it were all of them contradicts the next sentence on the same
+  // card, which offers the other two.
+  const src = read('pages/Home.jsx')
+  assert.ok(
+    !/Investor eligibility is checked on every transfer:/.test(src),
+    'the compliance card does not claim every transfer is checked',
+  )
+  assert.ok(
+    !/it whitelists the holder for every SeqPal-managed asset/.test(src),
+    'verification does not whitelist a holder for a network-enforced asset: they ask, and the issuer decides',
+  )
+})
