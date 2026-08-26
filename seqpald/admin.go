@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -159,9 +160,16 @@ func (s *server) finalizeAfterClear(aid string) error {
 	if claims.VerifiedAt == 0 {
 		claims.VerifiedAt = time.Now().Unix()
 	}
-	if sig, err := s.signClaims(claims); err == nil {
-		claims.ClaimsSig = sig
+	// The claims record carries this platform's signature over what it attests.
+	// The direct verification path refuses to record a verification it could not
+	// sign; this path swallowed the error and stored a verified record with no
+	// signature on it, which is the same attestation with nothing standing
+	// behind it. A review that clears is retried instead.
+	sig, err := s.signClaims(claims)
+	if err != nil {
+		return fmt.Errorf("sign claims: %w", err)
 	}
+	claims.ClaimsSig = sig
 	if err := s.st.UpsertClaims(claims); err != nil {
 		return err
 	}

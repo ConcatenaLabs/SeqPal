@@ -469,3 +469,41 @@ func TestASanctionsConfirmationRefusesAWalletBackedID(t *testing.T) {
 		t.Fatal("a refused identity must not be eligible for anything")
 	}
 }
+
+// The claims record carries this platform's signature over what it attests. A
+// verification that could not be signed is not recorded: the direct path has
+// always refused one, and the review-cleared path used to store it unsigned,
+// which is the same claim with nothing standing behind it.
+func TestAClearedReviewNeverRecordsAnUnsignedVerification(t *testing.T) {
+	h := newHarness(t)
+	h.s.cfg.nodeURL = newWalletNode(t, true).URL
+	h.s.screen = newScreener("")
+	session, aid := walletSession(t, h, testPKH)
+	if v := h.do("POST", "/api/id/verify", session, map[string]any{
+		"residence": "AE", "screening_name": "Wallet Wendy", "base_eligibility": "ret",
+	}); v.code != 200 {
+		t.Fatalf("verify: %d %s", v.code, v.raw)
+	}
+	c, _ := h.s.st.ClaimsByAID(aid)
+	if c == nil || c.ClaimsSig == "" {
+		t.Fatalf("a verified record must carry the platform signature, got %v", c)
+	}
+
+	// Park it in review, then clear it: the record that comes out the other side
+	// must be signed too.
+	c.Status = "in_review"
+	c.ClaimsSig = ""
+	if err := h.s.st.UpsertClaims(c); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.s.finalizeAfterClear(aid); err != nil {
+		t.Fatalf("clearing a review must complete: %v", err)
+	}
+	out, _ := h.s.st.ClaimsByAID(aid)
+	if out == nil || out.Status != "verified" {
+		t.Fatalf("a cleared review must verify, got %v", out)
+	}
+	if out.ClaimsSig == "" {
+		t.Fatal("a verification recorded with no signature attests nothing")
+	}
+}
