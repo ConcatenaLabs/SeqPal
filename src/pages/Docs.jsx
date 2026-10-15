@@ -119,7 +119,7 @@ export default function Docs() {
               requires an explicit asset id on every input and output it scans, so a
               network-enforced asset is transparent by construction and a blinded receipt
               could not be spent. What is NOT enforced is named in
-              opendamp/STATUS.md section 2 rather than implied here.
+              section 2 of STATUS.md in the opendamp repository rather than implied here.
             </p>
           </div>
           <div className="rounded-xl border border-ink-900/10 bg-ink-900/[0.02] p-4">
