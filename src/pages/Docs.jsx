@@ -110,13 +110,13 @@ export default function Docs() {
               consumes the recorded verifier outpoint and recreates C_V with exactly q of V.
             </p>
             <p className="mt-2">
-              Two shipped bounds are worth stating because they are committed into the
-              program identity and cannot be raised for an existing asset: the covenant
-              asserts at most 4 inputs and 6 outputs, which leaves room for exactly two
-              regulated inputs, so a holder may spend at most TWO coins of the asset in one
-              transfer. Raising it is a budget purchase (about 2,015 weight units and 65
-              pad words per extra input slot), not a design change. The covenant also
-              requires an explicit asset id on every input and output it scans, so a
+              Two bounds are worth stating because they are committed into the program
+              identity, so an asset keeps the bounds of the programs it was issued with.
+              The verifier is compiled once per transaction shape and every shape is a leaf
+              of the same covenant: the canonical shape takes 3 inputs and 5 outputs, the
+              widest 5 inputs and 7 outputs, so a holder may spend at most THREE coins of
+              the asset in one transfer and may need to consolidate first. The covenant
+              also requires an explicit asset id on every input and output it scans, so a
               network-enforced asset is transparent by construction and a blinded receipt
               could not be spent. What is NOT enforced is named in
               section 2 of STATUS.md in the opendamp repository rather than implied here.
