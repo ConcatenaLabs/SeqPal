@@ -94,7 +94,9 @@ export default function PayoutMandateCard({ iss }) {
       </div>
       <p className="mt-1.5 text-sm leading-relaxed text-ink-700/70">
         Register the ordinary address escrow release pays out to, signed with your SeqPal ID key.
-        This is required before closing. Escrow release never pays an enclave key-path address.
+        The Sequentia mandate is required before you open the escrow, and it is fixed once the
+        escrow is open, because every subscription address commits to it. Escrow release never
+        pays an enclave key-path address.
       </p>
 
       {registered.length > 0 && (

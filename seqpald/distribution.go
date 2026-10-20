@@ -165,32 +165,29 @@ func (s *server) handleCreateDistribution(w http.ResponseWriter, r *http.Request
 		writeErr(w, 400, "a positive pool_atoms (or pool_usd) is required")
 		return
 	}
-	addr, err := s.newUSDXDepositAddress()
-	if err != nil {
-		writeErr(w, 502, "could not derive a servicing deposit address: %v", err)
-		return
-	}
+	// The issuer pays the holders itself, in ONE transaction its own wallet
+	// funds and signs once the register is snapshotted, so nothing is deposited
+	// with this platform first and there is nothing to wait for.
 	d := &Distribution{
-		ID:             mustID(),
-		IssuanceID:     iss.ID,
-		AssetID:        iss.AssetID,
-		PoolAtoms:      pool,
-		Memo:           strings.TrimSpace(req.Memo),
-		State:          "awaiting_funding",
-		DepositAddress: addr,
-		DividendEquiv:  isDepositoryReceipt(iss.StructureID),
+		ID:            mustID(),
+		IssuanceID:    iss.ID,
+		AssetID:       iss.AssetID,
+		PoolAtoms:     pool,
+		Memo:          strings.TrimSpace(req.Memo),
+		State:         "open",
+		DividendEquiv: isDepositoryReceipt(iss.StructureID),
 	}
 	if err := s.st.InsertDistribution(d); err != nil {
 		writeErr(w, 500, "could not create the distribution run")
 		return
 	}
 	s.st.Audit(acct.AID, "distribution.create", map[string]any{
-		"issuance_id": iss.ID, "run": d.ID, "pool_atoms": pool, "deposit_address": addr,
+		"issuance_id": iss.ID, "run": d.ID, "pool_atoms": pool,
 	})
 	writeJSON(w, 200, map[string]any{
-		"distribution": d, "deposit_address": addr, "pay_amount": pool, "pay_ccy": "USDX",
-		"confs_required": s.cfg.escrowConfs,
-		"note":           "fund this servicing deposit with USDX covering the gross pool; the run pays nothing until it confirms",
+		"distribution": d, "pay_ccy": "USDX",
+		"note": "take the record-date snapshot, then pay every holder in one transaction your own wallet " +
+			"funds and signs; nothing is deposited with the platform",
 	})
 }
 
@@ -263,7 +260,7 @@ func (s *server) handleSnapshotDistribution(w http.ResponseWriter, r *http.Reque
 	case "awaiting_funding":
 		writeErr(w, 409, "fund the run before taking the record-date snapshot")
 		return
-	case "funded":
+	case "funded", "open":
 		// proceed
 	default:
 		writeErr(w, 409, "the run is in state %q and cannot be snapshotted", d.State)
@@ -405,6 +402,14 @@ func (s *server) handleExecuteDistribution(w http.ResponseWriter, r *http.Reques
 	}
 	if d.State != "snapshotted" && d.State != "paying" {
 		writeErr(w, 409, "snapshot the run before executing (state is %q)", d.State)
+		return
+	}
+	// A run is paid by one transaction the issuer funds and signs
+	// (distribution_tx.go). A run funded by a deposit into the platform's
+	// servicing wallet, before distributions were paid that way, is paid out
+	// of that deposit, one payment per holder, below.
+	if d.DepositAddress == "" {
+		s.executeIssuerFunded(w, r, acct, iss, d)
 		return
 	}
 	_ = s.st.UpdateDistributionFields(d.ID, map[string]any{"state": "paying"})

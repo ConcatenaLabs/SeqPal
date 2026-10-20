@@ -9,6 +9,11 @@ endpoints already exist).
 
 ## 1. Distribution engine (seqpald; new distribution.go + store)
 
+A run is paid in ONE transaction the issuer's own wallet funds and signs, and nothing is
+deposited with the platform: `M14-CONTRACT.md` section 6 supersedes steps 1 and 5 below for
+every run created that way. Steps 1 and 5 as written govern a run that was funded by a deposit
+into the servicing wallet.
+
 A distribution run for an issuance, USDX only:
 1. ISSUER FUNDING FIRST. The run is created in state `awaiting_funding` with a per-run invoice:
    an amount (gross = sum of per-holder gross) and a servicing-wallet deposit address on Sequentia

@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"strings"
 	"time"
 )
 
@@ -30,6 +31,8 @@ func (s *server) watchDeposits() {
 	// funding just made payable.
 	s.watchActionDeposits()
 	s.payDueActionClaims()
+	// The subscription escrow: lost writes healed, and refunds from the deadline.
+	s.watchEscrowSpends()
 }
 
 func (s *server) watchSubscriptionDeposits() {
@@ -37,10 +40,11 @@ func (s *server) watchSubscriptionDeposits() {
 	if err != nil {
 		return
 	}
+	s.watchEscrowDeposits(subs)
 	for _, sub := range subs {
 		switch sub.Rail {
 		case "usdx":
-			if s.cfg.nodeURL == "" {
+			if s.cfg.nodeURL == "" || isCovenantSub(sub) {
 				continue
 			}
 			dep, ok, err := s.usdxDeposit(sub.DepositAddress)
@@ -59,6 +63,70 @@ func (s *server) watchSubscriptionDeposits() {
 			rate := btcPrice(s.fetchPrices())
 			s.creditSubscription(sub, dep, rate)
 		}
+	}
+}
+
+// watchEscrowDeposits credits subscriptions paid into the escrow covenant.
+// Their addresses belong to no wallet, so the coins are read straight from the
+// node's UTXO set -- one scan for every open subscription -- and each coin's
+// confirmations are counted from the height it was mined at. Only coins of the
+// payment asset count, and only explicit ones: a confidential payment carries
+// no amount the chain shows, and the covenant could not return it either.
+func (s *server) watchEscrowDeposits(subs []*Subscription) {
+	if s.cfg.nodeURL == "" {
+		return
+	}
+	var open []*Subscription
+	spks := []string{}
+	for _, sub := range subs {
+		if isCovenantSub(sub) {
+			open = append(open, sub)
+			spks = append(spks, sub.EscrowSPK)
+		}
+	}
+	if len(open) == 0 {
+		return
+	}
+	found, tip, err := s.scanSPKs(spks)
+	if err != nil {
+		log.Printf("moneywatch: escrow scan: %v", err)
+		return
+	}
+	payAsset := map[string]string{}
+	for _, sub := range open {
+		pa, ok := payAsset[sub.IssuanceID]
+		if !ok {
+			if t, _ := s.st.EscrowTermsByIssuance(sub.IssuanceID); t != nil {
+				pa = t.PayAsset
+			}
+			payAsset[sub.IssuanceID] = pa
+		}
+		if pa == "" {
+			continue
+		}
+		var dep deposit
+		minConf := int64(-1)
+		for _, u := range found[strings.ToLower(sub.EscrowSPK)] {
+			if !strings.EqualFold(u.Asset, pa) {
+				continue
+			}
+			c := escrowCoin{Txid: u.Txid, Vout: u.Vout, Atoms: atomsFromNumber(u.Amount),
+				Asset: strings.ToLower(u.Asset), Height: u.Height, SubscriptionID: sub.ID}
+			_ = s.st.RecordEscrowCoin(sub.IssuanceID, c)
+			dep.Atoms += c.Atoms
+			conf := tip - u.Height + 1
+			if minConf < 0 || conf < minConf {
+				minConf = conf
+			}
+			if dep.Txid == "" {
+				dep.Txid = u.Txid
+			}
+		}
+		if dep.Txid == "" {
+			continue
+		}
+		dep.Confirmations = minConf
+		s.creditSubscription(sub, dep, 0)
 	}
 }
 

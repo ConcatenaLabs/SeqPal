@@ -2,7 +2,8 @@
 
 SeqPal is an end-to-end tokenization-as-a-service platform domiciled in Próspera
 ZEDE that lets issuers structure, issue, and service compliant security tokens on
-**Sequentia**, the Bitcoin sidechain. Restricted assets are issued and enforced
+**Sequentia**, a Bitcoin sidechain for asset tokenization and disintermediated
+exchanges. Restricted assets are issued and enforced
 through **OpenAMP**, the open-source policy-server layer for issuer-governed
 assets (KYC whitelists, categories, velocity, vesting, freeze, clawback).
 
@@ -94,19 +95,67 @@ registrar steps are simulated so the flow can be walked end to end.
   two investors in one raise share one fee between them, apportioned by what
   each accrued. Because it is charged for time, its amount is not knowable when
   the money arrives -- only when it leaves -- so the clock starts at deposit
-  confirmation and the amount is fixed at release and never recomputed. It is
-  payable whether or not the offering closes, so a refund withholds it too. A
-  fee larger than the funds it comes out of takes what is there and records the
-  rest as owed rather than pretending it was smaller.
+  confirmation and the amount is fixed at release and never recomputed. On USDX
+  it is an output of the release, paid out of the raise, and it is never taken
+  from a subscriber's money: a cancel or a refund out of the escrow covenant
+  returns the whole payment less its network fee, so a USDX offering that fails
+  pays the platform nothing out of escrow. On the native-BTC rail a refund
+  withholds it, because it is payable whether or not the offering closes. A fee larger than the funds
+  it comes out of takes what is there and records the rest as owed rather than
+  pretending it was smaller.
   `SEQPALD_ESCROW_FEE_BPS` overrides the schedule with a flat rate where a
   deployment needs that; unset, the platform charges what it publishes.
-- Escrow and settlement. Subscriptions fund a segregated per-offering escrow in
-  USDX on Sequentia or in native tBTC on Bitcoin testnet4 (the BTC rail is on
-  only when `SEQPALD_BTC_RPC_URL` is set). At closing the tokens leave the
-  escrow enclave by policy-co-signed transfer; a USDX subscription settles as
-  one atomic delivery-versus-payment transaction (tokens to the investor, USDX
-  to the issuer's mandate address, the platform fee output). Nothing is shown
-  as final at 0-conf.
+- Escrow and settlement on USDX (Sequentia). The escrow is enforced by the
+  network, not by a wallet of this platform. Before the first subscription the
+  issuer opens the offering's escrow: it names a release key from its OWN
+  Sequentia wallet, a minimum raise and a close (a block height), and signs those
+  terms with the release key; they are fixed from then on. Each subscriber pays
+  to an address of their own subscription, derived from those terms and the
+  subscriber's refund address by the `sequentia/subscription-escrow` covenant
+  template of
+  [`sequentia-contracts`](https://github.com/ConcatenaLabs/sequentia-contracts).
+  No SeqPal wallet holds a key to it, and seqpald credits it by reading the
+  chain. The money can go three ways and no other:
+  - to the issuer, after the close, in a release the issuer signs whose first
+    output pays the issuer's payout address at least the minimum. The release
+    SeqPal builds is ONE transaction over every delivered subscription: the
+    raise to the issuer, the platform's escrow fee, anything a subscriber paid
+    beyond their subscription back to them, and the network fee;
+  - back to the subscriber, by a cancel the issuer signs, at any time;
+  - back to the subscriber from the deadline (the close plus
+    `SEQPALD_ESCROW_DEADLINE_DAYS`, 14 days by default), by anyone, with no
+    signature. seqpald broadcasts it unprompted for every subscription whose
+    tokens were not delivered, and the subscriber can fetch the finished refund
+    transaction and broadcast it themselves.
+
+  At closing the tokens leave the offering's escrow enclave first, by a
+  transfer seqpald signs with the escrow enclave key and the policy server
+  co-signs, and only then is the issuer handed the release to sign: the
+  transaction itself, never a digest, which a Sequentia node wallet checks and
+  signs with `signopenamptransfer`. seqpald verifies every signature against the
+  release key before it broadcasts. So the money depends on nobody's goodwill:
+  it leaves escrow only by one of those three ways, and the deadline returns it
+  if nobody acts. The tokens depend on SeqPal and the policy server. The network
+  cannot see the tokens, so an issuer that signed a release on its own after the
+  close would take the raise whether or not they had gone out; SeqPal never asks
+  for that signature before delivering. The issuer depends on its own signature
+  for the raise, and on signing it before the deadline. A subscription whose
+  tokens cannot be delivered goes into a cancel instead.
+  Nothing is shown as final at 0-conf.
+- Escrow and settlement on native tBTC (Bitcoin testnet4, on only when
+  `SEQPALD_BTC_RPC_URL` is set) is custodial: each subscriber pays an address of
+  the platform's `seqpal-btc-escrow` wallet, and at closing seqpald delivers the
+  tokens and pays the issuer, or refunds the subscriber, from that wallet. Bitcoin
+  script cannot check an offering's minimum, so this rail has no covenant.
+- Distributions are paid by the issuer, in one transaction. After the
+  record-date snapshot seqpald lists one output per holder -- the holder's
+  registered payout address and their net after withholding -- and the issuer's
+  own wallet funds and signs that transaction. seqpald checks that every
+  holder's output is in it exactly before it broadcasts it, and records the one
+  txid on every holder's row. Nothing is deposited with the platform, and the
+  withheld amounts stay with the issuer. Corporate-action dividends are paid
+  differently: the issuer funds a deposit into the platform's servicing wallet,
+  and each holder's claim is paid from it.
 
 **Simulated (kept faithful to the intended product):**
 
@@ -224,7 +273,8 @@ Browser (React SPA, served by seqpald)
   │     │                      servicing, enforcement consoles
   │     ├── OpenAMP issuer API   (bearer token, never in the browser)
   │     ├── Sequentia node RPC + electrs   (chain watcher, supervision RPCs,
-  │     │                                   bearer mints, escrow payouts)
+  │     │                                   bearer mints, escrow covenant reads
+  │     │                                   and broadcasts)
   │     └── Bitcoin testnet4 RPC           (native tBTC escrow rail)
   └── OpenAMP public API  /openamp/v1/*   (register key, assets, balances,
         │                                  addresses, transparency log)

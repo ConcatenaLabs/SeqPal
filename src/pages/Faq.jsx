@@ -133,7 +133,7 @@ const SECTIONS = [
       {
         q: 'What does delivery versus payment mean here?',
         a: [
-          'It means the token and the payment settle together rather than one party trusting the other to follow through. Where a rail supports it, this is atomic; where it does not, it is registrar-settled, and the platform says which. If the issuer uses SeqPal’s escrow, SeqPal holds the funds and releases the token against payment at settlement; if not, the investor pays the issuer directly.',
+          'It means the token and the payment settle together rather than one party trusting the other to follow through. If the issuer uses SeqPal’s escrow, a USDX payment goes to an escrow address of the subscription’s own that no SeqPal wallet holds a key to: SeqPal delivers the token first, and only then does the issuer sign the one release that pays it, which the network allows only after the close and only if it pays at least the offering’s minimum. If the offering fails, the issuer returns the money, and from a deadline anyone can. A native BTC payment is held in a SeqPal wallet and settled registrar-style across the two chains. If the issuer does not use the escrow, the investor pays the issuer directly.',
         ],
       },
       {

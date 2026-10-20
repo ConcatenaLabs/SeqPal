@@ -24,14 +24,14 @@ export const RAIL_META = {
     chain: 'Sequentia',
     simulated: false,
     trust:
-      'USDX settles on Sequentia. Your deposit is watched on chain and credited once it confirms; nothing is final at 0 confirmations, because a Sequentia block is only as final as its Bitcoin anchor is deep.',
+      'USDX settles on Sequentia. You pay to an escrow address of your own subscription that no SeqPal wallet holds a key to: before the close it can only come back to your refund address, and from the close the issuer\u2019s key can also release it, in a transaction that pays the issuer at least the offering\u2019s minimum. SeqPal asks the issuer for that signature only after your tokens are delivered. Your payment is read from the chain and credited once it confirms; nothing is final at 0 confirmations, because a Sequentia block is only as final as its Bitcoin anchor is deep.',
   },
   btc: {
     label: 'Bitcoin (testnet4)',
     chain: 'Bitcoin testnet4',
     simulated: false,
     trust:
-      'Native BTC is genuinely cross-chain: your payment confirms on Bitcoin testnet4, then delivery is co-signed on Sequentia. This is registrar-style settlement, not atomic. The USD/BTC rate is captured when the deposit confirms.',
+      'Native BTC is genuinely cross-chain: your payment confirms on Bitcoin testnet4, then delivery is co-signed on Sequentia. This is registrar-style settlement, not atomic, and the escrow is custodial: your BTC is held in a SeqPal wallet until the close, which pays the issuer or refunds you. The USD/BTC rate is captured when the deposit confirms.',
   },
   card: {
     label: 'Card',
@@ -52,16 +52,18 @@ export const RAIL_META = {
 export const railMeta = (rail) => RAIL_META[rail] || { label: rail, chain: '', simulated: false, trust: '' }
 
 // The settlement model of a rail, labeled honestly for the close surface. USDX
-// settles as one atomic delivery-versus-payment transaction (the token and the
-// USDX payment move together, M6); native BTC is cross-chain registrar settlement,
-// not atomic; the simulated fiat rails deliver on chain against a simulated
-// payment. atomic drives whether the close shows a single combined txid.
+// is held by the escrow covenant: the tokens are delivered first, then one
+// release the issuer signs pays the raise. Native BTC is cross-chain registrar
+// settlement out of a custodial SeqPal wallet, not atomic; the simulated fiat
+// rails deliver on chain against a simulated payment. atomic is true only for a
+// settlement whose delivery and release were one transaction, which the close
+// surface then shows as a single txid.
 export function settlementModel(rail) {
   switch (rail) {
     case 'usdx':
-      return { atomic: true, label: 'delivery-versus-payment: atomic (one transaction)' }
+      return { atomic: false, label: 'tokens delivered first, then released to the issuer in one transaction it signs' }
     case 'btc':
-      return { atomic: false, label: 'cross-chain registrar settlement, not atomic' }
+      return { atomic: false, label: 'cross-chain registrar settlement from a SeqPal-held wallet, not atomic' }
     case 'card':
     case 'bank':
       return { atomic: false, label: 'simulated payment, on-chain delivery' }

@@ -249,8 +249,11 @@ export const gate = (id, body) =>
 
 // Subscribe on the payer's chosen rail: { rail: usdx|btc|card|bank, amount,
 // refund_address }. usdx/btc → { subscription, deposit_address, pay_amount,
-// pay_ccy, confs_required, registrar_note? }; card/bank → { subscription,
-// checkout, funds_simulated:true, label }. A 403 carries { requirements[] }.
+// pay_ccy, confs_required, registrar_note? }; on usdx the deposit address is the
+// subscription's own escrow covenant address and the answer also carries
+// escrow { terms, params, refund_leaf, note }. card/bank → { subscription,
+// checkout, funds_simulated:true, label }. A 403 carries { requirements[] }; a
+// 409 on usdx means the issuer has not opened the offering's escrow yet.
 export const subscribe = (id, body) =>
   req(`/issuances/${encodeURIComponent(id)}/subscribe`, { method: 'POST', body })
 
@@ -262,6 +265,12 @@ export const mySubscriptions = () => req('/subscriptions')
 export const issuanceSubscriptions = (id) =>
   req(`/issuances/${encodeURIComponent(id)}/subscriptions`)
 
+// The subscriber's own view of a subscription held by the escrow covenant:
+// { address, escrow (the terms), params, refund_leaf, coins[], refund_tx?,
+// refund_note }. refund_tx is the finished refund transaction: it needs nobody's
+// signature, it is valid from the deadline, and anyone can broadcast it.
+export const subscriptionEscrow = (subID) =>
+  req(`/subscriptions/${encodeURIComponent(subID)}/escrow`)
 // Poll a SIMULATED fiat checkout: { id, state, receipt, amount_display,
 // funds_simulated:true, label }.
 export const fiatStatus = (id) => req(`/fiat/${encodeURIComponent(id)}`)
@@ -288,9 +297,41 @@ export const mandate = (id, body) =>
   req(`/issuances/${encodeURIComponent(id)}/mandate`, { method: 'POST', body })
 
 // Owner: close the offering. POST with no signature returns { sign_this, tag };
-// resubmit signed → { close_height, results[] } (per-subscription delivery+release).
+// resubmit signed → { close_height, results[], escrow?, escrow_spends? }. For
+// subscriptions in the escrow covenant the close delivers the tokens and returns
+// the release (and a cancel for any subscription it could not deliver) for the
+// issuer's own wallet to sign; the money stays in escrow until it does.
 export const close = (id, body) =>
   req(`/issuances/${encodeURIComponent(id)}/close`, { method: 'POST', body })
+
+// Owner: the offering's subscription escrow: { escrow (terms or null), coins[],
+// held_atoms, spends[] }. Each built release or cancel in spends[] carries
+// to_sign[] and the sign_command for the issuer's wallet.
+export const escrowStatus = (id) => req(`/issuances/${encodeURIComponent(id)}/escrow`)
+
+// Owner: open the offering's escrow { release_key, minimum | minimum_atoms,
+// close_height | close_time, signature? }. Without a signature it returns the
+// terms and the statement to sign WITH THE RELEASE KEY ({ sign_this, tag,
+// sign_this_message, escrow }); with one, it records the terms, which are then
+// fixed for good: every subscription address is derived from them.
+export const openEscrow = (id, body) =>
+  req(`/issuances/${encodeURIComponent(id)}/escrow`, { method: 'POST', body })
+
+// Owner: the issuer's signatures over a built release or cancel, as the wallet
+// returned them: [{ vin, signature }] (signopenamptransfer's "signatures") or
+// { "<vin>": signature }. Each is checked against the release key before the
+// transaction is broadcast. → { spend }.
+export const signEscrowSpend = (id, spendID, signatures) =>
+  req(`/issuances/${encodeURIComponent(id)}/escrow/spends/${encodeURIComponent(spendID)}/sign`, {
+    method: 'POST',
+    body: { signatures },
+  })
+
+// Owner: build a cancel returning chosen subscriptions (or every undelivered
+// one) to their subscribers, for the issuer to sign: { subscription_ids? } →
+// { spend }.
+export const cancelEscrow = (id, body = {}) =>
+  req(`/issuances/${encodeURIComponent(id)}/escrow/cancel`, { method: 'POST', body })
 
 // Owner: the per-subscription settlement records (delivery/release/refund txids).
 export const settlements = (id) => req(`/issuances/${encodeURIComponent(id)}/settlements`)
@@ -309,10 +350,10 @@ export const investorMandate = (body) => req('/mandates/investor', { method: 'PO
 export const investorMandateGet = (chain = 'sequentia') =>
   req(`/mandates/investor?chain=${encodeURIComponent(chain)}`)
 
-// Owner: open a distribution run in awaiting_funding with a servicing-wallet USDX
-// deposit invoice. Body { pool_atoms? | pool_usd?, memo? }. Returns
-// { distribution, deposit_address, pay_amount, pay_ccy:"USDX", confs_required,
-// note }. The run pays nothing until the deposit confirms and covers the pool.
+// Owner: open a distribution run. Body { pool_atoms? | pool_usd?, memo? }.
+// Returns { distribution (state "open"), pay_ccy:"USDX", note }. Nothing is
+// deposited with the platform: the issuer pays every holder in one transaction
+// its own wallet funds and signs.
 export const createDistribution = (id, body) =>
   req(`/issuances/${encodeURIComponent(id)}/distributions`, { method: 'POST', body })
 
@@ -325,7 +366,7 @@ export const listDistributions = (id) =>
 export const getDistribution = (id, runID) =>
   req(`/issuances/${encodeURIComponent(id)}/distributions/${encodeURIComponent(runID)}`)
 
-// Owner: take the immutable record-date snapshot (requires state funded). Captures
+// Owner: take the immutable record-date snapshot (state open). Captures
 // the holder set at a Sequentia block height and computes pro-rata + withholding.
 // Idempotent: { distribution, payments[], label }.
 export const snapshotDistribution = (id, runID) =>
@@ -334,12 +375,17 @@ export const snapshotDistribution = (id, runID) =>
     body: {},
   })
 
-// Owner: pay NET USDX to each holder's registered mandate address, one payment per
-// holder (M5/M6 idempotency). Resumable: { distribution, payments[], label }.
-export const executeDistribution = (id, runID) =>
+// Owner: pay the run. Without a transaction it returns the payout
+// { distribution, payments[], payout { outputs[], total_atoms, asset,
+// unfunded_tx, fund_command, sign_command, note } }: one output per holder, net
+// of withholding, to their registered payout address. With { tx } (the payout
+// the issuer's wallet funded and signed) every holder's output is checked
+// exactly before the one transaction is broadcast → { distribution, payments[] }.
+// A run already paying is broadcast again with the same bytes.
+export const executeDistribution = (id, runID, body = {}) =>
   req(`/issuances/${encodeURIComponent(id)}/distributions/${encodeURIComponent(runID)}/execute`, {
     method: 'POST',
-    body: {},
+    body,
   })
 
 // Owner: freeze or unfreeze a holder at the policy server. REASON REQUIRED. Body

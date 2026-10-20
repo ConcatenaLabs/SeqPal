@@ -28,7 +28,7 @@ import { Http, ApiError } from './lib/http.mjs'
 import { SeqPalID } from './lib/id.mjs'
 import {
   banner, step, info, evidence, ok, skip, assert, AssertError,
-  fakeSighash, fund, waitFor,
+  fakeSighash, fund, waitFor, issuerHook,
 } from './lib/util.mjs'
 
 // USDX on the testnet (given in the task); the default read-probe asset.
@@ -36,7 +36,7 @@ const USDX = '2a515539da5e6a60caa7766ecd65bac0c10d15717ddd2088844ba58f4d04b9de'
 
 // ── config from env + flags (never inlined secrets) ─────────────────────────
 function parseArgs(argv) {
-  const flags = { only: null, dryRun: false, verbose: false, fundCmd: null }
+  const flags = { only: null, dryRun: false, verbose: false, fundCmd: null, signCmd: null, payoutCmd: null }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === '--dry-run') flags.dryRun = true
@@ -46,6 +46,8 @@ function parseArgs(argv) {
     else if (a === '--issuance') flags.issuance = argv[++i]
     else if (a === '--asset') flags.asset = argv[++i]
     else if (a === '--fund-cmd') flags.fundCmd = argv[++i]
+    else if (a === '--sign-cmd') flags.signCmd = argv[++i]
+    else if (a === '--payout-cmd') flags.payoutCmd = argv[++i]
     else if (a === '--help' || a === '-h') flags.help = true
     else throw new Error(`unknown flag: ${a}`)
   }
@@ -58,6 +60,8 @@ function loadConfig(flags) {
     dryRun: flags.dryRun,
     verbose: flags.verbose,
     fundCmd: flags.fundCmd || process.env.FUND_CMD || null,
+    signCmd: flags.signCmd || process.env.SIGN_CMD || null,
+    payoutCmd: flags.payoutCmd || process.env.PAYOUT_CMD || null,
     only: flags.only,
     issuanceID: flags.issuance || process.env.ISSUANCE_ID || null,
     assetID: flags.asset || process.env.ASSET_ID || USDX,
@@ -95,9 +99,15 @@ async function writeReq(cfg, http, desc, path, body) {
   return http.post(path, body)
 }
 
-// ── M6: atomic USDX close (one tx, delivery == release) ─────────────────────
+// ── M6/M14: closing a USDX offering out of the escrow covenant ─────────────
+// The money is at each subscription's own covenant address. Closing delivers
+// the tokens first, then returns ONE release transaction for the issuer's own
+// wallet to sign (signopenamptransfer); seqpald verifies the signatures and
+// broadcasts it. A subscription paid into the platform wallet before the
+// covenant held its money settles by the atomic close instead, and the driver
+// accepts either shape on the settlement record.
 async function proofM6(cfg, http, issuer) {
-  banner('M6  atomic USDX delivery-versus-payment (one tx: tokens + payment)')
+  banner('M6  closing: tokens delivered, then the issuer-signed release out of the escrow covenant')
 
   step('Issuer payout mandate (signMandate over the exact sign_this bytes)')
   const iid = cfg.issuanceID
@@ -117,6 +127,7 @@ async function proofM6(cfg, http, issuer) {
   }
 
   step('Close the offering (signClosing over the exact sign_this bytes)')
+  let spends = []
   if (cfg.dryRun || !iid) {
     const sample = JSON.stringify({ close: 'offering', issuance: iid || '<issuance>' })
     const sig = issuer.closingSig(sample)
@@ -128,20 +139,42 @@ async function proofM6(cfg, http, issuer) {
       const sig = issuer.closingSig(pre.sign_this)
       const res = await http.post(`/seqpal/api/issuances/${iid}/close`, { signature: sig, signer_xonly: issuer.xonly })
       evidence('close_height', res.close_height)
+      spends = res.escrow_spends || []
     }
   }
 
-  step('Assert the atomic invariant on the settlement record')
-  const invariant = (rec) => rec.atomic === true && rec.delivery_txid && rec.delivery_txid === rec.release_txid
+  step("The release: the issuer's own wallet signs the TRANSACTION, seqpald verifies and broadcasts")
   if (cfg.dryRun || !iid) {
-    const sample = { atomic: true, delivery_txid: 'DEADBEEF…', release_txid: 'DEADBEEF…', state: 'settled' }
-    assert(invariant(sample), 'atomic USDX close: delivery_txid == release_txid (both legs in ONE tx)')
-    assert(!invariant({ atomic: false, delivery_txid: 'a', release_txid: 'b' }), 'a two-tx (v1) close correctly fails the atomic assertion')
+    shaped('POST /seqpal/api/issuances/{id}/escrow/spends/{spend}/sign', { signatures: [{ vin: 0, signature: '<64-byte hex>' }] })
+    await issuerHook({
+      label: 'release signature', cmd: cfg.signCmd, dryRun: true, ask: 'paste the signatures JSON',
+      env: { SPEND_TX: '<unsigned release tx>', SPEND_TO_SIGN: '[{"vin":0,"sighash":"…","xonlykey":"…","leaf":"…","control":"…"}]' },
+    })
+  } else {
+    for (const sp of spends.filter((x) => x.state === 'built' && x.to_sign)) {
+      evidence(`${sp.kind} ${sp.txid}`, JSON.stringify(sp.detail?.outputs || []))
+      info(sp.sign_command)
+      const sigs = await issuerHook({
+        label: `${sp.kind} signature`, cmd: cfg.signCmd, dryRun: false, ask: 'paste the signatures JSON the wallet returned',
+        env: { SPEND_TX: sp.unsigned_tx, SPEND_TO_SIGN: JSON.stringify(sp.to_sign) },
+      })
+      const parsed = JSON.parse(sigs)
+      const done = await http.post(`/seqpal/api/issuances/${iid}/escrow/spends/${sp.id}/sign`, { signatures: parsed.signatures || parsed })
+      assert(done.spend?.state === 'broadcast', `${sp.kind} ${done.spend?.txid} broadcast`)
+    }
+  }
+
+  step('Assert the settlement record')
+  const released = (rec) => rec.state === 'settled' && !!rec.release_txid
+  if (cfg.dryRun || !iid) {
+    const sample = { state: 'settled', delivery_txid: 'AAAA…', release_txid: 'BBBB…' }
+    assert(released(sample), 'a USDX subscription settled: tokens delivered, then the escrow released')
+    assert(!released({ state: 'awaiting_release', delivery_txid: 'a', release_txid: '' }), 'a delivery awaiting the release is not yet settled')
   } else {
     const { settlements } = await http.get(`/seqpal/api/issuances/${iid}/settlements`)
-    const atomic = (settlements || []).find(invariant)
-    assert(atomic, 'a USDX subscription settled atomically (delivery_txid == release_txid)')
-    evidence('atomic settlement txid (explorer)', atomic.delivery_txid)
+    const done = (settlements || []).map((s) => s.settlement).filter(Boolean).find(released)
+    assert(done, 'a USDX subscription settled out of escrow (release txid recorded)')
+    evidence('release txid (explorer)', done.release_txid)
   }
 }
 
@@ -159,23 +192,35 @@ async function proofM7(cfg, http, issuer, investor) {
       { chain: 'sequentia', address: '<investor-ordinary-addr>', signature: sig, signer_xonly: investor.xonly })
   }
 
-  step('Pro-rata distribution run: create -> fund -> snapshot -> execute')
+  step("Pro-rata distribution run: create -> snapshot -> one payout the issuer's wallet funds and signs")
   if (cfg.dryRun || !iid) {
     shaped('POST /seqpal/api/issuances/{id}/distributions', { pool_usd: 1000, memo: 'quarterly USDX distribution' })
-    info('the run opens in awaiting_funding with a servicing-wallet USDX deposit invoice')
-    await fund({ address: '<servicing-deposit-address>', amount: '<gross pool>', ccy: 'USDX', label: 'distribution pool', fundCmd: cfg.fundCmd, dryRun: true })
+    info('the run opens with nothing deposited: the issuer pays the holders itself, in one transaction')
     shaped('POST .../distributions/{runID}/snapshot', {})
     shaped('POST .../distributions/{runID}/execute', {})
+    await issuerHook({
+      label: 'distribution payout', cmd: cfg.payoutCmd, dryRun: true, ask: 'paste the signed transaction hex',
+      env: { PAYOUT_TX: '<unfunded payout tx>', PAYOUT_FEE_ASSET: USDX },
+    })
+    shaped('POST .../distributions/{runID}/execute', { tx: '<the signed payout>' })
   } else {
-    const { distribution, deposit_address, pay_amount } = await http.post(`/seqpal/api/issuances/${iid}/distributions`, { pool_usd: 1000, memo: 'acceptance distribution' })
-    await fund({ address: deposit_address, amount: pay_amount, ccy: 'USDX', label: `distribution ${distribution.id}`, fundCmd: cfg.fundCmd, dryRun: false })
-    await waitFor(async () => {
-      const d = await http.get(`/seqpal/api/issuances/${iid}/distributions/${distribution.id}`)
-      return d.distribution.state === 'funded' || d.distribution.state === 'executed'
-    }, { what: 'the servicing deposit to confirm (nothing final at 0-conf)' })
+    const { distribution } = await http.post(`/seqpal/api/issuances/${iid}/distributions`, { pool_usd: 1000, memo: 'acceptance distribution' })
     await http.post(`/seqpal/api/issuances/${iid}/distributions/${distribution.id}/snapshot`, {})
-    const run = await http.post(`/seqpal/api/issuances/${iid}/distributions/${distribution.id}/execute`, {})
-    for (const p of run.payments || []) evidence(`payment holder ${p.holder_aid}`, `${p.net_atoms} net -> txid ${p.txid || '(skipped: no mandate)'}`)
+    const plan = await http.post(`/seqpal/api/issuances/${iid}/distributions/${distribution.id}/execute`, {})
+    const payout = plan.payout || {}
+    for (const o of payout.outputs || []) evidence(`output to holder ${o.holder_aid}`, `${o.atoms} atoms -> ${o.address}`)
+    let run = plan
+    if (payout.unfunded_tx) {
+      info(payout.fund_command)
+      info(payout.sign_command)
+      const signed = await issuerHook({
+        label: 'distribution payout', cmd: cfg.payoutCmd, dryRun: false, ask: 'paste the signed transaction hex',
+        env: { PAYOUT_TX: payout.unfunded_tx, PAYOUT_FEE_ASSET: payout.asset },
+      })
+      run = await http.post(`/seqpal/api/issuances/${iid}/distributions/${distribution.id}/execute`, { tx: signed })
+      assert(run.distribution?.payout_txid, `every holder paid in the one transaction ${run.distribution?.payout_txid}`)
+    }
+    for (const p of run.payments || []) evidence(`payment holder ${p.holder_aid}`, `${p.net_atoms} net -> ${p.txid ? `${p.txid}:${p.vout}` : `(${p.state}: ${p.reason || ''})`}`)
     var executed = run
   }
 
@@ -479,7 +524,8 @@ function printHelp() {
   process.stdout.write(`SeqPal acceptance driver
 
   node scripts/e2e/run.mjs [--dry-run] [--only m6,m7,m8,m9] [--base URL]
-                           [--issuance ID] [--asset ID] [--fund-cmd CMD] [--verbose]
+                           [--issuance ID] [--asset ID] [--fund-cmd CMD]
+                           [--sign-cmd CMD] [--payout-cmd CMD] [--verbose]
 
 Config (env; never inlined):
   BASE_URL              default https://sequentiatestnet.com
@@ -488,10 +534,15 @@ Config (env; never inlined):
   ISSUER_KEY            the issuer's private key, 32 bytes of hex
   INVESTOR_KEY          the investor's private key, 32 bytes of hex
   FUND_CMD / --fund-cmd a box-side funding command (env carries FUND_ADDRESS/AMOUNT/CCY)
+  SIGN_CMD / --sign-cmd the issuer's wallet signing an escrow release or cancel: env carries
+                        SPEND_TX and SPEND_TO_SIGN; it prints the signatures JSON
+  PAYOUT_CMD / --payout-cmd the issuer's wallet funding and signing a distribution payout:
+                        env carries PAYOUT_TX and PAYOUT_FEE_ASSET; it prints the signed hex
 
 --dry-run signs + shapes every request and runs read-only probes, WITHOUT broadcasting.
-Wallet funding is a hook: with no --fund-cmd the live run prints the deposit address and
-pauses for the operator. The driver never holds a box credential.
+Wallet funding and the issuer's wallet are hooks: with no command the live run prints what
+is needed and pauses for the operator. The driver never holds a box credential or the
+issuer's wallet key.
 `)
 }
 

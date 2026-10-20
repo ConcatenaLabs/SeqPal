@@ -80,7 +80,8 @@ native-BTC escrow rail is off unless `SEQPALD_BTC_RPC_URL` is set.
 | `SEQPALD_DB` (`-db`) | `./seqpald.db` | SQLite database path (books and records) |
 | `OPENAMPD_URL` (`-openamp`) | `http://127.0.0.1:8722` | OpenAMP policy server base URL |
 | `OPENAMPD_ISSUER_TOKEN` (`-issuertoken`) | empty | OpenAMP issuer bearer token; the one secret |
-| `SEQPALD_NETWORK` (`-network`) | `sequentia-testnet` | network label reported to the UI |
+| `SEQPALD_NETWORK` (`-network`) | `sequentia-testnet` | network label reported to the UI; also names the chain whose bech32 prefix escrow covenant addresses are written in (`sequentia-testnet`: `tb`, `elementsregtest`: `ert`) |
+| `SEQPALD_BECH32_HRP` | empty | bech32 prefix for escrow covenant addresses on a chain the covenant descriptor does not list; empty = the descriptor's prefix for `SEQPALD_NETWORK`. seqpald refuses to hand out an escrow address the node does not read back as the derived output |
 | `SEQPALD_CONFIDENTIAL` (`-confidential`) | unset | `1`/`true`: accept per-transfer confidential transfers |
 | `SEQPALD_WEBROOT` (`-webroot`) | empty | built SPA directory served at `/` (empty = API only) |
 | `SEQPALD_DEV_ORIGINS` (`-devorigins`) | empty | comma-separated extra CORS origins for local development |
@@ -90,7 +91,7 @@ native-BTC escrow rail is off unless `SEQPALD_BTC_RPC_URL` is set.
 | `SEQPALD_IDV_DECISION_SECS` | `3` | how long the simulated provider takes to answer. A real one takes as long as it takes |
 | `SEQPALD_BLOCKS_PER_DAY` (`-blocksperday`) | `1440` | assumed Sequentia blocks per day for lockup height conversion (60-second spacing: 1440). Below 1 is refused: a lockup measured in zero blocks expires the moment it is stamped |
 | `SEQPALD_TIP_HEIGHT` (`-tipheight`) | `0` | fallback tip height when no node RPC is configured |
-| `SEQPALD_NODE_URL` (`-nodeurl`) | empty | Sequentia node JSON-RPC URL: chain watcher, tip height, supervision RPCs, bearer mints |
+| `SEQPALD_NODE_URL` (`-nodeurl`) | empty | Sequentia node JSON-RPC URL: chain watcher, tip height, supervision RPCs, bearer mints, and the escrow covenant (coins read with `scantxoutset` and `gettxout`, spends checked with `testmempoolaccept` and sent with `sendrawtransaction`; no wallet) |
 | `SEQPALD_NODE_USER` (`-nodeuser`) | empty | node RPC username |
 | `SEQPALD_NODE_PASS` (`-nodepass`) | empty | node RPC password |
 | `SEQPALD_ELECTRS_URL` (`-electrsurl`) | `http://127.0.0.1:3003` | box explorer (electrs) base URL; confirmation source when the node lacks `-txindex` |
@@ -104,9 +105,12 @@ native-BTC escrow rail is off unless `SEQPALD_BTC_RPC_URL` is set.
 | `SEQPALD_BTC_RPC_URL` (`-btcurl`) | empty | Bitcoin testnet4 node RPC URL for the native-tBTC escrow (empty = BTC rail disabled) |
 | `SEQPALD_BTC_RPC_USER` (`-btcuser`) | empty | testnet4 RPC username (the node's `mainchainrpcuser`) |
 | `SEQPALD_BTC_RPC_PASS` (`-btcpass`) | empty | testnet4 RPC password (the node's `mainchainrpcpassword`) |
-| `SEQPALD_USDX_ASSET` (`-usdxasset`) | the public USDX id `2a5155…b9de` | USDX asset id (fee and escrow payment asset) |
+| `SEQPALD_USDX_ASSET` (`-usdxasset`) | the public USDX id `2a5155…b9de` | USDX asset id (fee and escrow payment asset). The node must accept it for fees: every release and refund out of the escrow covenant pays its network fee in it, out of the coins |
 | `SEQPALD_ESCROW_CONFS` (`-escrowconfs`) | `1` | confirmations before a deposit becomes `in_escrow`. Below 1 is refused: nothing here is final at 0-conf, and a deposit that has not confirmed has not arrived |
-| `SEQPALD_ATOMIC_CLOSE` (`-atomicclose`) | `1` | settle USDX subscriptions as one atomic delivery-versus-payment transaction; falls back to the two-transaction close when the policy server has no payment leg |
+| `SEQPALD_ATOMIC_CLOSE` (`-atomicclose`) | `1` | for a USDX subscription paid into the `seqpal-escrow` wallet rather than the escrow covenant, settle it as one atomic delivery-versus-payment transaction; falls back to the two-transaction close when the policy server has no payment leg. Subscriptions in the escrow covenant settle by its release |
+| `SEQPALD_ESCROW_DEADLINE_DAYS` (`-escrowdeadlinedays`) | `14` | days after an offering's close from which anyone may refund a subscriber out of the escrow covenant, and seqpald does for every undelivered subscription. In blocks for a close given as a height (`SEQPALD_BLOCKS_PER_DAY` a day). Fixed into an offering's terms when its escrow opens |
+| `SEQPALD_ESCROW_FEE_CAP_ATOMS` (`-escrowfeecap`) | `100000` | most a cancel or a refund out of the escrow covenant may keep back from each coin for its network fee, in the payment asset's atoms. Fixed into an offering's terms when its escrow opens |
+| `SEQPALD_REVENUE_ADDRESS` (`-revenueaddress`) | empty | Sequentia address the platform's escrow fee is paid to, as an output of each release; empty = a fresh address of the platform's own `seqpal-escrow` wallet. It receives the fee and nothing a subscriber pays in |
 | `SEQPALD_DAMP` | unset | `1`/`true`: network-enforced (OpenDAMP) deploys allowed; see above |
 | `SEQPALD_SETUP_FEE_USD` | unset | OVERRIDE of the published setup price, not the price. Unset, an offering is charged what `src/data/pricing.js` quotes for its structure and terms. Set, that amount instead; zero waives the fee |
 | `SEQPALD_ESCROW_FEE_BPS` | unset | OVERRIDE of the published escrow schedule with a flat rate in basis points of the deposit. Unset, the platform charges what it publishes: 0.25% a month accrued daily, $5,000 minimum, 3% cap |
@@ -114,7 +118,7 @@ native-BTC escrow rail is off unless `SEQPALD_BTC_RPC_URL` is set.
 | `SEQPALD_KYB_FEE_USD` | `150` | business verification fee, charged per business for the same reason. Also the published price; zero charges nothing |
 | `SEQPALD_IDV_GRACE_SECS` | `30` | how long a check may be outstanding before the provider is asked about it directly |
 | `SEQPALD_IDV_RECONCILE_SECS` | `15` | how often outstanding checks are chased. A decision delivered over a network can be missed; a check nobody chases leaves its holder stuck at `submitted` |
-| `SEQPALD_FEE_ASSET` | empty | asset the escrow wallet's and bearer mint's network fees are paid in; empty = the node's `bitcoin` label (tSEQ) |
+| `SEQPALD_FEE_ASSET` | empty | asset the `seqpal-escrow` wallet's sends (corporate-action dividends, and wallet-paid subscriptions and distribution runs) pay their network fee in; empty = the asset being sent. The bearer mint's funding uses it too, and falls back to the node's `bitcoin` label when it is empty |
 | `SEQPALD_RULES_RECONCILE_SECS` | `30` | rules-mutation reconcile cadence. A value below 1 second falls back to the default: a ticker cannot run a non-positive cadence |
 | `SEQPALD_SNAPSHOT_SECS` | `86400` | register snapshot cadence. A value below 1 second falls back to the default: a ticker cannot run a non-positive cadence |
 | `SEQPALD_REPORT_SECS` | `31536000` | annual report cadence. A value below 1 second falls back to the default: a ticker cannot run a non-positive cadence |

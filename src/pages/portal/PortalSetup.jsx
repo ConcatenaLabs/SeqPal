@@ -355,10 +355,12 @@ export default function PortalSetup() {
                     : 'Request escrow for this raise'}
                 </span>
                 <span className="mt-0.5 block text-xs text-ink-700/70">
-                  Fiat subscriptions run through a simulated payment rail on the testnet;
-                  BTC and USDX go into a per-issuance segregated escrow that SeqPal
-                  operates as a licensed Escrow Agent and releases to you when the closing
-                  conditions are met.
+                  Fiat subscriptions run through a simulated payment rail on the testnet.
+                  USDX goes to an escrow address of each subscription&rsquo;s own that no
+                  SeqPal wallet holds a key to, and is released to you by a transaction you
+                  sign once the close has passed and your minimum is met. BTC goes into a
+                  segregated escrow wallet that SeqPal holds as a licensed Escrow Agent and
+                  releases to you at closing.
                 </span>
               </span>
             </button>

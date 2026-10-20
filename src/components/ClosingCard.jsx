@@ -37,6 +37,280 @@ function TxLine({ label, txid }) {
   )
 }
 
+
+const usdx = (atoms) => fmtRail(atoms, 'USDX')
+
+// Read the signatures a wallet returned, in the forms wallets produce them:
+// signopenamptransfer's whole answer { signatures: [{ vin, signature }] }, the
+// list alone, or { "<vin>": signature }.
+function parseSignatures(text) {
+  const v = JSON.parse(text)
+  if (v && Array.isArray(v.signatures)) return v.signatures
+  if (Array.isArray(v)) return v
+  if (v && typeof v === 'object') return v
+  throw new Error('Paste the JSON your wallet returned.')
+}
+
+const PAYS = {
+  issuer: 'To you',
+  platform: 'Platform escrow fee',
+  subscriber: 'Back to the subscriber',
+  network_fee: 'Network fee',
+}
+
+const SPEND_KIND = {
+  release: { title: 'Release', color: 'emerald' },
+  cancel: { title: 'Cancel', color: 'amber' },
+  refund: { title: 'Refund after the deadline', color: 'slate' },
+}
+
+// One transaction that spends escrow coins. A release or a cancel is signed by
+// the issuer's own wallet: this page shows the transaction and the command that
+// signs it, and takes back what the wallet returns. It never signs anything
+// itself, and it never hands a wallet a bare digest: the wallet is given the
+// transaction and recomputes every sighash from it.
+function SpendPanel({ iss, spend, onDone }) {
+  const [text, setText] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+  const [copied, setCopied] = useState(false)
+  const kind = SPEND_KIND[spend.kind] || { title: spend.kind, color: 'slate' }
+  const outs = spend.detail?.outputs || []
+  const toSign = spend.state === 'built' && spend.sign_command
+
+  const submit = async () => {
+    setErr(null)
+    setBusy(true)
+    try {
+      await api.signEscrowSpend(iss.id, spend.id, parseSignatures(text.trim()))
+      setText('')
+      onDone()
+    } catch (e) {
+      setErr(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(spend.sign_command)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1400)
+    } catch {
+      // Clipboard denied: the command is still shown below.
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-ink-900/10 bg-white p-4">
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-semibold text-ink-900">{kind.title}</span>
+        <Badge color={kind.color}>{spend.state}</Badge>
+        {spend.txid && <span className="ml-auto"><TxLine label="" txid={spend.state === 'broadcast' ? spend.txid : ''} /></span>}
+      </div>
+      <div className="mt-2 divide-y divide-ink-900/5 rounded-lg border border-ink-900/10">
+        {outs.map((o) => (
+          <div key={o.n} className="flex items-center justify-between gap-3 px-3 py-1.5 text-xs">
+            <span className="text-ink-700/80">
+              {PAYS[o.pays] || o.pays}
+              {o.address ? <span className="ml-1 font-mono text-ink-700/55">{o.address.slice(0, 14)}…</span> : null}
+            </span>
+            <span className="font-mono text-ink-900">{usdx(o.atoms)}</span>
+          </div>
+        ))}
+      </div>
+      {spend.kind === 'release' && spend.detail?.minimum_atoms != null && (
+        <p className="mt-1.5 text-[11px] text-ink-700/60">
+          The escrow lets this pay you only because it pays at least your minimum of{' '}
+          {usdx(spend.detail.minimum_atoms)}. The network fee is paid in the payment asset itself,
+          out of the money in escrow.
+        </p>
+      )}
+      {spend.error && <p className="mt-1.5 text-xs text-rose-600">{spend.error}</p>}
+      {toSign && (
+        <div className="mt-3">
+          <p className="text-xs leading-relaxed text-ink-700/75">
+            Sign it in the Sequentia wallet that holds your release key. Your wallet checks the
+            transaction before it signs: it recomputes every sighash itself, checks that each escrow
+            coin really is the one being spent, and signs with the release key only.
+          </p>
+          <div className="mt-2 flex items-center justify-between">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-700/60">Command</span>
+            <button type="button" onClick={copy} className="text-xs font-medium text-seq-600 hover:underline">
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+          </div>
+          <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-ink-900/[0.04] p-2 font-mono text-[10px] text-ink-800">
+            {spend.sign_command}
+          </pre>
+          <textarea
+            className="input mt-2 font-mono text-xs"
+            rows={3}
+            spellCheck={false}
+            placeholder='{"signatures":[{"vin":0,"signature":"..."}]}'
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+          />
+          <button onClick={submit} disabled={busy || !text.trim()} className="btn-primary mt-2 disabled:opacity-50">
+            {busy ? 'Checking' : 'Send the signatures'}
+          </button>
+          {err && <p className="mt-1.5 text-xs font-medium text-rose-600">{err}</p>}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Opening the escrow fixes, once and for good, what every subscription address
+// of this offering is derived from: the release key, the minimum and the close.
+// The release key is a key in the issuer's OWN Sequentia wallet, which signs the
+// release and any cancel; SeqPal never holds it. The issuer proves it holds the
+// key by signing the terms with it.
+function OpenEscrowForm({ iss, onOpened }) {
+  const [key, setKey] = useState('')
+  const [minimum, setMinimum] = useState('')
+  const [close, setClose] = useState('')
+  const [prep, setPrep] = useState(null)
+  const [sig, setSig] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+
+  const body = () => ({
+    release_key: key.trim().toLowerCase(),
+    minimum: Number(String(minimum).replace(/[^0-9.]/g, '')) || 0,
+    close_height: Number(String(close).replace(/[^0-9]/g, '')) || 0,
+  })
+  const run = async (fn) => {
+    setErr(null)
+    setBusy(true)
+    try {
+      await fn()
+    } catch (e) {
+      setErr(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  const prepare = () =>
+    run(async () => {
+      setPrep(await api.openEscrow(iss.id, body()))
+    })
+  const submit = () =>
+    run(async () => {
+      await api.openEscrow(iss.id, { ...body(), signature: sig.trim() })
+      setPrep(null)
+      setSig('')
+      onOpened()
+    })
+
+  return (
+    <div className="mt-4 rounded-xl border border-ink-900/10 bg-ink-900/[0.02] p-4">
+      <div className="text-sm font-semibold text-ink-900">Open the escrow</div>
+      <p className="mt-1 text-xs leading-relaxed text-ink-700/70">
+        Subscribers on USDX pay into the escrow, and they cannot subscribe until it is open. Name a
+        key from your own Sequentia wallet, for example the public key of a new legacy address
+        (sequentia-cli getnewaddress &quot;escrow&quot; legacy, then getaddressinfo), without its
+        first byte. Payments go to your Sequentia payout mandate, which must be registered first.
+        These terms cannot change once the escrow is open.
+      </p>
+      <div className="mt-3 grid gap-3 sm:grid-cols-3">
+        <div className="sm:col-span-3">
+          <label className="label" htmlFor="esc-key">Release key (x-only, 64 hex)</label>
+          <input id="esc-key" className="input font-mono text-xs" value={key} onChange={(e) => setKey(e.target.value)} />
+        </div>
+        <div>
+          <label className="label" htmlFor="esc-min">Minimum raise (USDX)</label>
+          <input id="esc-min" className="input" inputMode="decimal" value={minimum} onChange={(e) => setMinimum(e.target.value)} />
+        </div>
+        <div className="sm:col-span-2">
+          <label className="label" htmlFor="esc-close">Close (Sequentia block height)</label>
+          <input id="esc-close" className="input" inputMode="numeric" value={close} onChange={(e) => setClose(e.target.value)} />
+        </div>
+      </div>
+      {!prep && (
+        <button onClick={prepare} disabled={busy || !key.trim() || !minimum || !close} className="btn-primary mt-3 disabled:opacity-50">
+          {busy ? 'Checking' : 'Show the terms to sign'}
+        </button>
+      )}
+      {prep?.escrow && (
+        <div className="mt-3 space-y-1 text-xs text-ink-700/80">
+          <div>Release from {prep.escrow.close_text}, paying you at least {usdx(prep.escrow.minimum_atoms)}.</div>
+          <div>From {prep.escrow.deadline_text}, anyone can return an undelivered subscription to its subscriber.</div>
+          <div>A refund keeps back at most {usdx(prep.escrow.fee_cap)} for its network fee.</div>
+        </div>
+      )}
+      {prep?.sign_this_message && (
+        <div className="mt-3">
+          <p className="text-xs leading-relaxed text-ink-700/75">
+            Sign these exact characters as an ordinary message from the legacy address of the release
+            key (sequentia-cli signmessage), and paste the signature. A wallet that signs SeqPal&rsquo;s
+            tagged statements may sign the canonical terms under the tag {prep.tag} instead.
+          </p>
+          <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-white/70 p-3 font-mono text-[11px] text-ink-900">
+            {prep.sign_this_message}
+          </pre>
+          <textarea className="input mt-2 font-mono text-xs" rows={2} spellCheck={false} placeholder="signature"
+            value={sig} onChange={(e) => setSig(e.target.value)} />
+          <button onClick={submit} disabled={busy || !sig.trim()} className="btn-primary mt-2 disabled:opacity-50">
+            {busy ? 'Checking' : 'Open the escrow'}
+          </button>
+        </div>
+      )}
+      {err && <p className="mt-2 text-xs font-medium text-rose-600">{err}</p>}
+    </div>
+  )
+}
+
+// The offering's escrow: its terms, the money at its addresses, and every
+// transaction built over it.
+function EscrowPanel({ iss, extraSpends }) {
+  const { data, refresh } = usePoll(() => api.escrowStatus(iss.id), { intervalMs: 8000, deps: [iss.id] })
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+  const t = data?.escrow
+  if (data && !t) return <OpenEscrowForm iss={iss} onOpened={refresh} />
+  if (!t) return null
+  const byId = Object.fromEntries((data?.spends || []).map((sp) => [sp.id, sp]))
+  for (const sp of extraSpends || []) if (!byId[sp.id]) byId[sp.id] = sp
+  const spends = Object.values(byId).filter((sp) => sp.state !== 'superseded')
+  const cancelAll = async () => {
+    setErr(null)
+    setBusy(true)
+    try {
+      await api.cancelEscrow(iss.id, {})
+      refresh()
+    } catch (e) {
+      setErr(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="mt-4 rounded-xl border border-ink-900/10 bg-ink-900/[0.02] p-4">
+      <div className="flex items-center gap-2 text-sm font-semibold text-ink-900">
+        <Icon.lock width={15} height={15} className="text-seq-600" /> The escrow
+        <span className="ml-auto font-mono text-xs font-normal text-ink-700/70">{usdx(data?.held_atoms || 0)} held</span>
+      </div>
+      <ul className="mt-2 space-y-1 text-xs leading-relaxed text-ink-700/75">
+        <li>Released from {t.close_text}, only in one release paying you at least {usdx(t.minimum_atoms)}, signed by your release key.</li>
+        <li>Returned at any time by a cancel you sign; from {t.deadline_text}, returned by anyone, with no signature.</li>
+        <li>No SeqPal wallet holds a key to this money. Each subscription is paid to its own escrow address.</li>
+      </ul>
+      {spends.length > 0 && (
+        <div className="mt-3 space-y-3">
+          {spends.map((sp) => (
+            <SpendPanel key={sp.id} iss={iss} spend={sp} onDone={refresh} />
+          ))}
+        </div>
+      )}
+      <button onClick={cancelAll} disabled={busy} className="btn-outline mt-3 text-xs disabled:opacity-50">
+        {busy ? 'Building' : 'Return every undelivered subscription'}
+      </button>
+      {err && <p className="mt-2 text-xs font-medium text-rose-600">{err}</p>}
+    </div>
+  )
+}
+
 export default function ClosingCard({ iss }) {
   const { signCloseStmt, xonly, hasKey } = useStore()
   const { data: book, refresh: refreshBook } = usePoll(() => api.issuanceSubscriptions(iss.id), {
@@ -50,6 +324,7 @@ export default function ClosingCard({ iss }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
   const [results, setResults] = useState(null)
+  const [spends, setSpends] = useState([])
   const [prep, setPrep] = useState(null)
   const [sig, setSig] = useState('')
 
@@ -82,6 +357,7 @@ export default function ClosingCard({ iss }) {
       }
       const res = await api.close(iss.id, { signature, signer_xonly: xonly })
       setResults(res.results || [])
+      setSpends(res.escrow_spends || [])
       refreshBook()
       refreshSettle()
     } catch (e) {
@@ -97,6 +373,7 @@ export default function ClosingCard({ iss }) {
     try {
       const res = await api.close(iss.id, { signature: sig.trim() })
       setResults(res.results || [])
+      setSpends(res.escrow_spends || [])
       setSig('')
       setPrep(null)
       refreshBook()
@@ -118,14 +395,17 @@ export default function ClosingCard({ iss }) {
         </Badge>
       </div>
       <p className="mt-1.5 text-xs leading-relaxed text-ink-700/70">
-        Closing settles each subscription with delivery versus payment. A USDX subscription
-        settles atomically in one transaction: the token moves from the offering escrow enclave to
-        the investor and the escrowed USDX moves to your payout mandate together. A native BTC
-        subscription is cross-chain registrar settlement, not atomic: the payment confirmed on
-        Bitcoin testnet4 and delivery is co-signed on Sequentia. A failed close auto-refunds to the
-        investor's refund address. Nothing is delivered before you sign, and nothing is final at 0
-        confirmations.
+        Closing delivers each subscriber&rsquo;s tokens from the offering&rsquo;s escrow enclave,
+        which SeqPal and the policy server sign together, and then pays you. A USDX subscription is
+        held at an escrow address no SeqPal wallet holds a key to: once the tokens are delivered,
+        one release pays you the raise, and you sign it in your own wallet. Until you sign, the
+        money stays in escrow, and from the deadline any subscriber can take it back, so sign
+        promptly. A subscription whose tokens cannot be delivered is returned by a cancel you sign.
+        A native BTC subscription is held in a SeqPal wallet and settles cross-chain, not
+        atomically: the payment confirmed on Bitcoin testnet4 and delivery is co-signed on
+        Sequentia. Nothing is final at 0 confirmations.
       </p>
+      <EscrowPanel iss={iss} extraSpends={spends} />
 
       <div className="mt-4 grid grid-cols-3 gap-3">
         {[
@@ -150,10 +430,9 @@ export default function ClosingCard({ iss }) {
             const chip = subStateChip(s.state)
             const st = settById[s.id]
             const model = settlementModel(s.rail)
-            // An atomic USDX close carries one combined txid: delivery and release
-            // are the same transaction, so render it once, not as two lines.
-            const atomic =
-              model.atomic && st && st.delivery_txid && st.delivery_txid === st.release_txid
+            // A settlement whose delivery and release were one transaction carries
+            // one combined txid, so it is rendered once, not as two lines.
+            const atomic = st && st.delivery_txid && st.delivery_txid === st.release_txid
             return (
               <div key={s.id} className="rounded-lg border border-ink-900/10 px-3 py-2.5">
                 <div className="flex items-center justify-between gap-3 text-sm">
@@ -176,6 +455,17 @@ export default function ClosingCard({ iss }) {
                     {model.label}
                   </div>
                 )}
+                {st?.state === 'awaiting_release' && (
+                  <div className="mt-1 text-[11px] text-emerald-700">
+                    Tokens delivered. The money is released when you sign the release.
+                  </div>
+                )}
+                {st?.state === 'awaiting_cancel' && (
+                  <div className="mt-1 text-[11px] text-amber-700">
+                    Not delivered. The money is returned when you sign the cancel, or by anyone from
+                    the deadline.
+                  </div>
+                )}
                 {st && (st.delivery_txid || st.release_txid || st.refund_txid) && (
                   <div className="mt-2 space-y-1 border-t border-ink-900/5 pt-2">
                     {atomic ? (
@@ -187,7 +477,7 @@ export default function ClosingCard({ iss }) {
                       </>
                     )}
                     <TxLine label="Refund" txid={st.refund_txid} />
-                    {st.state === 'failed' && st.error && (
+                    {(st.state === 'failed' || st.state === 'delivery_failed') && st.error && (
                       <p className="text-xs text-rose-600">{st.error}</p>
                     )}
                   </div>

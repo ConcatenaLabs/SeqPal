@@ -49,6 +49,16 @@ ISSUANCE_ID=<deployed-issuance> \
 `FUND_CCY` in its environment; the keys stay on the box. With no `--fund-cmd` a
 live run prints the deposit address and pauses for the operator on a TTY.
 
+Two steps are the ISSUER's wallet, which the driver never holds: signing the
+release (or a cancel) of an offering's escrow covenant, and funding and
+signing a distribution's one payout transaction. `--sign-cmd` runs a command
+with `SPEND_TX` (the unsigned transaction) and `SPEND_TO_SIGN` (the inputs to
+sign, as `signopenamptransfer` takes them) in its environment and reads the
+signatures JSON from its stdout; `--payout-cmd` runs a command with `PAYOUT_TX`
+(the unfunded payout) and `PAYOUT_FEE_ASSET` and reads the signed transaction
+hex from its stdout. With neither, a live run prints what to sign and asks the
+operator to paste the result on a TTY.
+
 ## Config (environment; never inlined)
 
 | Variable | Meaning |
@@ -59,6 +69,8 @@ live run prints the deposit address and pauses for the operator on a TTY.
 | `ISSUER_KEY` | the issuer's private key, 32 bytes of hex |
 | `INVESTOR_KEY` | the investor's private key, 32 bytes of hex |
 | `FUND_CMD` | box-side funding command (or `--fund-cmd`) |
+| `SIGN_CMD` | the issuer's wallet signing an escrow release or cancel (or `--sign-cmd`) |
+| `PAYOUT_CMD` | the issuer's wallet funding and signing a distribution payout (or `--payout-cmd`) |
 
 ## Live sequencing note (two principals, two sessions)
 
@@ -74,12 +86,13 @@ session: it signs with ephemeral keys and hits only public read endpoints.
 
 Offline (`--dry-run`): the signing is real (real BIP340 signatures over the exact
 tagged statements and raw sighashes the server verifies) and every request body is
-shaped correctly; the atomic-close, reconciliation, refusal-guard, supply,
+shaped correctly; the escrow-release settlement, reconciliation, refusal-guard, supply,
 external-key, and set-hash invariants are asserted on representative records; the
 live read-only surfaces (`/seqpal/api/health`, `/openamp/v1/assets`) are reached.
 
 Live: each step completes its fund movement once the operator funds the printed
-deposit, and prints the on-chain txid / evidence. See `../../ACCEPTANCE.md` for
+deposit, or the issuer's wallet signs what it is handed, and prints the on-chain
+txid / evidence. See `../../ACCEPTANCE.md` for
 the full Section 8 mapping and which steps need operator funding.
 
 ## The bearer drivers

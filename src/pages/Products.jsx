@@ -51,7 +51,7 @@ const products = [
       'Offering memorandum & version-controlled data room',
       'SeqPal ID identity and eligibility gate',
       'Subscription-agreement workflow and e-signature',
-      'Optional escrow in fiat (segregated bank account) or BTC / USDX (segregated wallets), released on closing; without escrow, subscriptions go directly to the issuer',
+      'Optional escrow in fiat (segregated bank account), BTC (a segregated wallet) or USDX (an escrow address per subscription that no SeqPal wallet holds a key to), released on closing; without escrow, subscriptions go directly to the issuer',
     ],
     cta: { to: '/onboarding', label: 'Configure a portal' },
   },

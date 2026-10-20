@@ -40,6 +40,13 @@ a transfer WITHOUT `payment` behaves exactly as today (M5 delivery still works).
 
 ## 4. Closing v2 (seqpald)
 
+The atomic path below applies to a USDX subscription paid into the `seqpal-escrow` wallet. A
+subscription held by the escrow covenant (`M14-CONTRACT.md`) is released in one transaction the
+issuer signs, after its tokens are delivered. It has no atomic path: the release pays the raise
+of every subscription at one output 0, which meets the offering's minimum only when the
+subscriptions are spent together, and the policy server builds its delivery transaction one
+subscription at a time.
+
 `POST /issuances/{id}/close` gains an atomic path for USDX subscriptions: build ONE tx per
 subscription via the OA-4 payment leg: tokens escrow-enclave -> investor enclave AND escrow USDX
 -> the issuer's registered ordinary payout address (never an enclave) AND the platform fee

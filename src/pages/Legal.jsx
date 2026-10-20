@@ -240,9 +240,12 @@ export default function Legal() {
         <p className="mt-2 text-sm leading-relaxed text-ink-700/85">
           Escrow is optional. The issuer runs its own placement portal, on its own domain and in its own
           name, as its legal operator. If it does not hire SeqPal for escrow, subscription payments go
-          directly to the issuer. If it does, SeqPal holds the funds in USDX, BTC, or fiat and settles
-          delivery against payment, a custody-and-settlement service under its Próspera Escrow Agent and
-          Money Transmitter licences, charged over the holding period whether or not the offering closes.
+          directly to the issuer. If it does, SeqPal escrows the funds and settles delivery against payment, a
+          custody-and-settlement service under its Próspera Escrow Agent and Money Transmitter licences,
+          charged over the holding period whether or not the offering closes. BTC and fiat are held in
+          segregated accounts SeqPal operates; USDX is held at escrow addresses no SeqPal wallet holds a
+          key to, which the network lets pay the issuer only after the close and back to the subscriber
+          otherwise.
         </p>
       </div>
 

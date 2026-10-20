@@ -21,6 +21,11 @@ transfer / cosign flow, with seqpald holding the per-offering escrow enclave key
 
 ## 1. Escrow (seqpald operates the payment escrow)
 
+A USDX subscription is held by the subscription escrow covenant, never by `seqpal-escrow`:
+`M14-CONTRACT.md` is its contract, and it supersedes the USDX half of this section and of the
+closing section below. What follows governs the native-BTC rail, the simulated fiat rails, and
+any USDX subscription that was paid into `seqpal-escrow` before the covenant held them.
+
 Two segregated escrow surfaces per offering, distinct from the M2 per-offering restricted-asset
 enclave (which receives the mint and is the delivery SENDER):
 

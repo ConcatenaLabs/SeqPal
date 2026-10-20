@@ -120,18 +120,42 @@ func (s *server) handleClose(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, "store error")
 		return
 	}
+	// Subscriptions in the escrow covenant settle by the covenant's rules
+	// (escrow_close.go); the rest -- the native-BTC rail, the simulated fiat
+	// rails, and any subscription paid into the platform's escrow wallet before
+	// the covenant held them -- by the state machine below.
+	covenant, others := splitCovenant(subs)
+	var terms *EscrowTerms
+	if len(covenant) > 0 {
+		if terms = s.prepareEscrowClose(w, iss, covenant); terms == nil {
+			return
+		}
+	}
 
 	// Close the offer window (document preimages become public) at close height.
 	_ = s.st.CloseOffer(iss.ID, closeHeight)
 	s.st.Audit(acct.AID, "close.begin", map[string]any{"issuance_id": iss.ID, "close_height": closeHeight, "subscriptions": len(subs)})
 
 	results := make([]map[string]any, 0, len(subs))
-	for _, sub := range subs {
+	for _, sub := range others {
 		res := s.settleOne(iss, escrow, sub, closeHeight)
 		results = append(results, res)
 	}
+	out := map[string]any{"issuance_id": iss.ID, "close_height": closeHeight}
+	if terms != nil {
+		res, spends := s.closeCovenant(iss, escrow, terms, covenant, closeHeight)
+		results = append(results, res...)
+		out["escrow"] = s.escrowTermsView(terms)
+		out["escrow_spends"] = spends
+		if len(spends) > 0 {
+			out["note"] = "The tokens are delivered. The money is still in escrow until you sign: sign each " +
+				"transaction in escrow_spends in your own wallet and send the signatures to " +
+				"POST /api/issuances/{id}/escrow/spends/{spend}/sign."
+		}
+	}
+	out["results"] = results
 	s.st.Audit(acct.AID, "close.done", map[string]any{"issuance_id": iss.ID, "settled": len(results)})
-	writeJSON(w, 200, map[string]any{"issuance_id": iss.ID, "close_height": closeHeight, "results": results})
+	writeJSON(w, 200, out)
 }
 
 // settleOne runs the delivery+release state machine for one subscription with

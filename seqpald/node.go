@@ -65,7 +65,9 @@ func (s *server) nodeRPC(method string, params ...any) (json.RawMessage, error) 
 		return nil, err
 	}
 	if out.Error != nil {
-		return nil, fmt.Errorf("%s: %s", method, out.Error.Message)
+		// The node answered, and said no: its code goes with it, so a caller can
+		// tell a refusal from a node it never reached.
+		return nil, &rpcError{Code: out.Error.Code, Message: out.Error.Message, Method: method}
 	}
 	return out.Result, nil
 }

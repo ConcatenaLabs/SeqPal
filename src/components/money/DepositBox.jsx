@@ -7,8 +7,10 @@ import { fmtRail, railMeta, settlementModel } from '../../lib/money'
 // exact amount to send in the rail's OWN units, and the confirmation depth at
 // which the deposit is credited. Nothing is final at 0 confirmations, so the
 // confs line is always shown. Reused by the subscription and the platform-fee
-// flows.
-export default function DepositBox({ rail, address, payAmount, payCcy, confsRequired, registrarNote }) {
+// flows. `escrow` marks the address as a subscription's own escrow covenant
+// address, which belongs to no wallet, so the box says so instead of calling it
+// a deposit address.
+export default function DepositBox({ rail, address, payAmount, payCcy, confsRequired, registrarNote, escrow }) {
   const [copied, setCopied] = useState(false)
   const meta = railMeta(rail)
   const model = settlementModel(rail)
@@ -33,7 +35,7 @@ export default function DepositBox({ rail, address, payAmount, payCcy, confsRequ
             {fmtRail(payAmount, payCcy)}
           </div>
           <div className="mt-3 text-xs font-semibold uppercase tracking-wide text-ink-700/60">
-            To this {meta.chain} deposit address
+            {escrow ? 'To your subscription\u2019s own escrow address' : `To this ${meta.chain} deposit address`}
           </div>
           <div className="mt-1 flex items-start gap-2">
             <code className="min-w-0 flex-1 break-all rounded-md bg-ink-900/[0.04] px-2.5 py-1.5 font-mono text-xs text-ink-800">
@@ -54,6 +56,14 @@ export default function DepositBox({ rail, address, payAmount, payCcy, confsRequ
             {Number(confsRequired) === 1 ? '' : 's'} on {meta.chain}. Nothing is final at 0
             confirmations: a Sequentia state is only as final as its Bitcoin anchor is deep.
           </p>
+          {escrow && (
+            <p className="mt-2 flex items-start gap-1.5 text-xs text-ink-700/70">
+              <Icon.lock width={13} height={13} className="mt-0.5 shrink-0" />
+              Send it from an ordinary, transparent transfer, which is what your wallet does unless
+              you ask for a confidential one. A confidential payment carries no amount the chain
+              shows, and it could not be returned from this address.
+            </p>
+          )}
         </div>
       </div>
       {model.label && (

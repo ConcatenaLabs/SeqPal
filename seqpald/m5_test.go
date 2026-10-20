@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/btcsuite/btcd/btcec/v2"
+
+	"github.com/ConcatenaLabs/SeqPal/seqpald/elements"
 )
 
 // This file is the tests-owner deliverable for M5 (real money legs, offer-side
@@ -983,7 +985,14 @@ type fakeNode struct {
 	// and raw-issuance surface) without touching the shared dispatch. It runs
 	// under n.mu.
 	extra func(method string, params []json.RawMessage) (any, int, string, bool)
+
+	// The fake UTXO chain (fakechain_test.go) and every wallet-scoped call, so
+	// a test can prove a path never touched a platform wallet.
+	fc          *fakeChain
+	walletCalls []fakeWalletCall
 }
+
+type fakeWalletCall struct{ wallet, method string }
 
 func newFakeNode(t *testing.T, prefix string, height int64) *fakeNode {
 	t.Helper()
@@ -1005,6 +1014,11 @@ func (n *fakeNode) handle(w http.ResponseWriter, r *http.Request) {
 	}
 	raw, _ := readAllLimited(r.Body, 1<<20)
 	json.Unmarshal(raw, &req)
+	if i := strings.Index(r.URL.Path, "/wallet/"); i >= 0 {
+		n.mu.Lock()
+		n.walletCalls = append(n.walletCalls, fakeWalletCall{wallet: r.URL.Path[i+len("/wallet/"):], method: req.Method})
+		n.mu.Unlock()
+	}
 	res, code, msg := n.dispatch(req.Method, req.Params)
 	if msg != "" {
 		writeJSON(w, 200, map[string]any{"result": nil, "error": map[string]any{"code": code, "message": msg}})
@@ -1024,7 +1038,10 @@ func (n *fakeNode) dispatch(method string, params []json.RawMessage) (any, int, 
 		if len(params) > 0 {
 			json.Unmarshal(params[0], &addr)
 		}
-		return map[string]any{"isvalid": addr != "" && !n.invalid[addr]}, 0, ""
+		if addr == "" || n.invalid[addr] {
+			return map[string]any{"isvalid": false}, 0, ""
+		}
+		return map[string]any{"isvalid": true, "scriptPubKey": fakeSPK(addr)}, 0, ""
 	case "loadwallet":
 		// Succeed idempotently: ensureWalletVia treats a nil error as loaded.
 		return map[string]any{"name": n.prefix}, 0, ""
@@ -1126,6 +1143,9 @@ func (n *fakeNode) dispatch(method string, params []json.RawMessage) (any, int, 
 			if res, code, msg, ok := n.extra(method, params); ok {
 				return res, code, msg
 			}
+		}
+		if res, code, msg, ok := n.chainDispatch(method, params); ok {
+			return res, code, msg
 		}
 		return nil, -32601, "method not found: " + method
 	}
@@ -1404,13 +1424,16 @@ func signCanonical(t *testing.T, priv, tag, signThis string) string {
 
 func TestM5USDXSubscriptionLifecycleToSettled(t *testing.T) {
 	h := newM5Harness(t, m5opts{escrowConfs: 2})
+	h.s.cfg.revenueAddress = "seq-platform-revenue"
 	issuerPriv := genPriv(t)
 	issuerSession, _, issuerXOnly := h.register(issuerPriv, "Issuer", "HN")
-	issID, assetID, escrowAID := h.deployLivePrivate(issuerSession, "USDXL", "HN", 1.0)
-	_ = assetID
+	issID, _, _ := h.deployLivePrivate(issuerSession, "USDXL", "HN", 1.0)
+	// The issuer opens the offering's escrow: the release key, the minimum and
+	// the close every subscription address is derived from.
+	releasePriv := h.openEscrow(issuerSession, issID, 1, 10)
 
 	invPriv := genPriv(t)
-	invSession, invAID, _ := h.verifiedInvestor(invPriv, "Investor", "HN", "ret")
+	invSession, _, _ := h.verifiedInvestor(invPriv, "Investor", "HN", "ret")
 
 	// Subscribe on the USDX rail: 100 tokens at $1 each.
 	sub := h.do("POST", "/api/issuances/"+issID+"/subscribe", invSession, map[string]any{
@@ -1420,8 +1443,8 @@ func TestM5USDXSubscriptionLifecycleToSettled(t *testing.T) {
 		t.Fatalf("subscribe: %d %s", sub.code, sub.errMsg())
 	}
 	depAddr, _ := sub.body["deposit_address"].(string)
-	if depAddr == "" {
-		t.Fatalf("no deposit address: %s", sub.raw)
+	if !strings.HasPrefix(depAddr, "tb1p") {
+		t.Fatalf("deposit address %q is not an escrow covenant address: %s", depAddr, sub.raw)
 	}
 	if got, _ := sub.body["confs_required"].(float64); int64(got) != 2 {
 		t.Fatalf("confs_required = %v, want 2", sub.body["confs_required"])
@@ -1430,62 +1453,62 @@ func TestM5USDXSubscriptionLifecycleToSettled(t *testing.T) {
 	subID, _ := subObj["id"].(string)
 
 	// A deposit below N confirmations must NOT flip in_escrow (anchoring supremacy:
-	// nothing is final at shallow depth).
+	// nothing is final at shallow depth). Confirmations come from the coin's height.
 	depositAtoms := uint64(100 * 1e8)
-	h.seq.credit(depAddr, depositAtoms, 1, m5USDX)
+	h.seq.addCoin(fakeSPK(depAddr), m5USDX, depositAtoms)
 	h.s.watchDeposits()
 	got, _ := h.s.st.SubscriptionByID(subID)
-	if got.State != "created" {
-		t.Fatalf("subscription flipped to %q at 1 conf (need 2)", got.State)
-	}
-	if got.Confirmations != 1 {
-		t.Fatalf("confirmations = %d, want 1", got.Confirmations)
+	if got.State != "created" || got.Confirmations != 1 {
+		t.Fatalf("at 1 conf: state %q confirmations %d, want created and 1", got.State, got.Confirmations)
 	}
 
 	// At N confirmations it becomes in_escrow with the deposited amount recorded.
-	h.seq.credit(depAddr, depositAtoms, 2, m5USDX)
+	h.seq.mine(1)
 	h.s.watchDeposits()
 	got, _ = h.s.st.SubscriptionByID(subID)
-	if got.State != "in_escrow" {
-		t.Fatalf("subscription state = %q, want in_escrow at 2 confs", got.State)
-	}
-	if got.DepositedAtoms != depositAtoms {
-		t.Fatalf("deposited_atoms = %d, want %d", got.DepositedAtoms, depositAtoms)
+	if got.State != "in_escrow" || got.DepositedAtoms != depositAtoms {
+		t.Fatalf("at 2 confs: state %q deposited %d, want in_escrow and %d", got.State, got.DepositedAtoms, depositAtoms)
 	}
 
-	// Register the issuer's Sequentia payout mandate (release target).
-	if err := h.s.st.UpsertMandate(&PayoutMandate{IssuanceID: issID, Chain: "sequentia", Address: "seq-issuer-payout"}); err != nil {
-		t.Fatal(err)
-	}
-
-	// Close: deliver + release.
-	h.closeAs(issuerSession, "", issuerXOnly, issID, issuerPriv)
-	_ = escrowAID
-	_ = invAID
-
-	got, _ = h.s.st.SubscriptionByID(subID)
-	if got.State != "settled" {
-		t.Fatalf("subscription state after close = %q, want settled", got.State)
-	}
-	set, _ := h.s.st.SettlementByID(subID)
-	if set == nil || set.State != "settled" {
-		t.Fatalf("settlement = %+v, want settled", set)
-	}
-	if set.DeliveryTxid == "" || set.ReleaseTxid == "" {
-		t.Fatalf("settlement missing delivery/release txid: %+v", set)
+	// Close after the escrow's close: the tokens are delivered and the release
+	// goes to the issuer to sign; the money stays in escrow until it does.
+	terms, _ := h.s.st.EscrowTermsByIssuance(issID)
+	h.seq.setHeight(int64(terms.CloseLock))
+	pre := h.do("POST", "/api/issuances/"+issID+"/close", issuerSession, map[string]any{})
+	fin := h.do("POST", "/api/issuances/"+issID+"/close", issuerSession, map[string]any{
+		"signature": signCanonical(t, issuerPriv, pre.body["tag"].(string), pre.body["sign_this"].(string)), "signer_xonly": issuerXOnly,
+	})
+	if fin.code != 200 {
+		t.Fatalf("close: %d %s", fin.code, fin.errMsg())
 	}
 	if h.oa.transfers() != 1 {
 		t.Fatalf("delivery transfers = %d, want 1", h.oa.transfers())
 	}
-	if h.seq.sendCount() != 1 {
-		t.Fatalf("release sends = %d, want 1", h.seq.sendCount())
+	e := &m14env{h: h, issuerSession: issuerSession, issID: issID, terms: terms}
+	rel := spendsOf(t, fin)["release"]
+	if rel == nil {
+		t.Fatalf("close returned no release to sign: %s", fin.raw)
 	}
-	// Release paid the mandate address, net of the 50 bps escrow fee.
-	send, _ := h.seq.lastSend()
+	if res := e.postSigs(rel, e.signSpend(t, rel, releasePriv)); res.code != 200 {
+		t.Fatalf("sign release: %d %s", res.code, res.raw)
+	}
+	got, _ = h.s.st.SubscriptionByID(subID)
+	set, _ := h.s.st.SettlementByID(subID)
+	if got.State != "settled" || set == nil || set.State != "settled" || set.DeliveryTxid == "" || set.ReleaseTxid != rel["txid"] {
+		t.Fatalf("after release: subscription %q settlement %+v", got.State, set)
+	}
+	// The release paid the issuer's payout script, net of the 50 bps escrow fee
+	// and the network fee, and no platform wallet sent anything.
+	tx, _ := decodeHexTx(h.seq.txHex(set.ReleaseTxid))
+	v0, _ := elements.ExplicitValueAmount(tx.Out[0].Value)
 	fee := depositAtoms * 50 / 10000
-	if send.address != "seq-issuer-payout" || send.atoms != depositAtoms-fee {
-		t.Fatalf("release send = %+v, want addr seq-issuer-payout net %d", send, depositAtoms-fee)
+	if hex.EncodeToString(tx.Out[0].ScriptPubKey) != fakeSPK("seq-issuer-payout") || v0 >= depositAtoms-fee || v0 < depositAtoms-fee-10000 {
+		t.Fatalf("release output 0 = %d to %x, want about %d to the issuer", v0, tx.Out[0].ScriptPubKey, depositAtoms-fee)
 	}
+	if h.seq.sendCount() != 0 {
+		t.Fatalf("a wallet send happened: %d", h.seq.sendCount())
+	}
+	assertNoWalletMoney(t, h)
 }
 
 // closeAs drives the two-step close (fetch sign_this, sign, resubmit). The signer
@@ -1781,6 +1804,7 @@ func TestM5SourceOfFundsRequiredAboveThreshold(t *testing.T) {
 	h := newM5Harness(t, m5opts{})
 	issuerSession, _, _ := h.register(genPriv(t), "Issuer", "HN")
 	issID, _, _ := h.deployLivePrivate(issuerSession, "SOFL", "HN", 1.0)
+	h.openEscrow(issuerSession, issID, 1, 10)
 
 	invSession, _, _ := h.verifiedInvestor(genPriv(t), "Investor", "HN", "ret")
 
@@ -2233,6 +2257,7 @@ func TestASubscriptionAmountIsANumberOfTokens(t *testing.T) {
 	// threshold, so what is being judged here is the amount rather than the
 	// money -- but not so small that an ordinary amount stops being payable.
 	issID, _, _ := h.deployLivePrivate(issuerSession, "AMTL", "HN", 0.000001)
+	h.openEscrow(issuerSession, issID, 1, 10)
 
 	invPriv := genPriv(t)
 	invSession, _, _ := h.verifiedInvestor(invPriv, "Investor", "HN", "ret")

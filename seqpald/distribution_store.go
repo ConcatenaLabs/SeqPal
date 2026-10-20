@@ -99,20 +99,26 @@ type Distribution struct {
 	AnchorTxid      string `json:"anchor_txid,omitempty"`
 	CreatedAt       int64  `json:"created_at"`
 	UpdatedAt       int64  `json:"updated_at"`
+	// The one transaction that pays every holder, funded and signed by the
+	// issuer's own wallet: its txid and its bytes, recorded before broadcast.
+	PayoutTxid string `json:"payout_txid,omitempty"`
+	PayoutTx   string `json:"payout_tx,omitempty"`
 }
 
 const distCols = `id, issuance_id, asset_id, pool_atoms, memo, state, deposit_address, funded_atoms,
     funded_txid, snapshot_height, total_held, dust_atoms, gross_total, withheld_total, net_total,
-    dividend_equiv, statement_hash, withholding_hash, crs_hash, anchor_txid, created_at, updated_at`
+    dividend_equiv, statement_hash, withholding_hash, crs_hash, anchor_txid, created_at, updated_at,
+    payout_txid, payout_tx`
 
 func (s *Store) InsertDistribution(d *Distribution) error {
 	now := time.Now().Unix()
 	d.CreatedAt, d.UpdatedAt = now, now
 	_, err := s.db.Exec(
-		`INSERT INTO distributions (`+distCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		`INSERT INTO distributions (`+distCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		d.ID, d.IssuanceID, d.AssetID, d.PoolAtoms, d.Memo, d.State, d.DepositAddress, d.FundedAtoms,
 		d.FundedTxid, d.SnapshotHeight, d.TotalHeld, d.DustAtoms, d.GrossTotal, d.WithheldTotal, d.NetTotal,
-		boolInt(d.DividendEquiv), d.StatementHash, d.WithholdingHash, d.CRSHash, d.AnchorTxid, d.CreatedAt, d.UpdatedAt)
+		boolInt(d.DividendEquiv), d.StatementHash, d.WithholdingHash, d.CRSHash, d.AnchorTxid, d.CreatedAt, d.UpdatedAt,
+		d.PayoutTxid, d.PayoutTx)
 	return err
 }
 
@@ -174,7 +180,7 @@ func scanDistInto(sc scanner) (*Distribution, error) {
 	err := sc.Scan(&d.ID, &d.IssuanceID, &d.AssetID, &d.PoolAtoms, &d.Memo, &d.State, &d.DepositAddress,
 		&d.FundedAtoms, &d.FundedTxid, &d.SnapshotHeight, &d.TotalHeld, &d.DustAtoms, &d.GrossTotal,
 		&d.WithheldTotal, &d.NetTotal, &dividend, &d.StatementHash, &d.WithholdingHash, &d.CRSHash,
-		&d.AnchorTxid, &d.CreatedAt, &d.UpdatedAt)
+		&d.AnchorTxid, &d.CreatedAt, &d.UpdatedAt, &d.PayoutTxid, &d.PayoutTx)
 	if err != nil {
 		return nil, err
 	}
@@ -207,10 +213,15 @@ type DistPayment struct {
 	StatementHash  string `json:"statement_hash,omitempty"`
 	CreatedAt      int64  `json:"created_at"`
 	UpdatedAt      int64  `json:"updated_at"`
+	// The output of the payout transaction that pays this holder, and the
+	// script it must pay; -1 until paid.
+	Vout       int    `json:"vout"`
+	MandateSPK string `json:"mandate_script_pubkey,omitempty"`
 }
 
 const distPayCols = `run_id, holder_aid, balance_atoms, gross_atoms, withheld_atoms, net_atoms,
-    treaty_bps, tax_status, mandate_address, state, txid, reason, statement_hash, created_at, updated_at`
+    treaty_bps, tax_status, mandate_address, state, txid, reason, statement_hash, created_at, updated_at,
+    vout, mandate_spk`
 
 // InsertDistPaymentIfAbsent inserts a snapshot payment row and reports whether it
 // created it (true) or one already existed (false). The ON CONFLICT DO NOTHING is
@@ -223,10 +234,11 @@ func (s *Store) InsertDistPaymentIfAbsent(p *DistPayment) (bool, error) {
 	}
 	p.UpdatedAt = now
 	res, err := s.db.Exec(
-		`INSERT INTO distribution_payments (`+distPayCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		`INSERT INTO distribution_payments (`+distPayCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
          ON CONFLICT(run_id, holder_aid) DO NOTHING`,
 		p.RunID, p.HolderAID, p.BalanceAtoms, p.GrossAtoms, p.WithheldAtoms, p.NetAtoms, p.TreatyBps,
-		p.TaxStatus, p.MandateAddress, p.State, p.Txid, p.Reason, p.StatementHash, p.CreatedAt, p.UpdatedAt)
+		p.TaxStatus, p.MandateAddress, p.State, p.Txid, p.Reason, p.StatementHash, p.CreatedAt, p.UpdatedAt,
+		-1, p.MandateSPK)
 	if err != nil {
 		return false, err
 	}
@@ -268,7 +280,7 @@ func (s *Store) DistPaymentsByRun(runID string) ([]*DistPayment, error) {
 		var p DistPayment
 		if err := rows.Scan(&p.RunID, &p.HolderAID, &p.BalanceAtoms, &p.GrossAtoms, &p.WithheldAtoms,
 			&p.NetAtoms, &p.TreatyBps, &p.TaxStatus, &p.MandateAddress, &p.State, &p.Txid, &p.Reason,
-			&p.StatementHash, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			&p.StatementHash, &p.CreatedAt, &p.UpdatedAt, &p.Vout, &p.MandateSPK); err != nil {
 			return nil, err
 		}
 		out = append(out, &p)

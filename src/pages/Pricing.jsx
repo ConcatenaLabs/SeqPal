@@ -73,7 +73,7 @@ export default function Pricing() {
                 The Escrow & Settlement Fee, explained
               </h3>
               <p className="mt-2 text-sm leading-relaxed text-ink-700/90">
-                Escrow is optional. When you hire SeqPal to hold subscription funds,
+                Escrow is optional. When you hire SeqPal to escrow subscription funds,
                 this fee covers the custody, compliance-conditioned release, and
                 on-chain settlement of those funds: 0.25% per month on the funds in
                 escrow, accrued daily, with a $5,000 minimum and a cap of 3% of the
