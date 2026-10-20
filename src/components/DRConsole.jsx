@@ -5,9 +5,10 @@ import * as api from '../lib/api'
 import { usePoll } from '../lib/poll'
 import { fmtAssetAmount } from '../lib/format'
 import { txUrl } from '../lib/chain'
+import SupplyFigures from './SupplyFigures'
 
 // A fresh idempotency key for a DR supply operation. A retry of the same op (for
-// example after a re-blinding 202) reuses it, so the operation never double-mints
+// example after a lost response) reuses it, so the operation never double-mints
 // or double-burns server-side.
 const newRequestID = (kind) =>
   `dr-${kind}-${(crypto.randomUUID?.() || String(Date.now()) + Math.random().toString(16).slice(2))}`
@@ -113,26 +114,22 @@ export default function DRConsole({ iss }) {
     try {
       const body = { atoms, request_id: mintReq.current }
       if (mintTarget.trim()) body.target_aid = mintTarget.trim()
-      const res = await api.drMint(iss.id, body)
-      if (res.state === 'reblinding') {
-        // The reissuance token is being re-blinded (the phantom-tx hazard). Keep
-        // the same request_id and let the issuer retry once it confirms.
-        setNotice(
-          'The reissuance token is being re-blinded on chain. Click Mint again in a few seconds to finish; the same idempotency key is reused, so it will not double-mint.'
-        )
-      } else {
-        mintReq.current = null
-        setMintAtoms('')
-        setMintTarget('')
-        setNotice('Reissuance broadcast. Supply is chain-derived and updates as it confirms.')
-      }
+      await api.drMint(iss.id, body)
+      mintReq.current = null
+      setMintAtoms('')
+      setMintTarget('')
+      setNotice('Reissuance broadcast. Supply is chain-derived and updates as it confirms.')
       refresh()
     } catch (e) {
       // RETAIN the idempotency key on error. An error may mean the reissuance was
       // already broadcast but the response was lost; a retry must reuse the SAME
       // request_id so the policy server returns the same txid instead of minting a
-      // second time. The key is cleared only on a definitive success (above).
+      // second time. The key is cleared only on a definitive success (above). A
+      // refusal past the most there will ever be (409) built nothing, so its key
+      // is dropped: the next attempt is a new request.
+      if (e.status === 409) mintReq.current = null
       setErr(e.message)
+      refresh()
     } finally {
       setBusy(null)
     }
@@ -195,6 +192,7 @@ export default function DRConsole({ iss }) {
           {data?.height ? ` · as of Sequentia block ${Number(data.height).toLocaleString('en-US')}` : ''}
         </div>
       </div>
+      <SupplyFigures supply={data?.supply} className="mt-3" />
 
       {!enabled ? (
         <button onClick={enable} disabled={busy === 'enable'} className="btn-primary mt-4 w-full disabled:opacity-60">
@@ -288,7 +286,11 @@ export default function DRConsole({ iss }) {
       )}
 
       {notice && <p className="mt-3 rounded-lg bg-seq/5 px-3 py-2 text-xs text-seq-700">{notice}</p>}
-      {err && <p className="mt-3 text-sm font-medium text-rose-600">{err}</p>}
+      {err && (
+        <p data-testid="dr-error" className="mt-3 text-sm font-medium text-rose-600">
+          {err}
+        </p>
+      )}
 
       {ops.length > 0 && (
         <div className="mt-5">

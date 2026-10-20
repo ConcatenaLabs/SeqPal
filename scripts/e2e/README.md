@@ -20,6 +20,14 @@ request without broadcasting, so the driver validates offline.
   registration, the passport, verification, the refusals, a payout mandate, the
   market-abuse acknowledgment and all three deploy elections, and needs no
   funding: nothing it does moves a coin.
+- `supply-cap-page.mjs` the most there will ever be of a token, through the
+  issuance page in headless Chromium against a real node, openampd and seqpald:
+  the deploy form's question and default, a mint, one atom past the room left
+  refused in plain words, a mint to the cap, one atom more refused, with the
+  page's supply figures read after each step. `../regtest-supply-cap.sh` starts
+  the stack on a private regtest chain and runs it.
+- `lib/cdp.mjs` the few Chrome DevTools Protocol calls that drive a page, over
+  Node's own WebSocket.
 - `lib/hd.mjs` just enough BIP32 to BE a wallet -- an account xpub, its ranged
   receive descriptor, and the private key behind any receive index. A wallet is
   identified by a ranged descriptor, so a driver playing one has to derive.

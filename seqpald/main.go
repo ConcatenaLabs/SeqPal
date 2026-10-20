@@ -527,6 +527,7 @@ func (s *server) handler() http.Handler {
 	mux.HandleFunc("POST /api/issuances/{id}/dr/mint", s.requireSession(s.requireEnclave(s.handleDRMint)))
 	mux.HandleFunc("POST /api/issuances/{id}/dr/redeem", s.requireSession(s.requireEnclave(s.handleDRRedeem)))
 	mux.HandleFunc("GET /api/issuances/{id}/dr/supply", s.requireSession(s.handleDRSupply))
+	mux.HandleFunc("GET /api/issuances/{id}/supply", s.requireSession(s.handleIssuanceSupply))
 
 	// SeqPal ID surface.
 	mux.HandleFunc("POST /api/id/verify", s.requireSession(s.handleIDVerify))

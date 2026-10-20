@@ -118,6 +118,9 @@ export function view(iss) {
     rulesAddress: iss.verifier_covenant_address || '',
     policyCommitment: iss.policy_commitment || '',
     holderListRoot: iss.whitelist_root || '',
+    // The most there will ever be of the token, whole tokens, as set at deploy
+    // (0 when the deploy did not record one).
+    maxSupply: iss.max_supply || 0,
     live: iss.status === 'live',
   }
 }

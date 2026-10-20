@@ -21,13 +21,16 @@ chain-derived supply; a burn of a non-burnable asset is refused.
 
 ## 2. openampd OA-6 (DR mint = real reissuance) — additive
 
-Reissue MORE of an existing restricted asset (increase supply for a DR programme). CRITICAL node
-hazard (see the reissuance memory): reissuing from an UNBLINDED reissuance token produces a
-phantom invalid tx; the reissuance token input MUST be blinded first. Implement reissuance that
-re-blinds the reissuance token before spending it, mints into the target enclave, and records the
-reissue txid. Additive: only reachable via a new issuer endpoint; existing assets unaffected. Go
-test: a reissue increases chain-derived supply and lands in the target enclave; the reissuance
-token stays blinded across the operation.
+Reissue MORE of an existing restricted asset (increase supply for a DR programme). openampd holds
+every reissuance token in a supply cap from the issuance on, and mints only through it, never past
+the cap fixed then; SeqPal asks the issuer for the most there will ever be of the token at deploy
+and passes the room above the initial supply as `supply_cap` (`supplycap.go`). A mint lands in the
+target enclave and is recorded by its reissue txid; one past the room left is refused in the
+issuer's words before anything is built, and a confidential mint is never asked for (openampd
+refuses one: the amount is public on the issuance). Go test: a reissue increases chain-derived
+supply and lands in the target enclave; a mint one atom past the room is refused and changes
+nothing (`TestM8_DRMintStaysUnderTheMostThereWillEverBe`). On a real node and openampd, through
+the page: `scripts/regtest-supply-cap.sh`.
 
 ## 3. openampd OA-8 (opt-in confidential, per-call, no node flag) — CODE change, additive
 
@@ -108,7 +111,7 @@ default, confidentiality opt-in; nothing final at 0-conf.
 
 Every openampd change (OA-5, OA-6, OA-8, OA-LM) is ADDITIVE and backward-compatible: BONDX and all
 M1-M7 assets/transfers behave identically; a transparent issuance/transfer is byte-identical; test
-that FIRST. NEVER touch node000's `-blindedaddresses` flag (OA-8 is per-call blinding only). The
-reissuance token MUST be blinded before any reissue (the phantom-tx hazard). Every fund/supply
+that FIRST. NEVER touch node000's `-blindedaddresses` flag (OA-8 is per-call blinding only). Every
+mint goes through the token's supply cap, never past it. Every fund/supply
 movement is idempotent + reconciled before retry (the M5/M6 invariant). Deploy openampd carefully
 (staged binary swap; verify BONDX + a transparent asset resolve after). Nothing final at 0-conf.

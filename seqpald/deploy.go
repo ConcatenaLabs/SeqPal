@@ -95,6 +95,11 @@ func prune(ts []time.Time, cutoff time.Time) []time.Time {
 type deployReq struct {
 	IssuanceID string `json:"issuance_id"`
 	Supply     uint64 `json:"supply"`
+	// MaxSupply is the most of the token that will ever be created, issuance
+	// included, in whole tokens (supplycap.go). Serviced tokens only. Omitted, it
+	// is Supply: the supply is final. It can never be less than Supply, and
+	// nobody can raise it after the deploy.
+	MaxSupply *uint64 `json:"max_supply"`
 	// Pointer so an OMITTED precision (nil) is distinct from an explicit 0. Precision 0
 	// is a valid integer-only asset; a plain int would let an omitted field masquerade
 	// as 0 (or, as before, forced 1..8 to reject 0 entirely and make 0dp assets unissuable).
@@ -192,6 +197,21 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		refuse(400, "supply is too large for the chosen precision")
 		return
 	}
+	// The most there will ever be: the supply cap the token's reissuance token
+	// goes into at issuance counts what is created after it.
+	maxSupply := req.Supply
+	if req.MaxSupply != nil {
+		maxSupply = *req.MaxSupply
+	}
+	if maxSupply < req.Supply {
+		refuse(400, fmt.Sprintf("the most there will ever be of this token (%d) cannot be less than the %d you are creating now", maxSupply, req.Supply))
+		return
+	}
+	if _, ok := atomsFor(maxSupply, precision); !ok {
+		refuse(400, "the most there will ever be of this token is too large for the chosen precision")
+		return
+	}
+	capAtoms, _ := atomsFor(maxSupply-req.Supply, precision)
 	// M10 enforcement election. The election is persisted on the (draft)
 	// issuance row even when the deploy is then refused, so the record shows
 	// what the issuer chose.
@@ -207,6 +227,13 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	}
 	if iss.Status != "live" {
 		_ = s.st.UpdateIssuanceFields(iss.ID, map[string]any{"enforcement": enforcement})
+	}
+	// Only a serviced token can be created after issuance (supplycap.go): a
+	// network-enforced token's supply is final, and a freely-tradable one is not
+	// issued through the policy server.
+	if enforcement != "serviced" && maxSupply != req.Supply {
+		refuse(400, "only a token this platform services can have more of it created later; for this kind of token, what you create now is all there will ever be")
+		return
 	}
 	// The in-memory issuance carries the election too, so the document
 	// generation below selects the bearer charter set even when the supplied
@@ -571,6 +598,9 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		"burn_allowed": false,
 		"terms_hash":   termsHash,
 		"rules":        compiled,
+		// The reissuance token goes into a supply cap in the issuance itself, and
+		// this is the most it will ever mint (0: the supply is final).
+		"supply_cap": capAtoms,
 	}
 	// M9: pass the external issuer key so openampd uses it as the enclave issuer
 	// half (the L_claw leaf becomes (policy, this key)) and marks the asset
@@ -637,6 +667,7 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		"status":          "live",
 		"terms":           string(canonical),
 		"supply":          req.Supply,
+		"max_supply":      maxSupply,
 		"precision":       precision,
 		"clawback":        boolInt(clawback),
 		"asset_id":        issued.Asset,
@@ -653,6 +684,7 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	s.st.Audit(acct.AID, "deploy.success", map[string]any{
 		"issuance_id": iss.ID, "asset": issued.Asset, "txid": issued.Txid,
 		"contract_hash": issued.ContractHash, "atoms": atoms, "idem_key": idem,
+		"max_supply": maxSupply, "supply_cap_atoms": capAtoms,
 		"escrow_aid": escrow.AID, "primary_aids": primary,
 	})
 

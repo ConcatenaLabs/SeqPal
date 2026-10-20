@@ -6,17 +6,16 @@ import (
 	"html"
 	"net/http"
 	"strings"
-	"time"
 )
 
 // M8 Depository-Receipt programme (contract section 6). A DR programme mints and
 // redeems real supply of a restricted asset:
 //
 //   - MINT = OA-6 reissuance (POST /v1/issuer/reissue): more units are issued into
-//     the DR custodian enclave. openampd re-blinds the reissuance token first (the
-//     phantom-tx hazard), so a mint may return 202 "reblinding"; seqpald retries
-//     the same request_id until it broadcasts. The request_id is the idempotency
-//     key, so a crash-then-retry never double-mints.
+//     the DR custodian enclave, through the token's supply cap, never past the
+//     most there will ever be of it (supplycap.go); a mint past it is refused in
+//     the issuer's words before anything is built. The request_id is the
+//     idempotency key, so a crash-then-retry never double-mints.
 //   - REDEEM = OA-5 burn (POST /v1/issuer/burn): units held in a custodied enclave
 //     are sent to a provably-unspendable output, reducing supply for real. seqpald
 //     signs the holder side with the custodied enclave key and completes the burn.
@@ -28,8 +27,6 @@ import (
 //   - US-PERSON EXCLUSION is enforced as a REAL category rule at the policy server:
 //     a permanent j:US category deny, applied through the amendment-chain
 //     chokepoint, so openampd refuses any secondary transfer to a US-person holder.
-
-const drReblindAttempts = 5
 
 // --- enable ------------------------------------------------------------------
 
@@ -141,10 +138,10 @@ func (s *server) handleDRMint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// A mint issues new units into an account this platform holds and signs for.
-	// There is no such account for a network-enforced token: new units go to an
-	// address the issuer controls, from the issuer's own wallet.
+	// There is no such account for a network-enforced token, and its supply is
+	// final: its reissuance token is held in a supply cap of 0 from issuance.
 	if s.refuseForNetwork(w, acct.AID, iss, "dr.mint",
-		"New units of this token are issued by you, into an address you control, from your own wallet. This platform holds no account for it and cannot issue them.") {
+		"No more of this token can be created: a token whose rules the network enforces has a final supply, fixed when it was issued, and nobody, you included, can add to it.") {
 		return
 	}
 	prog, _ := s.st.DRProgramByIssuance(iss.ID)
@@ -196,65 +193,69 @@ func (s *server) handleDRMint(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Reissue, retrying the re-blinding step (0-conf chaining from the wallet's own
-	// new blinded token is fine; nothing is final at 0-conf).
-	var lastReblind string
-	for attempt := 0; attempt < drReblindAttempts; attempt++ {
-		var out struct {
-			ReissueTxid string `json:"reissue_txid"`
-			Status      string `json:"status"`
-			ReblindTxid string `json:"reblind_txid"`
-			Idempotent  bool   `json:"idempotent"`
-		}
-		code, err := s.callOpenAMPStatus("POST", "/v1/issuer/reissue", s.cfg.issuerToken,
-			map[string]any{"asset": iss.AssetID, "target_aid": s.openampAIDFor(target), "atoms": req.Atoms, "request_id": requestID}, &out)
-		if err != nil {
-			if code == http.StatusNotImplemented {
-				_ = s.st.UpdateDROpFields(op.ID, map[string]any{"state": "failed", "error": err.Error()})
-				writeErr(w, 501, "DR mint is unavailable: %v", err)
-				return
-			}
-			_ = s.st.UpdateDROpFields(op.ID, map[string]any{"state": "failed", "error": err.Error()})
-			writeErr(w, statusForOpenAMP(code), "reissue failed: %v", err)
-			return
-		}
-		if out.Status == "reblinding" {
-			lastReblind = out.ReblindTxid
-			_ = s.st.UpdateDROpFields(op.ID, map[string]any{"state": "reblinding"})
-			time.Sleep(2 * time.Second)
-			continue
-		}
-		// broadcast (fresh) or done (idempotent replay): a reissue txid is present.
-		if out.ReissueTxid == "" {
-			_ = s.st.UpdateDROpFields(op.ID, map[string]any{"state": "failed", "error": "reissue returned no txid"})
-			writeErr(w, 502, "reissue returned no txid")
-			return
-		}
-		_ = s.st.UpdateDROpFields(op.ID, map[string]any{"state": "broadcast", "txid": out.ReissueTxid, "error": ""})
-		op.Txid, op.State = out.ReissueTxid, "broadcast"
-		s.finalizeDRAttestation(iss, op)
-		op, _ = s.st.DROpByRequestID(requestID)
-		s.st.Audit(acct.AID, "dr.mint", map[string]any{
-			"issuance_id": iss.ID, "asset": iss.AssetID, "target": target, "atoms": req.Atoms, "txid": op.Txid,
-		})
-		s.writeDRMintResult(w, iss, op)
+	// The most there will ever be: a mint past it is refused here, in the
+	// issuer's words, before the policy server builds anything (which would
+	// refuse it too, as the covenant would on chain). A retry of a request the
+	// policy server may already have carried out goes straight to it, which
+	// answers a known request_id with what it did.
+	supply, err := s.readSupply(iss)
+	if err != nil {
+		_ = s.st.UpdateDROpFields(op.ID, map[string]any{"state": "failed", "error": err.Error()})
+		writeErr(w, 502, "could not read how much more of this token can be created: %v", err)
 		return
 	}
-	// Still re-blinding after the retry budget: safe to leave; the caller retries
-	// the same request_id once the re-blind confirms.
-	_ = s.st.UpdateDROpFields(op.ID, map[string]any{"state": "reblinding"})
-	writeJSON(w, 202, map[string]any{
-		"state": "reblinding", "request_id": requestID, "reblind_txid": lastReblind,
-		"note": "the reissuance token is being re-blinded; retry this mint with the same request_id shortly (nothing is final at 0-conf)",
+	if why := mintRefusal(supply, req.Atoms); why != "" && created {
+		_ = s.st.UpdateDROpFields(op.ID, map[string]any{"state": "failed", "error": why})
+		s.st.Audit(acct.AID, "dr.mint.refused", map[string]any{
+			"issuance_id": iss.ID, "asset": iss.AssetID, "atoms": req.Atoms, "room_atoms": supply.RoomAtoms,
+		})
+		writeJSON(w, 409, map[string]any{"error": why, "supply": supply})
+		return
+	}
+
+	var out struct {
+		ReissueTxid string `json:"reissue_txid"`
+	}
+	code, err := s.callOpenAMPStatus("POST", "/v1/issuer/reissue", s.cfg.issuerToken,
+		map[string]any{"asset": iss.AssetID, "target_aid": s.openampAIDFor(target), "atoms": req.Atoms, "request_id": requestID}, &out)
+	if err != nil {
+		_ = s.st.UpdateDROpFields(op.ID, map[string]any{"state": "failed", "error": err.Error()})
+		if code == http.StatusNotImplemented {
+			writeErr(w, 501, "DR mint is unavailable: %v", err)
+			return
+		}
+		if code == http.StatusConflict || code == http.StatusBadRequest {
+			writeJSON(w, code, map[string]any{"error": plainReissueError(supply, req.Atoms, err), "supply": supply})
+			return
+		}
+		writeErr(w, statusForOpenAMP(code), "reissue failed: %v", err)
+		return
+	}
+	if out.ReissueTxid == "" {
+		_ = s.st.UpdateDROpFields(op.ID, map[string]any{"state": "failed", "error": "reissue returned no txid"})
+		writeErr(w, 502, "reissue returned no txid")
+		return
+	}
+	_ = s.st.UpdateDROpFields(op.ID, map[string]any{"state": "broadcast", "txid": out.ReissueTxid, "error": ""})
+	op.Txid, op.State = out.ReissueTxid, "broadcast"
+	s.finalizeDRAttestation(iss, op)
+	op, _ = s.st.DROpByRequestID(requestID)
+	s.st.Audit(acct.AID, "dr.mint", map[string]any{
+		"issuance_id": iss.ID, "asset": iss.AssetID, "target": target, "atoms": req.Atoms, "txid": op.Txid,
 	})
+	s.writeDRMintResult(w, iss, op)
 }
 
 func (s *server) writeDRMintResult(w http.ResponseWriter, iss *Issuance, op *DROp) {
 	circ, height, _ := s.drSupply(iss.AssetID)
-	writeJSON(w, 200, map[string]any{
+	res := map[string]any{
 		"op": op, "reissue_txid": op.Txid, "state": op.State,
 		"circulating_atoms": circ, "height": height, "supply_source": "chain-derived",
-	})
+	}
+	if v, err := s.readSupply(iss); err == nil {
+		res["supply"] = v
+	}
+	writeJSON(w, 200, res)
 }
 
 // --- redeem (OA-5 burn) ------------------------------------------------------
@@ -473,10 +474,14 @@ func (s *server) handleDRSupply(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 502, "could not read the chain-derived supply: %v", err)
 		return
 	}
-	writeJSON(w, 200, map[string]any{
+	res := map[string]any{
 		"asset": iss.AssetID, "circulating_atoms": circ, "height": height,
 		"supply_source": "chain-derived", "note": "holders-sum from the policy server; never a stored counter; nothing final at 0-conf",
-	})
+	}
+	if v, err := s.readSupply(iss); err == nil {
+		res["supply"] = v
+	}
+	writeJSON(w, 200, res)
 }
 
 // handleDRProgram is GET /api/issuances/{id}/dr (owner): the DR programme state,
@@ -493,11 +498,17 @@ func (s *server) handleDRProgram(w http.ResponseWriter, r *http.Request) {
 	if iss.AssetID != "" {
 		circ, height, _ = s.drSupply(iss.AssetID)
 	}
-	writeJSON(w, 200, map[string]any{
+	res := map[string]any{
 		"program": prog, "ops": ops,
 		"circulating_atoms": circ, "height": height, "supply_source": "chain-derived",
 		"custodian": "SIMULATED custodian; attestations are labeled simulated with real hashed, anchored artifacts",
-	})
+	}
+	if iss.AssetID != "" {
+		if v, err := s.readSupply(iss); err == nil {
+			res["supply"] = v
+		}
+	}
+	writeJSON(w, 200, res)
 }
 
 // --- simulated custodian attestation -----------------------------------------
