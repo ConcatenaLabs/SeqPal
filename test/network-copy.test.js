@@ -1,7 +1,7 @@
 // The two facts about a network-enforced token that an issuer must NOT discover
 // at the moment a transfer fails:
 //
-//   1. a holder can combine at most TWO of their coins in one transfer, and that
+//   1. a holder can combine at most THREE of their coins in one transfer, and that
 //      bound is fixed when the token is created; and
 //   2. a change to the holder list takes effect when the updated list is
 //      PUBLISHED, not the moment the issuer makes it.
@@ -29,8 +29,8 @@ test('the wizard states the per-transfer coin bound where the issuer picks the m
   assert.ok(network.length > 0, 'the network enforcement model card must exist')
   assert.match(
     network,
-    /at most two of their coins of this token in a single transfer/i,
-    'the network card must state that a holder can combine at most two of their coins in one transfer',
+    /at most three of their coins of this token in a single transfer/i,
+    'the network card must state that a holder can combine at most three of their coins in one transfer',
   )
   assert.match(
     network,
@@ -48,7 +48,7 @@ test('the issuance detail states both limits for a live network-enforced token',
   const src = read('pages/IssuanceDetail.jsx')
   assert.match(
     src,
-    /at most two of their coins of this token in\s*\n?\s*a single transfer/i,
+    /at most three of their coins of this token in\s*\n?\s*a single transfer/i,
     'the network note on the issuance detail must state the per-transfer coin bound',
   )
   assert.match(
@@ -61,7 +61,8 @@ test('the issuance detail states both limits for a live network-enforced token',
 test('the holder-list console states both limits, and asks for a reason and an order', () => {
   const src = read('components/PolicyConsole.jsx')
   assert.match(src, /at most\{' '\}/, 'the console must state the per-transfer coin bound')
-  assert.match(src, /two of their coins/i)
+  assert.match(src, /coinsInWords\(pol\?\.max_coins_per_transfer\)/)
+  assert.match(src, /'three'/)
   assert.match(src, /cannot be raised later/i)
   assert.match(
     src,
@@ -99,12 +100,12 @@ test('/docs carries the protocol-level explanation, including what is not enforc
   assert.match(src, /send_after/, 'the docs explain the per-holder height bounds in the leaf')
   assert.match(
     src,
-    /at most 4 inputs and 6 outputs/i,
-    'the docs give the real bound the two-coin limit follows from',
+    /widest 5 inputs and 7 outputs/i,
+    'the docs give the real bound the three-coin limit follows from',
   )
   assert.match(
     src,
-    /at most TWO coins/i,
+    /at most THREE coins/i,
     'the docs state the same limit the issuer surfaces state in plain language',
   )
   assert.match(
@@ -114,7 +115,7 @@ test('/docs carries the protocol-level explanation, including what is not enforc
   )
   assert.match(
     src,
-    /STATUS\.md section 2/,
+    /section 2 of STATUS\.md/,
     'the docs point at the authoritative list of what is NOT enforced rather than implying completeness',
   )
 })

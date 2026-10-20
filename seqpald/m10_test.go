@@ -50,7 +50,8 @@ type supNode struct {
 	broadcasts  int                          // sendrawtransaction calls
 	submits     int                          // submitsupervisionrecord calls
 	failPrivate bool
-	recHashN    int // getsupervisionrecordhash calls
+	recHashN    int      // getsupervisionrecordhash calls
+	feeAssets   []string // the fee_asset of every fundrawtransaction call
 }
 
 func newSupNode(n *fakeNode) *supNode {
@@ -61,6 +62,11 @@ func newSupNode(n *fakeNode) *supNode {
 	}
 	n.mu.Lock()
 	n.extra = sn.dispatch
+	// The escrow wallet's own coin for the fees of what it mints and
+	// supervises. It is USDX: the wallet holds none of the policy asset, and
+	// the fee asset is chosen by the rule every wallet uses, so it pays in
+	// USDX.
+	n.deposits["seqpal-escrow-fee-coin"] = nodeDeposit{txid: strings.Repeat("fe", 32), atoms: 50 * 100000000, confs: 6, asset: m5USDX}
 	n.mu.Unlock()
 	return sn
 }
@@ -131,6 +137,12 @@ func (sn *supNode) dispatch(method string, params []json.RawMessage) (any, int, 
 		}
 		return sn.newHandle(tx), 0, "", true
 	case "fundrawtransaction":
+		if len(params) > 1 {
+			var opts map[string]any
+			json.Unmarshal(params[1], &opts)
+			fa, _ := opts["fee_asset"].(string)
+			sn.feeAssets = append(sn.feeAssets, fa)
+		}
 		base := sn.tx(str(0))
 		if base == nil {
 			return nil, -8, "unknown tx handle", true

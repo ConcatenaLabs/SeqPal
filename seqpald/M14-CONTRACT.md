@@ -57,7 +57,9 @@ terms and the statement to sign; with one it records them. `GET` the same path r
 The statement (tag `seqpal-escrow-terms-v1`) is the whole of the terms, so the signature is
 the issuer's acknowledgment of every one of them. It is signed **by the release key**, as a
 tagged statement or as an ordinary signed message from that key's legacy address
-(`verifyKeyStatement`), which proves the issuer holds the key. The terms are then fixed for
+(`verifyKeyStatement`), which proves the issuer holds the key. A browser wallet with a
+contract engine names its contract key (`getContractKey`) and signs the statement with it
+(`signContractStatement`) from the issuance page. The terms are then fixed for
 good: every subscription address commits to them, so the Sequentia payout mandate cannot
 change either. The payment asset must be one the node accepts for fees.
 
@@ -66,6 +68,9 @@ change either. The payment asset must be one the node accepts for fees.
 `POST /api/issuances/{id}/subscribe` with `rail: usdx` derives the subscription's address
 from the terms and the refund address and refuses unless the node reads the address back as
 exactly the derived output. It is refused before the escrow is open and from the close on.
+A request with `confidential: true` is refused before anything is recorded or paid: a
+confidential coin at the escrow can only be released to the issuer, never cancelled or
+refunded, because the cancel and refund leaves read the coin's asset and amount explicitly.
 The answer carries the address, the terms, the parameters and the refund leaf.
 
 The deposit is read from the chain without a wallet: one `scantxoutset` over `raw()`
@@ -135,8 +140,17 @@ the leaf, and signs only then. The sighash is Elements taproot, script path,
 the lock time and the leaf, so a signature authorises that one transaction through that one
 leaf, and not another coin, the other keyed leaf, or another chain.
 
+A built release or cancel also carries `engine`: the same transaction as a browser wallet's
+contract engine takes it (`signContractSpend`): the `sequentia/subscription-escrow`
+template, each coin's own instance (the first as the contract coin, the others as siblings),
+the sequence and the outputs, read from the unsigned transaction. The engine recomputes every
+coin's address from its instance, rebuilds the transaction, shows it under the five-point
+rule and signs each escrow input with its contract key, which must be the release key; the
+issuance page sends the signed transaction back unbroadcast.
+
 `POST /api/issuances/{id}/escrow/spends/{sid}/sign` takes the signatures as the RPC returns
-them. Each is verified against the release key over the sighash computed here, a 65-byte
+them, or `signed_tx`, the whole signed transaction: it must be the transaction built, every
+input spent through its recorded leaf, and the signatures are read out of it. Each is verified against the release key over the sighash computed here, a 65-byte
 signature (an explicit sighash type) is refused, and the assembled transaction must have the
 recorded txid and pass `testmempoolaccept` before it is sent.
 
@@ -167,7 +181,8 @@ found nothing to refund is scanned again after five minutes, not on every tick.
 The books follow the node's acceptance: a spend counts as settled once the node has it in
 its mempool, and there is no reorg watcher for the covenant rail. A confidential payment, or
 one in another asset, is not credited; the covenant's cancel and refund cannot return a
-confidential coin at all, so subscribers are told to pay transparently.
+confidential coin at all, so subscribers are told to pay transparently and a confidential
+subscription is refused (section 3).
 
 ## 6. Distributions in one transaction
 
@@ -201,5 +216,7 @@ issuer.
   issuer funds it (`M10-CONTRACT.md`).
 - A USDX subscription or a distribution run paid into `seqpal-escrow` before the covenant held
   them, which settles out of it by the M5/M6/M7 state machines. A send from that wallet pays
-  its network fee in the asset it sends, or `SEQPALD_FEE_ASSET`, never in the policy asset by
-  default.
+  its network fee by the rule every wallet uses (`feeasset.go`): the asset it sends where the
+  node accepts it, else the accepted asset whose largest coin in the wallet covers the most
+  fees, or `SEQPALD_FEE_ASSET` where the operator names one the node accepts; never the policy
+  asset by default.

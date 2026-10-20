@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/ConcatenaLabs/SeqPal/seqpald/elements"
 )
 
 // Spending the subscription escrow.
@@ -532,14 +534,135 @@ func (s *server) escrowSpendView(t *EscrowTerms, sp *EscrowSpend) map[string]any
 		v["note"] = "Your wallet checks this transaction before it signs: it recomputes every sighash from the " +
 			"transaction, checks that each leaf and control block commit to the escrow coin being spent, and " +
 			"signs only with the release key. Send back the signatures it returns."
+		if req, err := s.escrowEngineRequest(t, sp); err == nil {
+			v["engine"] = req
+		} else {
+			v["engine_error"] = err.Error()
+		}
 	}
 	return v
+}
+
+// escrowEngineRequest is a built release or cancel as a wallet's contract
+// engine takes it (the Sequentia Wallet Kit's lwk_contracts, behind a browser
+// wallet's signContractSpend): the template, each coin's own instance, and the
+// transaction's outputs and sequence, read from the transaction seqpald built.
+// The engine recomputes every coin's address from its instance, rebuilds the
+// same transaction, shows it under the five-point rule and signs each escrow
+// input with the wallet's contract key, which must be the release key. The
+// signed transaction comes back to the sign endpoint, which checks it is this
+// one and verifies every signature before anything is broadcast.
+func (s *server) escrowEngineRequest(t *EscrowTerms, sp *EscrowSpend) (map[string]any, error) {
+	raw, err := hex.DecodeString(sp.UnsignedTx)
+	if err != nil {
+		return nil, err
+	}
+	tx, err := elements.DeserializeTx(raw)
+	if err != nil {
+		return nil, err
+	}
+	if len(tx.In) != len(sp.Inputs) || len(tx.In) == 0 {
+		return nil, fmt.Errorf("the transaction and its inputs disagree")
+	}
+	res, err := s.nodeRPC("getblockhash", 0)
+	if err != nil {
+		return nil, err
+	}
+	var genesis string
+	if err := json.Unmarshal(res, &genesis); err != nil {
+		return nil, err
+	}
+	var first map[string]any
+	inputs := []map[string]any{{"is": "contract"}}
+	var coin0 map[string]any
+	for i, in := range sp.Inputs {
+		sub, err := s.st.SubscriptionByID(in.SubscriptionID)
+		if err != nil || sub == nil {
+			return nil, fmt.Errorf("no subscription %s", in.SubscriptionID)
+		}
+		e, err := s.escrowInstanceFor(t, sub)
+		if err != nil {
+			return nil, err
+		}
+		if !strings.EqualFold(hex.EncodeToString(e.SPK), in.SPK) {
+			return nil, fmt.Errorf("input %d's instance derives another address", i)
+		}
+		inst := map[string]any{"instance": 2, "template_hash": escrowTemplateHash, "params": e.Params,
+			"slots": map[string]string{}, "genesis": genesis}
+		coin := map[string]any{"txid": in.Txid, "vout": in.Vout, "script_pubkey": strings.ToLower(in.SPK),
+			"asset": strings.ToLower(in.Asset), "amount": in.Atoms}
+		if i == 0 {
+			first, coin0 = inst, coin
+			continue
+		}
+		inputs = append(inputs, map[string]any{"is": "sibling", "coin": coin, "instance": inst})
+	}
+	outputs := make([]map[string]any, 0, len(tx.Out))
+	for i, o := range tx.Out {
+		atoms, ok := elements.ExplicitValueAmount(o.Value)
+		if !ok || len(o.Asset) != 33 || o.Asset[0] != 1 {
+			return nil, fmt.Errorf("output %d is not explicit", i)
+		}
+		id := make([]byte, 32)
+		for j := 0; j < 32; j++ {
+			id[j] = o.Asset[32-j]
+		}
+		asset := hex.EncodeToString(id)
+		if o.IsFee() {
+			outputs = append(outputs, map[string]any{"to": "fee", "asset": asset, "amount": atoms})
+			continue
+		}
+		outputs = append(outputs, map[string]any{"to": "pay", "script": hex.EncodeToString(o.ScriptPubKey),
+			"asset": asset, "amount": atoms})
+	}
+	return map[string]any{
+		"templateHash": escrowTemplateHash,
+		"instance":     first,
+		"request": map[string]any{
+			"path": sp.Kind, "coin": coin0, "inputs": inputs, "sequence": tx.In[0].Sequence, "outputs": outputs,
+		},
+		"txid": sp.Txid,
+	}, nil
+}
+
+// sigsFromSignedTx reads the issuer's signatures out of a signed release or
+// cancel: input i's witness must be [signature, the leaf, its control block],
+// the leaf and control block the ones recorded. The transaction must be the
+// one built; the signatures are verified by assembleEscrowWitness after this.
+func sigsFromSignedTx(sp *EscrowSpend, signedHex string) (map[int]string, error) {
+	raw, err := hex.DecodeString(strings.TrimSpace(signedHex))
+	if err != nil {
+		return nil, fmt.Errorf("signed_tx is not hex")
+	}
+	tx, err := elements.DeserializeTx(raw)
+	if err != nil {
+		return nil, fmt.Errorf("signed_tx does not decode: %v", err)
+	}
+	if tx.TxID() != sp.Txid {
+		return nil, fmt.Errorf("the signed transaction is %s, not the %s built", tx.TxID(), sp.Txid)
+	}
+	if len(tx.InWit) != len(sp.Inputs) {
+		return nil, fmt.Errorf("the signed transaction carries no witness for every input")
+	}
+	sigs := map[int]string{}
+	for i, in := range sp.Inputs {
+		w := tx.InWit[i].ScriptWitness
+		if len(w) != 3 || !strings.EqualFold(hex.EncodeToString(w[1]), in.Script) ||
+			!strings.EqualFold(hex.EncodeToString(w[2]), in.Control) {
+			return nil, fmt.Errorf("input %d is not spent through its %s leaf", i, in.Leaf)
+		}
+		sigs[i] = hex.EncodeToString(w[0])
+	}
+	return sigs, nil
 }
 
 // --- signing and broadcasting -------------------------------------------------------------
 
 type spendSigsReq struct {
 	Signatures json.RawMessage `json:"signatures"`
+	// SignedTx is the whole transaction a wallet's contract engine signed,
+	// instead of the signatures alone.
+	SignedTx string `json:"signed_tx"`
 }
 
 // parseSpendSigs reads the signatures in either form a wallet produces them:
@@ -609,13 +732,18 @@ func (s *server) handleEscrowSpendSign(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req spendSigsReq
-	if err := readJSON(r, &req); err != nil || len(req.Signatures) == 0 {
-		writeErr(w, 400, "signatures are required")
+	if err := readJSON(r, &req); err != nil || (len(req.Signatures) == 0 && req.SignedTx == "") {
+		writeErr(w, 400, "signatures (or signed_tx) are required")
 		return
 	}
-	sigs, err := parseSpendSigs(req.Signatures)
+	var sigs map[int]string
+	if req.SignedTx != "" {
+		sigs, err = sigsFromSignedTx(sp, req.SignedTx)
+	} else {
+		sigs, err = parseSpendSigs(req.Signatures)
+	}
 	if err != nil {
-		writeErr(w, 400, "%v", err)
+		writeErr(w, 400, "%v; nothing was broadcast", err)
 		return
 	}
 	if sp.Kind == "release" {

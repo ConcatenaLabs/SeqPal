@@ -171,7 +171,7 @@ func TestM13_PolicyStatusReadsThePublishedList(t *testing.T) {
 		t.Fatalf("a network-enforced issuance must say so: %s", r.raw)
 	}
 	// The two-coin bound is on every issuer-facing surface, including this one.
-	if fmt.Sprint(r.body["max_coins_per_transfer"]) != "2" {
+	if fmt.Sprint(r.body["max_coins_per_transfer"]) != "3" {
 		t.Fatalf("the console must state the per-transfer coin bound: %s", r.raw)
 	}
 	pub, _ := r.body["published"].(map[string]any)
@@ -455,7 +455,7 @@ func TestM13_ListingsReflectTheOnChainPolicy(t *testing.T) {
 	if r.body["enforcement"] != "network" {
 		t.Fatalf("the read must name the election: %s", r.raw)
 	}
-	if fmt.Sprint(r.body["max_coins_per_transfer"]) != "2" {
+	if fmt.Sprint(r.body["max_coins_per_transfer"]) != "3" {
 		t.Fatalf("a venue must be told the per-transfer coin bound: %s", r.raw)
 	}
 	pol, _ := r.body["policy"].(map[string]any)

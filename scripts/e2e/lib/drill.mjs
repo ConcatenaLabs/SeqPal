@@ -255,8 +255,10 @@ export function sendCommand(address, atoms, asset) {
   // address, amount, comment, comment_to, subtractfeefromamount, replaceable,
   // conf_target, estimate_mode (a STRING, "unset", never null), avoid_reuse,
   // assetlabel, ignoreblindfail, fee_rate, fee_asset_label. The open fee market
-  // has no default fee asset, so fee_asset_label is mandatory here.
-  const feeAsset = process.env.SEQPAL_DRILL_FEE_ASSET || 'bitcoin'
+  // has no default fee asset, so fee_asset_label is mandatory here: the asset
+  // being sent, unless the operator names another the node accepts. Never the
+  // policy asset by default.
+  const feeAsset = process.env.SEQPAL_DRILL_FEE_ASSET || asset
   return `${cli} -rpcwallet=seqpal-escrow sendtoaddress ${address} ${amount8(atoms)} "" "" false false null unset false ${asset} false null ${feeAsset}`
 }
 

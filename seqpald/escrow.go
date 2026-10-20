@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 )
@@ -353,17 +352,12 @@ func atomsFromNumber(n json.Number) uint64 {
 }
 
 // escrowFeeAsset names the asset an escrow-wallet send pays its network fee
-// in: SEQPALD_FEE_ASSET where a deployment names one, and otherwise the asset
-// being sent. The open fee market has no default fee asset and no privileged
-// one, so a send never falls back to the policy asset.
+// in: the asset being sent where the node accepts it, else the accepted asset
+// whose largest coin in the wallet covers the most fees (feeAssetFor). The open
+// fee market has no default fee asset and no privileged one, so a send never
+// falls back to the policy asset.
 func (s *server) escrowFeeAsset(moved string) (string, error) {
-	if v := os.Getenv("SEQPALD_FEE_ASSET"); v != "" {
-		return v, nil
-	}
-	if moved == "" {
-		return "", fmt.Errorf("no fee asset: set SEQPALD_FEE_ASSET")
-	}
-	return moved, nil
+	return s.feeAssetFor(seqEscrowWallet, moved)
 }
 
 // newPlatformRevenueAddress is a fresh address of the platform's own wallet,

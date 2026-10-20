@@ -46,7 +46,7 @@ export function fakeSighash() {
 }
 
 // The privileged funding hook. Sending USDX to a deposit address (or topping up a
-// servicing wallet with tSEQ for fees) is a box operation with box-held keys, so
+// servicing wallet for fees, in any asset the node accepts) is a box operation with box-held keys, so
 // the driver NEVER holds those credentials. Three honest modes:
 //   --fund-cmd "<cmd>"  : the operator supplied a command; run it with the deposit
 //                         details in the environment (FUND_ADDRESS/AMOUNT/CCY).
