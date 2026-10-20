@@ -3,14 +3,15 @@ module github.com/ConcatenaLabs/SeqPal/seqpald
 go 1.25.0
 
 require (
+	github.com/ConcatenaLabs/sequentia-contracts/mirrors/go v0.0.0-20261020161610-e94ab989ee1d
 	github.com/btcsuite/btcd/btcec/v2 v2.5.0
+	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0
 	modernc.org/sqlite v1.53.0
 )
 
 require (
 	github.com/btcsuite/btcd/chainhash/v2 v2.0.0 // indirect
 	github.com/decred/dcrd/crypto/blake256 v1.1.0 // indirect
-	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect

@@ -77,6 +77,14 @@ type config struct {
 	usdxAsset   string // USDX asset id (Sequentia payment asset)
 	escrowConfs int64  // confirmations before a deposit becomes in_escrow
 	atomicClose bool   // M6: settle USDX subscriptions as ONE atomic DvP tx (closing v2); v1 fallback otherwise
+	// The subscription escrow covenant. The deadline is the close plus this many
+	// days, from which anyone may refund a subscriber; the fee cap is the most a
+	// refund or a cancel may keep back from a coin for its network fee, in the
+	// payment asset's atoms; the revenue address receives the platform's escrow
+	// fee out of a release (empty: a fresh address of the platform's own wallet).
+	escrowDeadlineDays int64
+	escrowFeeCapAtoms  uint64
+	revenueAddress     string
 	// An OVERRIDE of the published setup price, not the price itself. Negative
 	// means unset, which is the normal case: the platform then charges what
 	// src/data/pricing.js quotes for that issuance's structure. A deployment that
@@ -232,6 +240,9 @@ func main() {
 	flag.Int64Var(&cfg.escrowConfs, "escrowconfs", envInt("SEQPALD_ESCROW_CONFS", 1), "confirmations before a deposit becomes in_escrow (minimum 1)")
 	atomicDefault := env("SEQPALD_ATOMIC_CLOSE", "1") == "1" || strings.EqualFold(env("SEQPALD_ATOMIC_CLOSE", "1"), "true")
 	flag.BoolVar(&cfg.atomicClose, "atomicclose", atomicDefault, "settle USDX subscriptions as one atomic delivery-versus-payment transaction (closing v2); falls back to the two-transaction close v1 when the policy server has no payment leg")
+	flag.Int64Var(&cfg.escrowDeadlineDays, "escrowdeadlinedays", envInt("SEQPALD_ESCROW_DEADLINE_DAYS", defaultEscrowDeadlineDays), "days after an offering's close from which anyone may refund a subscriber from the escrow covenant")
+	flag.Uint64Var(&cfg.escrowFeeCapAtoms, "escrowfeecap", uint64(envInt("SEQPALD_ESCROW_FEE_CAP_ATOMS", defaultEscrowFeeCapAtoms)), "most a refund from the escrow covenant may keep back for its network fee, in the payment asset's atoms")
+	flag.StringVar(&cfg.revenueAddress, "revenueaddress", env("SEQPALD_REVENUE_ADDRESS", ""), "Sequentia address the platform's escrow fee is paid to out of a release (empty = a fresh address of the platform wallet)")
 	flag.Parse()
 	// Both of these decide when money is treated as arrived, and when a lockup
 	// ends. Zero confirmations is not a setting this platform has, and a year of
@@ -463,6 +474,14 @@ func (s *server) handler() http.Handler {
 	mux.HandleFunc("GET /api/issuances/{id}/mandate", s.requireSession(s.handleMandates))
 	mux.HandleFunc("POST /api/issuances/{id}/mandate", s.requireSession(s.handleMandate))
 	mux.HandleFunc("POST /api/issuances/{id}/close", s.requireSession(s.handleClose))
+	// The subscription escrow covenant: the issuer opens it (fixing its terms),
+	// signs its release and its cancels in its own wallet; a subscriber reads
+	// where their money is and the refund that needs nobody's signature.
+	mux.HandleFunc("GET /api/issuances/{id}/escrow", s.requireSession(s.handleEscrowStatus))
+	mux.HandleFunc("POST /api/issuances/{id}/escrow", s.requireSession(s.handleEscrowTerms))
+	mux.HandleFunc("POST /api/issuances/{id}/escrow/cancel", s.requireSession(s.handleEscrowCancel))
+	mux.HandleFunc("POST /api/issuances/{id}/escrow/spends/{sid}/sign", s.requireSession(s.handleEscrowSpendSign))
+	mux.HandleFunc("GET /api/subscriptions/{id}/escrow", s.requireSession(s.handleSubscriptionEscrow))
 	mux.HandleFunc("GET /api/issuances/{id}/settlements", s.requireSession(s.handleSettlements))
 
 	// M7 transfer-agent servicing: investor payout mandates and the distribution

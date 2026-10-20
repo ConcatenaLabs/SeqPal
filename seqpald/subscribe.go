@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -172,17 +173,48 @@ func (s *server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, 503, "the USDX rail is not available on this deployment")
 			return
 		}
+		// The payment goes to an escrow covenant address of this subscription's
+		// own, which no wallet of this platform holds a key to. It is derived
+		// from the offering's escrow terms, which the issuer fixes when it opens
+		// the escrow; until it has, there is nowhere safe to pay.
+		terms, err := s.st.EscrowTermsByIssuance(iss.ID)
+		if err != nil {
+			writeErr(w, 500, "store error")
+			return
+		}
+		if terms == nil {
+			writeErr(w, 409, "the issuer has not opened this offering's escrow yet, so there is no address to pay")
+			return
+		}
+		if tip, mtp, err := s.chainTip(); err == nil && lockReached(terms.CloseLock, tip, mtp) {
+			writeErr(w, 409, "this offering's escrow closed at %s; it takes no new subscriptions", describeLock(terms.CloseLock))
+			return
+		}
 		if err := s.validateSeqAddress(req.RefundAddress); err != nil {
 			writeErr(w, 400, "refund_address is not a valid Sequentia address: %v", err)
 			return
 		}
-		addr, err := s.newUSDXDepositAddress()
+		refundSPK, err := s.addressSPK(req.RefundAddress)
 		if err != nil {
-			writeErr(w, 502, "could not derive a USDX deposit address: %v", err)
+			writeErr(w, 400, "refund_address: %v", err)
 			return
 		}
-		sub.DepositAddress = addr
-		sub.RefundAddress = req.RefundAddress
+		sub.RefundAddress = strings.TrimSpace(req.RefundAddress)
+		sub.RefundSPK = refundSPK
+		sub.EscrowRef = escrowSubscriptionRef(iss.ID, sub.ID)
+		inst, err := deriveEscrow(escrowParamsFor(terms, sub), s.cfg.network)
+		if err != nil {
+			writeErr(w, 500, "could not derive the escrow address: %v", err)
+			return
+		}
+		// The node must read the address as exactly the output derived, or the
+		// subscriber would be paying somewhere else.
+		if spk, err := s.addressSPK(inst.Address); err != nil || !strings.EqualFold(spk, hex.EncodeToString(inst.SPK)) {
+			writeErr(w, 500, "the escrow address does not read back as its own output on this node; nothing to pay")
+			return
+		}
+		sub.DepositAddress = inst.Address
+		sub.EscrowSPK = hex.EncodeToString(inst.SPK)
 		sub.PayAmount = usdToAtoms(subUSD)
 		sub.PayCcy = "USDX"
 		// Zero is not a price. It means this amount at this offering's price is
@@ -195,8 +227,22 @@ func (s *server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, 500, "could not record the subscription")
 			return
 		}
-		s.st.Audit(acct.AID, "subscribe.usdx", map[string]any{"issuance_id": iss.ID, "sub": sub.ID, "deposit_address": addr, "pay_atoms": sub.PayAmount})
-		writeJSON(w, 200, map[string]any{"subscription": sub, "deposit_address": addr, "pay_amount": sub.PayAmount, "pay_ccy": "USDX", "confs_required": s.cfg.escrowConfs})
+		s.st.Audit(acct.AID, "subscribe.usdx", map[string]any{"issuance_id": iss.ID, "sub": sub.ID,
+			"deposit_address": inst.Address, "pay_atoms": sub.PayAmount, "escrow": escrowTemplateName})
+		writeJSON(w, 200, map[string]any{
+			"subscription": sub, "deposit_address": inst.Address, "pay_amount": sub.PayAmount, "pay_ccy": "USDX",
+			"confs_required": s.cfg.escrowConfs,
+			"escrow": map[string]any{
+				"terms": s.escrowTermsView(terms), "params": inst.Params,
+				"refund_leaf": map[string]any{"script": hex.EncodeToString(inst.Leaves["refund"].Script),
+					"control": hex.EncodeToString(inst.Leaves["refund"].Control)},
+				"note": "Pay from a transparent transfer (the default) to this address. It belongs to no wallet. " +
+					"Before the close it can only come back to your refund address. From the close the issuer's " +
+					"key can also release it, in a transaction that pays the issuer's payout address at least " +
+					"the offering's minimum; SeqPal asks for that signature only after your tokens are delivered. " +
+					"The issuer can return it at any time, and from the deadline anyone can.",
+			},
+		})
 
 	case "btc":
 		if s.cfg.btcURL == "" {

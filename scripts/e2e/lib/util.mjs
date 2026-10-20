@@ -74,6 +74,38 @@ export async function fund({ address, amount, ccy, label, fundCmd, dryRun }) {
   throw new AssertError('funding required but no funding mechanism available')
 }
 
+// The issuer's-wallet hook. The release of an escrow covenant and the payout of
+// a distribution are signed (and, for a payout, funded) in the ISSUER's own
+// wallet, which the driver never holds. The operator supplies a command that
+// reads what to sign from its environment and prints the result on stdout; with
+// none, a TTY run prints what to sign and reads the result from the operator.
+export async function issuerHook({ label, cmd, env, dryRun, ask }) {
+  info(`ISSUER'S WALLET REQUIRED (${label})`)
+  for (const [k, v] of Object.entries(env)) evidence(k, String(v).length > 120 ? String(v).slice(0, 120) + '…' : v)
+  if (dryRun) {
+    skip("dry-run: not signing; the live run hands this to the issuer's wallet")
+    return null
+  }
+  if (cmd) {
+    info("running the issuer's wallet command (the driver never sees the key)")
+    return (await runCapture(cmd, env)).trim()
+  }
+  if (process.stdin.isTTY) {
+    return (await prompt(`     ${ask}: `)).trim()
+  }
+  throw new AssertError(`${label}: the issuer's wallet is needed and no command was given`)
+}
+
+function runCapture(cmd, extraEnv) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, { shell: true, stdio: ['ignore', 'pipe', 'inherit'], env: { ...process.env, ...extraEnv } })
+    let out = ''
+    child.stdout.on('data', (d) => { out += d })
+    child.on('exit', (code) => (code === 0 ? resolve(out) : reject(new Error(`issuer command exited ${code}`))))
+    child.on('error', reject)
+  })
+}
+
 function runShell(cmd, extraEnv) {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, { shell: true, stdio: 'inherit', env: { ...process.env, ...extraEnv } })

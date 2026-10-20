@@ -10,19 +10,23 @@ import { fmtRail } from '../lib/money'
 import { txUrl } from '../lib/chain'
 
 // The M7 distribution console (issuer-facing, owner-scoped). A run is real USDX:
-// the issuer funds a servicing deposit first, takes an immutable record-date
-// snapshot of the on-chain register, reviews the pro-rata and withholding table
-// (gross, withheld, net per holder, the reconciliation total, and the disclosed
-// dust), executes the net USDX payouts one per holder, then sees the per-holder
-// txids and the anchored statements. Nothing is asserted in the browser: every
-// figure is a seqpald value read from the chain and the withholding math.
+// the issuer takes an immutable record-date snapshot of the on-chain register,
+// reviews the pro-rata and withholding table (gross, withheld, net per holder,
+// the reconciliation total, and the disclosed dust), and pays every holder in ONE
+// transaction its own wallet funds and signs: this page shows the outputs and the
+// commands, takes back the signed transaction, and seqpald checks every holder's
+// output before it broadcasts. Nothing is deposited with the platform, and this
+// page signs nothing. Nothing is asserted in the browser: every figure is a
+// seqpald value read from the chain and the withholding math.
 //
-// State machine: awaiting_funding -> funded -> snapshotted -> paying -> complete.
-// The run pays nothing until the deposit confirms and covers the pool, and
-// nothing is final at 0 confirmations because a Sequentia state is only as final
-// as its Bitcoin anchor is deep.
+// State machine: open -> snapshotted -> paying -> complete. A run funded by a
+// deposit into the platform's servicing wallet instead (awaiting_funding ->
+// funded) is paid out of that deposit, one payment per holder. Nothing is final
+// at 0 confirmations because a Sequentia state is only as final as its Bitcoin
+// anchor is deep.
 
 const RUN_STATE = {
+  open: { label: 'Open', color: 'seq' },
   awaiting_funding: { label: 'Awaiting funding', color: 'amber' },
   funded: { label: 'Funded', color: 'seq' },
   snapshotted: { label: 'Snapshot taken', color: 'seq' },
@@ -32,6 +36,7 @@ const RUN_STATE = {
 
 const PAY_STATE = {
   pending: { label: 'Pending', color: 'slate' },
+  planned: { label: 'In the payout', color: 'seq' },
   paying: { label: 'Paying', color: 'amber' },
   paid: { label: 'Paid', color: 'emerald' },
   skipped: { label: 'Skipped', color: 'amber' },
@@ -137,8 +142,8 @@ function PaymentsTable({ d, payments }) {
           )}
         </span>
         <span>
-          Dust remainder: <span className="font-mono">{usdx(d.dust_atoms)}</span>, disclosed and
-          kept in the servicing wallet, never dropped
+          Dust remainder: <span className="font-mono">{usdx(d.dust_atoms)}</span>, disclosed, never
+          dropped, and {d.deposit_address ? 'kept in the servicing wallet' : 'not paid out, so it stays with you'}
         </span>
       </div>
     </div>
@@ -151,6 +156,68 @@ function taxLabel(s) {
   return 'undetermined'
 }
 
+// The payout: one output per holder, which the issuer's own wallet funds and
+// signs. The signed transaction comes back here and seqpald checks that every
+// holder's output is in it exactly before it broadcasts it.
+function PayoutPanel({ iss, runID, payout, onPaid }) {
+  const [tx, setTx] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+  const outs = payout?.outputs || []
+  const submit = async () => {
+    setErr(null)
+    setBusy(true)
+    try {
+      await api.executeDistribution(iss.id, runID, { tx: tx.trim() })
+      setTx('')
+      onPaid()
+    } catch (e) {
+      setErr(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  if (outs.length === 0) {
+    return <p className="mt-3 text-sm text-ink-700/70">No holder has a payout to make in this run.</p>
+  }
+  return (
+    <div className="mt-4 rounded-xl border border-ink-900/10 bg-ink-900/[0.02] p-4">
+      <div className="text-sm font-semibold text-ink-900">
+        Pay {outs.length} holder{outs.length === 1 ? '' : 's'} in one transaction: {usdx(payout.total_atoms)}
+      </div>
+      <p className="mt-1 text-xs leading-relaxed text-ink-700/70">
+        Your own wallet funds and signs it: it adds your inputs, your change and the network fee,
+        in any asset the network accepts. Withheld amounts are not in it, so they stay with you.
+        Every holder&rsquo;s output must be in the signed transaction exactly as listed.
+      </p>
+      <div className="mt-2 divide-y divide-ink-900/5 rounded-lg border border-ink-900/10">
+        {outs.map((o) => (
+          <div key={o.holder_aid} className="flex items-center justify-between gap-3 px-3 py-1.5 text-xs">
+            <span className="font-mono text-ink-700/70">{o.address}</span>
+            <span className="font-mono text-ink-900">{usdx(o.atoms)}</span>
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-ink-700/60">1. Fund it</div>
+      <pre className="mt-1 max-h-28 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-ink-900/[0.04] p-2 font-mono text-[10px] text-ink-800">
+        {payout.fund_command}
+      </pre>
+      <div className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-ink-700/60">2. Sign it</div>
+      <pre className="mt-1 whitespace-pre-wrap break-all rounded-lg bg-ink-900/[0.04] p-2 font-mono text-[10px] text-ink-800">
+        {payout.sign_command}
+      </pre>
+      <div className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-ink-700/60">3. Send it back</div>
+      <textarea className="input mt-1 font-mono text-xs" rows={3} spellCheck={false}
+        placeholder="the signed transaction hex" value={tx} onChange={(e) => setTx(e.target.value)} />
+      <button onClick={submit} disabled={busy || !tx.trim()} className="btn-primary mt-2 disabled:opacity-50">
+        <Icon.coins width={16} height={16} />
+        {busy ? 'Checking' : 'Check and broadcast the payout'}
+      </button>
+      {err && <p className="mt-2 text-xs font-medium text-rose-600">{err}</p>}
+    </div>
+  )
+}
+
 // A single run, polled so funding and payment state advance live from the server.
 function RunPanel({ iss, runID, confsHint, onClose }) {
   const { data, refresh } = usePoll(() => api.getDistribution(iss.id, runID), {
@@ -159,6 +226,7 @@ function RunPanel({ iss, runID, confsHint, onClose }) {
   })
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
+  const [payout, setPayout] = useState(null)
 
   const d = data?.distribution
   const payments = data?.payments || []
@@ -240,7 +308,26 @@ function RunPanel({ iss, runID, confsHint, onClose }) {
         </div>
       )}
 
-      {/* Stage 2: funded, ready to snapshot */}
+      {/* Stage 1: open, ready to snapshot */}
+      {d.state === 'open' && (
+        <div className="mt-4 rounded-lg border border-ink-900/10 bg-ink-900/[0.02] px-4 py-3">
+          <p className="text-xs text-ink-700/80">
+            Take the record-date snapshot to capture the holder set from the chain at the current
+            Sequentia block height. The snapshot is immutable once taken. You pay the holders
+            afterwards, from your own wallet.
+          </p>
+          <button
+            onClick={() => act(() => api.snapshotDistribution(iss.id, runID))}
+            disabled={busy}
+            className="btn-primary mt-3 disabled:opacity-60"
+          >
+            <Icon.users width={16} height={16} />
+            {busy ? 'Capturing…' : 'Take record-date snapshot'}
+          </button>
+        </div>
+      )}
+
+      {/* Legacy: funded from a servicing deposit, ready to snapshot */}
       {d.state === 'funded' && (
         <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
           <div className="flex items-center gap-2 text-sm font-medium text-emerald-700">
@@ -275,7 +362,7 @@ function RunPanel({ iss, runID, confsHint, onClose }) {
       {(d.state === 'snapshotted' || d.state === 'paying' || d.state === 'complete') && (
         <div className="mt-4">
           <PaymentsTable d={d} payments={payments} />
-          {(d.state === 'snapshotted' || d.state === 'paying') && (
+          {(d.state === 'snapshotted' || d.state === 'paying') && d.deposit_address && (
             <button
               onClick={() => act(() => api.executeDistribution(iss.id, runID))}
               disabled={busy}
@@ -289,10 +376,50 @@ function RunPanel({ iss, runID, confsHint, onClose }) {
                   : 'Execute net USDX payouts'}
             </button>
           )}
+          {d.state === 'snapshotted' && !d.deposit_address && !payout && (
+            <button
+              onClick={() =>
+                act(async () => {
+                  const res = await api.executeDistribution(iss.id, runID)
+                  setPayout(res.payout || null)
+                })
+              }
+              disabled={busy}
+              className="btn-primary mt-3 disabled:opacity-60"
+            >
+              <Icon.coins width={16} height={16} />
+              {busy ? 'Preparing…' : 'Prepare the payout transaction'}
+            </button>
+          )}
+          {d.state === 'snapshotted' && !d.deposit_address && payout && (
+            <PayoutPanel
+              iss={iss}
+              runID={runID}
+              payout={payout}
+              onPaid={() => {
+                setPayout(null)
+                refresh()
+              }}
+            />
+          )}
+          {d.state === 'paying' && !d.deposit_address && (
+            <div className="mt-3 text-xs text-ink-700/75">
+              The payout {d.payout_txid ? <CopyId value={d.payout_txid} kind="tx" label="payout txid" /> : null}{' '}
+              is recorded and on its way.
+              <button
+                onClick={() => act(() => api.executeDistribution(iss.id, runID))}
+                disabled={busy}
+                className="btn-outline ml-2 text-xs disabled:opacity-60"
+              >
+                Broadcast it again
+              </button>
+            </div>
+          )}
           {d.state === 'complete' && (
             <div className="mt-3 space-y-2">
               <div className="flex items-center gap-2 text-sm font-medium text-emerald-700">
-                <Icon.check width={16} height={16} /> Run complete. Net paid on chain in USDX.
+                <Icon.check width={16} height={16} /> Run complete. Net paid on chain in USDX
+                {d.payout_txid ? ', every holder in one transaction' : ''}.
               </div>
               <div className="flex flex-wrap gap-3 text-sm">
                 {d.withholding_hash && (
@@ -400,7 +527,7 @@ function CreateForm({ iss, onCreated, onCancel }) {
         {err && <p className="text-sm font-medium text-rose-600">{err}</p>}
         <div className="flex gap-2">
           <button onClick={create} disabled={busy} className="btn-primary disabled:opacity-60">
-            {busy ? 'Creating…' : 'Create run and show funding invoice'}
+            {busy ? 'Creating…' : 'Create run'}
           </button>
           <button onClick={onCancel} className="btn-outline">
             Cancel
@@ -437,11 +564,11 @@ export default function DistributionConsole({ iss }) {
         </Badge>
       </div>
       <p className="mt-1.5 text-sm leading-relaxed text-ink-700/70">
-        Run a real USDX distribution to holders of record. Fund the servicing deposit, snapshot the
-        on-chain register at a Sequentia block height, review the pro-rata and withholding table,
-        then pay each holder their net on chain to the payout address they registered. A holder
-        with no registered mandate is skipped with a portal notice, never paid to a guessed
-        address.
+        Run a real USDX distribution to holders of record. Snapshot the on-chain register at a
+        Sequentia block height, review the pro-rata and withholding table, then pay every holder
+        their net in one transaction that your own wallet funds and signs, to the payout address
+        each registered. Nothing is deposited with SeqPal. A holder with no registered mandate is
+        skipped with a portal notice, never paid to a guessed address.
       </p>
 
       {mode === 'create' && (

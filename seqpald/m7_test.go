@@ -1,10 +1,13 @@
 package main
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ConcatenaLabs/SeqPal/seqpald/elements"
 )
 
 // M7 (transfer-agent servicing) tests, the tests-owner deliverable. They reuse
@@ -14,13 +17,14 @@ import (
 // register/deploy helpers.
 //
 // COVERAGE
-//  1. Distribution engine: a run BLOCKS until funded; the record-date snapshot
+//  1. Distribution engine: no deposit is taken; the record-date snapshot
 //     captures the chain holder set + Sequentia height and is immutable; pro-rata
 //     floors exactly and discloses dust; sum(gross)==sum(net)+sum(withheld); NET
-//     is paid to each holder's registered mandate; a holder with no mandate is
-//     SKIPPED (never paid to a guessed address); a replayed execute pays each
-//     holder exactly once, and a lost-write payout is reconciled by its marker
-//     comment before any retry (never a double-pay).
+//     is paid to each holder's registered mandate in ONE transaction the issuer's
+//     wallet funds and signs, refused unless every holder's output is exact; a
+//     holder with no mandate is SKIPPED (never paid to a guessed address); a
+//     replayed execute pays each holder exactly once, and a lost-write payout is
+//     healed by broadcasting the recorded bytes again (never a double-pay).
 //  2. Investor mandate: an enclave (2-of-2) address is rejected; an ordinary
 //     address with a valid tagged BIP340 signature is accepted; a bad signature
 //     is rejected.
@@ -89,13 +93,14 @@ func (h *m5h) regHolder(name, residence string) string {
 // 1. Distribution engine.
 // ===========================================================================
 
-// TestM7Distribution_BlocksUntilFundedThenPaysNetToMandates is the end-to-end
-// distribution proof: the run pays nothing until the servicing deposit confirms
-// and covers the pool; the snapshot captures the chain register at a Sequentia
-// height and is immutable; pro-rata floors with disclosed dust; withholding
-// reconciles (gross == net + withheld); each holder with a mandate is paid NET;
-// a holder with no mandate is skipped; and a replayed execute never double-pays.
-func TestM7Distribution_BlocksUntilFundedThenPaysNetToMandates(t *testing.T) {
+// TestM7Distribution_PaysEveryHolderInOneIssuerFundedTx is the end-to-end
+// distribution proof: no deposit is taken; the snapshot captures the chain
+// register at a Sequentia height and is immutable; pro-rata floors with
+// disclosed dust; withholding reconciles (gross == net + withheld); the payout
+// is ONE transaction the issuer's wallet funds and signs, accepted only when it
+// pays every holder with a mandate exactly its net; a holder with no mandate is
+// skipped; and a replayed execute never double-pays.
+func TestM7Distribution_PaysEveryHolderInOneIssuerFundedTx(t *testing.T) {
 	h := newM7Harness(t, m5opts{escrowConfs: 2})
 	issuerSession, _, _ := h.register(genPriv(t), "Issuer", "HN")
 	issID, assetID, _ := h.deployLivePrivate(issuerSession, "DIST", "HN", 1.0)
@@ -120,60 +125,28 @@ func TestM7Distribution_BlocksUntilFundedThenPaysNetToMandates(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create the run: awaiting_funding with a servicing deposit invoice for the pool.
+	// Create the run. The issuer pays from its own wallet, so there is no
+	// deposit to make and nothing to wait for.
 	cr := h.do("POST", "/api/issuances/"+issID+"/distributions", issuerSession, map[string]any{
 		"pool_atoms": 1000, "memo": "Q1 dividend",
 	})
 	if cr.code != 200 {
 		t.Fatalf("create distribution: %d %s", cr.code, cr.errMsg())
 	}
-	depAddr, _ := cr.body["deposit_address"].(string)
 	dObj, _ := cr.body["distribution"].(map[string]any)
 	runID, _ := dObj["id"].(string)
-	if depAddr == "" || runID == "" {
-		t.Fatalf("create returned no deposit address / run id: %s", cr.raw)
+	if runID == "" || cr.body["deposit_address"] != nil || dObj["deposit_address"] != nil {
+		t.Fatalf("create returned a deposit address or no run id: %s", cr.raw)
 	}
-	if st, _ := dObj["state"].(string); st != "awaiting_funding" {
-		t.Fatalf("new run state = %q, want awaiting_funding", st)
+	if st, _ := dObj["state"].(string); st != "open" {
+		t.Fatalf("new run state = %q, want open", st)
 	}
 	if pc, _ := cr.body["pay_ccy"].(string); pc != "USDX" {
 		t.Fatalf("pay_ccy = %v, want USDX", cr.body["pay_ccy"])
 	}
-
-	// BLOCKED before funding: snapshot and execute both 409.
-	if snap := h.do("POST", "/api/issuances/"+issID+"/distributions/"+runID+"/snapshot", issuerSession, nil); snap.code != 409 {
-		t.Fatalf("snapshot before funding = %d, want 409 (%s)", snap.code, snap.raw)
-	}
+	// Nothing to execute before the record date is fixed.
 	if ex := h.do("POST", "/api/issuances/"+issID+"/distributions/"+runID+"/execute", issuerSession, nil); ex.code != 409 {
-		t.Fatalf("execute before funding = %d, want 409 (%s)", ex.code, ex.raw)
-	}
-
-	// A shallow (1-conf) deposit must NOT fund it (nothing final at 0-conf).
-	h.seq.credit(depAddr, 1000, 1, m5USDX)
-	h.s.watchDistributionDeposits()
-	if got, _ := h.s.st.DistributionByID(runID); got.State != "awaiting_funding" {
-		t.Fatalf("run funded at 1 conf (need 2): state=%q", got.State)
-	}
-
-	// A confirmed but UNDER-funded deposit stays blocked (audit-logged, pays nothing).
-	h.seq.credit(depAddr, 500, 2, m5USDX)
-	h.s.watchDistributionDeposits()
-	if got, _ := h.s.st.DistributionByID(runID); got.State != "awaiting_funding" {
-		t.Fatalf("run funded on an under-funded deposit: state=%q", got.State)
-	}
-	if h.seq.sendCount() != 0 {
-		t.Fatalf("a blocked run paid out: sends=%d, want 0", h.seq.sendCount())
-	}
-
-	// Fully funded at the required depth: the run advances to funded.
-	h.seq.credit(depAddr, 1000, 2, m5USDX)
-	h.s.watchDistributionDeposits()
-	funded, _ := h.s.st.DistributionByID(runID)
-	if funded.State != "funded" {
-		t.Fatalf("run state after full funding = %q, want funded", funded.State)
-	}
-	if funded.FundedAtoms != 1000 || funded.FundedTxid == "" {
-		t.Fatalf("funded fields = atoms %d txid %q, want 1000 and a txid", funded.FundedAtoms, funded.FundedTxid)
+		t.Fatalf("execute before the snapshot = %d, want 409 (%s)", ex.code, ex.raw)
 	}
 
 	// Snapshot: capture the register at the Sequentia height, compute pro-rata +
@@ -243,32 +216,61 @@ func TestM7Distribution_BlocksUntilFundedThenPaysNetToMandates(t *testing.T) {
 		}
 	}
 
-	// Execute: pay NET to each mandate; C (no mandate) is skipped, not paid.
-	ex := h.do("POST", "/api/issuances/"+issID+"/distributions/"+runID+"/execute", issuerSession, nil)
+	// Execute without a transaction: the payout -- one output per holder with a
+	// mandate, net of withholding -- and C (no mandate) skipped, not paid.
+	plan := h.payoutPlan(issuerSession, issID, runID)
+	if len(plan.outputs) != 2 {
+		t.Fatalf("payout outputs = %d, want 2 (C has no mandate): %v", len(plan.outputs), plan.outputs)
+	}
+	want := map[string]uint64{fakeSPK("seq-payout-a"): 333, fakeSPK("seq-payout-b"): 284}
+	for _, o := range plan.outputs {
+		if want[o.spk] != o.atoms {
+			t.Fatalf("planned output %d to %s, want %v", o.atoms, o.spk, want)
+		}
+	}
+	// A transaction short-changing a holder, or missing one, or paying another
+	// script, is refused: nothing broadcast, the rows still planned.
+	for name, bad := range map[string]func(*elements.Tx){
+		"one atom less":  func(tx *elements.Tx) { v, _ := elements.ExplicitValueAmount(tx.Out[0].Value); tx.Out[0].Value = elements.ExplicitValue(v - 1) },
+		"missing holder": func(tx *elements.Tx) { tx.Out = tx.Out[1:] },
+		"other script":   func(tx *elements.Tx) { s, _ := hex.DecodeString(fakeSPK("seq-thief")); tx.Out[0].ScriptPubKey = s },
+	} {
+		r := h.postPayout(issuerSession, issID, runID, h.issuerFunds(plan.unfunded, bad))
+		if r.code != 400 || h.seq.broadcastCount() != 0 {
+			t.Fatalf("%s: execute = %d, broadcasts %d (%s)", name, r.code, h.seq.broadcastCount(), r.raw)
+		}
+	}
+	for _, p := range mustRows(t, h, runID) {
+		if (p.HolderAID == aidA || p.HolderAID == aidB) && p.State != "planned" {
+			t.Fatalf("after refusals holder %s is %q, want planned", shortAID(p.HolderAID), p.State)
+		}
+	}
+	signed := h.issuerFunds(plan.unfunded, nil)
+	ex := h.postPayout(issuerSession, issID, runID, signed)
 	if ex.code != 200 {
 		t.Fatalf("execute: %d %s", ex.code, ex.errMsg())
 	}
 	d, _ = h.s.st.DistributionByID(runID)
-	if d.State != "complete" {
-		t.Fatalf("state after execute = %q, want complete", d.State)
+	if d.State != "complete" || d.PayoutTxid == "" {
+		t.Fatalf("state after execute = %q txid %q, want complete with the payout txid", d.State, d.PayoutTxid)
 	}
-	// Two on-chain payouts (A and B); C skipped.
-	if h.seq.sendCount() != 2 {
-		t.Fatalf("payout sends = %d, want 2 (C has no mandate)", h.seq.sendCount())
+	// ONE transaction paid every holder; no wallet sent anything.
+	if h.seq.broadcastCount() != 1 || h.seq.sendCount() != 0 {
+		t.Fatalf("broadcasts = %d, wallet sends = %d, want 1 and 0", h.seq.broadcastCount(), h.seq.sendCount())
 	}
-	// A paid net 333 to its mandate; B paid net 284; each tagged with its marker.
-	if got := h.seq.sendsMatching("seq-payout-a", 333, distMarker(runID, aidA)); got != 1 {
-		t.Fatalf("holder A payout = %d, want exactly one net-333 send to seq-payout-a with its marker", got)
-	}
-	if got := h.seq.sendsMatching("seq-payout-b", 284, distMarker(runID, aidB)); got != 1 {
-		t.Fatalf("holder B payout = %d, want exactly one net-284 send to seq-payout-b with its marker", got)
-	}
+	paid, _ := decodeHexTx(h.seq.txHex(d.PayoutTxid))
 	rows, _ = h.s.st.DistPaymentsByRun(runID)
+	seen := map[int]bool{}
 	for _, p := range rows {
 		switch p.HolderAID {
 		case aidA, aidB:
-			if p.State != "paid" || p.Txid == "" {
-				t.Fatalf("holder %s state=%q txid=%q, want paid with a txid", p.HolderAID, p.State, p.Txid)
+			if p.State != "paid" || p.Txid != d.PayoutTxid || p.Vout < 0 || seen[p.Vout] {
+				t.Fatalf("holder %s = %+v, want paid by the one txid at its own output", p.HolderAID, p)
+			}
+			seen[p.Vout] = true
+			v, _ := elements.ExplicitValueAmount(paid.Out[p.Vout].Value)
+			if v != p.NetAtoms || hex.EncodeToString(paid.Out[p.Vout].ScriptPubKey) != fakeSPK(p.MandateAddress) {
+				t.Fatalf("holder %s output %d pays %d to %x", p.HolderAID, p.Vout, v, paid.Out[p.Vout].ScriptPubKey)
 			}
 		case aidC:
 			if p.State != "skipped" || p.Txid != "" {
@@ -284,22 +286,94 @@ func TestM7Distribution_BlocksUntilFundedThenPaysNetToMandates(t *testing.T) {
 	if d.WithholdingHash == "" || d.StatementHash == "" || d.CRSHash == "" {
 		t.Fatalf("completion did not produce the artifact hashes: %+v", d)
 	}
-
 	// IDEMPOTENCY: a replayed execute must not pay anyone a second time.
-	ex2 := h.do("POST", "/api/issuances/"+issID+"/distributions/"+runID+"/execute", issuerSession, nil)
-	if ex2.code != 200 {
-		t.Fatalf("replay execute: %d %s", ex2.code, ex2.errMsg())
+	if ex2 := h.postPayout(issuerSession, issID, runID, signed); ex2.code != 200 || h.seq.broadcastCount() != 1 {
+		t.Fatalf("replay execute: %d, broadcasts %d", ex2.code, h.seq.broadcastCount())
 	}
-	if h.seq.sendCount() != 2 {
-		t.Fatalf("replayed execute double-paid: sends=%d, want still 2", h.seq.sendCount())
+	for _, m := range h.seq.walletCallsOf(seqEscrowWallet) {
+		if m == "sendtoaddress" || m == "getnewaddress" || m == "listunspent" {
+			t.Fatalf("the platform wallet was asked for %s on a distribution", m)
+		}
 	}
 }
 
-// TestM7Distribution_ReconcilesLostPayoutByMarker proves the per-holder payout is
-// reconciled before retry: a settlement stuck in "paying" with no recorded txid,
-// whose send already broadcast (seeded under its marker comment), is recovered by
-// escrowFindSend rather than re-broadcast from the commingled servicing wallet.
-func TestM7Distribution_ReconcilesLostPayoutByMarker(t *testing.T) {
+type payoutPlanOut struct {
+	unfunded string
+	outputs  []struct {
+		spk   string
+		atoms uint64
+	}
+}
+
+func (h *m5h) payoutPlan(session, issID, runID string) payoutPlanOut {
+	h.t.Helper()
+	r := h.do("POST", "/api/issuances/"+issID+"/distributions/"+runID+"/execute", session, nil)
+	if r.code != 200 {
+		h.t.Fatalf("execute (plan): %d %s", r.code, r.raw)
+	}
+	payout, _ := r.body["payout"].(map[string]any)
+	var p payoutPlanOut
+	p.unfunded, _ = payout["unfunded_tx"].(string)
+	outs, _ := payout["outputs"].([]any)
+	for _, o := range outs {
+		m := o.(map[string]any)
+		p.outputs = append(p.outputs, struct {
+			spk   string
+			atoms uint64
+		}{m["script_pubkey"].(string), uint64(m["atoms"].(float64))})
+	}
+	if p.unfunded == "" {
+		h.t.Fatalf("plan has no unfunded transaction: %s", r.raw)
+	}
+	return p
+}
+
+// issuerFunds plays the issuer's wallet: fundrawtransaction (an input of the
+// issuer's own coin, change, and a fee output in the distribution's asset) and
+// signrawtransactionwithwallet (the fake chain takes an ordinary coin's
+// signature as given). tamper, when set, edits the outputs first.
+func (h *m5h) issuerFunds(unfunded string, tamper func(*elements.Tx)) string {
+	h.t.Helper()
+	tx, err := decodeHexTx(unfunded)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	if tamper != nil {
+		tamper(tx)
+	}
+	var total uint64
+	for _, o := range tx.Out {
+		v, _ := elements.ExplicitValueAmount(o.Value)
+		total += v
+	}
+	issuerSPK := fakeSPK("seq-issuer-own-wallet")
+	txid, vout := h.seq.addCoin(issuerSPK, m5USDX, total+100000)
+	op, _ := outpointOf(txid, vout)
+	tx.In = append(tx.In, &elements.TxIn{Prevout: op, Sequence: 0xffffffff})
+	change, _ := hex.DecodeString(issuerSPK)
+	co, _ := newTxOut(m5USDX, 100000-500, change)
+	fo, _ := newTxOut(m5USDX, 500, nil)
+	tx.Out = append(tx.Out, co, fo)
+	return hex.EncodeToString(tx.Serialize())
+}
+
+func (h *m5h) postPayout(session, issID, runID, tx string) resp {
+	return h.do("POST", "/api/issuances/"+issID+"/distributions/"+runID+"/execute", session, map[string]any{"tx": tx})
+}
+
+func mustRows(t *testing.T, h *m5h, runID string) []*DistPayment {
+	rows, err := h.s.st.DistPaymentsByRun(runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rows
+}
+
+// TestM7Distribution_ReconcilesLostPayoutByTxid proves a payout whose intent
+// was written but whose broadcast never completed is healed by broadcasting the
+// SAME bytes again: one transaction, recorded before broadcast, can never pay a
+// holder twice, and a second execute never asks for another.
+func TestM7Distribution_ReconcilesLostPayoutByTxid(t *testing.T) {
 	h := newM7Harness(t, m5opts{escrowConfs: 1})
 	issuerSession, _, _ := h.register(genPriv(t), "Issuer", "HN")
 	issID, assetID, _ := h.deployLivePrivate(issuerSession, "RECON", "HN", 1.0)
@@ -314,31 +388,38 @@ func TestM7Distribution_ReconcilesLostPayoutByMarker(t *testing.T) {
 	cr := h.do("POST", "/api/issuances/"+issID+"/distributions", issuerSession, map[string]any{"pool_atoms": 1000})
 	dObj, _ := cr.body["distribution"].(map[string]any)
 	runID, _ := dObj["id"].(string)
-	depAddr, _ := cr.body["deposit_address"].(string)
-	h.seq.credit(depAddr, 1000, 1, m5USDX)
-	h.s.watchDistributionDeposits()
 	if snap := h.do("POST", "/api/issuances/"+issID+"/distributions/"+runID+"/snapshot", issuerSession, nil); snap.code != 200 {
 		t.Fatalf("snapshot: %d %s", snap.code, snap.errMsg())
 	}
-
-	// The single holder is US-person (0% withholding), so net == gross == pool 1000.
-	marker := distMarker(runID, aid)
-	if err := h.s.st.UpdateDistPaymentFields(runID, aid, map[string]any{"state": "paying"}); err != nil {
+	plan := h.payoutPlan(issuerSession, issID, runID)
+	signed := h.issuerFunds(plan.unfunded, nil)
+	tx, _ := decodeHexTx(signed)
+	txid := tx.TxID()
+	// The intent was recorded -- the bytes, the txid, the holder's output -- and
+	// then the process died before the broadcast.
+	if err := h.s.st.UpdateDistributionFields(runID, map[string]any{"state": "paying", "payout_tx": signed, "payout_txid": txid}); err != nil {
 		t.Fatal(err)
 	}
-	// A prior attempt already broadcast the payout but the write of its txid was lost.
-	h.seq.seedSend("seq-payout-solo", 1000, marker, "deadbeef00")
-
-	before := h.seq.sendCount()
-	if ex := h.do("POST", "/api/issuances/"+issID+"/distributions/"+runID+"/execute", issuerSession, nil); ex.code != 200 {
+	if err := h.s.st.UpdateDistPaymentFields(runID, aid, map[string]any{"state": "paying", "txid": txid, "vout": 0}); err != nil {
+		t.Fatal(err)
+	}
+	// A different transaction offered now is not what gets broadcast.
+	other := h.issuerFunds(plan.unfunded, nil)
+	if ex := h.postPayout(issuerSession, issID, runID, other); ex.code != 200 {
 		t.Fatalf("execute: %d %s", ex.code, ex.errMsg())
 	}
-	if h.seq.sendCount() != before {
-		t.Fatalf("lost-write payout re-broadcast: sends %d -> %d (must reconcile, not re-send)", before, h.seq.sendCount())
+	if h.seq.broadcastCount() != 1 || h.seq.txHex(txid) == "" {
+		t.Fatalf("lost write not healed with the recorded bytes: broadcasts %d", h.seq.broadcastCount())
 	}
 	rows, _ := h.s.st.DistPaymentsByRun(runID)
-	if len(rows) != 1 || rows[0].State != "paid" || rows[0].Txid != "deadbeef00" {
-		t.Fatalf("reconciled payment = %+v, want paid with the pre-broadcast txid", rows[0])
+	if len(rows) != 1 || rows[0].State != "paid" || rows[0].Txid != txid || rows[0].Vout != 0 {
+		t.Fatalf("reconciled payment = %+v, want paid by the recorded txid", rows[0])
+	}
+	if d, _ := h.s.st.DistributionByID(runID); d.State != "complete" {
+		t.Fatalf("run after reconcile = %q, want complete", d.State)
+	}
+	if ex := h.postPayout(issuerSession, issID, runID, other); ex.code != 200 || h.seq.broadcastCount() != 1 {
+		t.Fatalf("second execute: %d, broadcasts %d", ex.code, h.seq.broadcastCount())
 	}
 }
 

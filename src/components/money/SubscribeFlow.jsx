@@ -8,6 +8,73 @@ import { fmtRail, railMeta, subStateChip, refundHint } from '../../lib/money'
 import DepositBox from './DepositBox'
 import GateSteps from './GateSteps'
 
+// Where a USDX subscription's money is and what can happen to it, in the terms
+// the issuer fixed when it opened the escrow, and -- once the payment is there --
+// the finished refund transaction. That transaction needs nobody's signature
+// and is valid from the deadline, so the subscriber can keep it and broadcast it
+// themselves if the issuer and SeqPal both disappear.
+function EscrowTerms({ subId, escrow }) {
+  const { data } = usePoll(() => api.subscriptionEscrow(subId), { intervalMs: 15000, deps: [subId] })
+  const [copied, setCopied] = useState(false)
+  const t = data?.escrow || escrow?.terms
+  if (!t) return null
+  const refundTx = data?.refund_tx
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(refundTx)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1400)
+    } catch {
+      // Clipboard denied: the transaction text is still shown below.
+    }
+  }
+  return (
+    <div className="mt-4 rounded-xl border border-ink-900/10 bg-white p-4">
+      <div className="flex items-center gap-2 text-sm font-semibold text-ink-900">
+        <Icon.lock width={15} height={15} className="text-seq-600" />
+        What can happen to your money
+      </div>
+      <ul className="mt-2 space-y-1.5 text-xs leading-relaxed text-ink-700/80">
+        <li>
+          It goes to the issuer only after the close ({t.close_text}), and only in one release
+          that pays the issuer at least the offering&rsquo;s minimum of {fmtRail(t.minimum_atoms, 'USDX')}.
+          The issuer signs that release in its own wallet; SeqPal cannot move the money.
+        </li>
+        <li>
+          SeqPal delivers your tokens before it asks the issuer to sign the release. The network
+          itself cannot see the tokens, so delivering them is SeqPal&rsquo;s job, done from the
+          offering&rsquo;s escrow with the policy server.
+        </li>
+        <li>
+          The issuer can return it to your refund address at any time. From the deadline,{' '}
+          {t.deadline_text}, anyone can, with no signature at all, and SeqPal does it for every
+          subscription whose tokens were not delivered.
+        </li>
+        <li>
+          A return keeps back only its network fee, at most {fmtRail(t.fee_cap, 'USDX')}. The
+          platform&rsquo;s escrow fee is never taken from a refund.
+        </li>
+      </ul>
+      {refundTx && (
+        <div className="mt-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wide text-ink-700/60">
+              Your refund transaction
+            </span>
+            <button type="button" onClick={copy} className="text-xs font-medium text-seq-600 hover:underline">
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+          </div>
+          <pre className="mt-1 max-h-28 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-ink-900/[0.04] p-2 font-mono text-[10px] text-ink-800">
+            {refundTx}
+          </pre>
+          <p className="mt-1 text-[11px] leading-relaxed text-ink-700/60">{data?.refund_note}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // The escrow-state panel for a live subscription. It polls the caller's own
 // subscriptions (seqpald is authoritative; the deposit watcher advances state
 // server-side) and, for a SIMULATED fiat payment, polls the checkout. Nothing is
@@ -87,8 +154,9 @@ function EscrowState({ subId, rail, checkoutId }) {
       )}
       <p className="mt-3 text-[11px] leading-relaxed text-ink-700/55">
         Your tokens are delivered to your SeqPal ID enclave only when the issuer closes the
-        offering. Until then the funds sit in a segregated escrow; nothing is delivered and
-        nothing is final at 0 confirmations.
+        offering. Until then the funds stay in escrow: on USDX at an address of your own
+        subscription that no SeqPal wallet holds a key to; on native BTC in a segregated wallet
+        SeqPal holds. Nothing is delivered and nothing is final at 0 confirmations.
       </p>
     </div>
   )
@@ -149,6 +217,7 @@ export default function SubscribeFlow({ offering, issuanceId }) {
             payCcy={result.pay_ccy}
             confsRequired={result.confs_required}
             registrarNote={result.registrar_note}
+            escrow={!!result.escrow}
           />
         ) : checkout ? (
           <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4">
@@ -173,6 +242,7 @@ export default function SubscribeFlow({ offering, issuanceId }) {
           </div>
         ) : null}
         {subId && <EscrowState subId={subId} rail={rail} checkoutId={checkout?.id} />}
+        {subId && result.escrow && <EscrowTerms subId={subId} escrow={result.escrow} />}
         <button
           onClick={() => {
             setResult(null)
@@ -269,8 +339,8 @@ export default function SubscribeFlow({ offering, issuanceId }) {
         />
         {hint.required && (
           <p className="mt-1 text-[11px] text-ink-700/60">
-            Validated on the {rail === 'btc' ? 'Bitcoin testnet4' : 'Sequentia'} network. A failed
-            close refunds your deposit here.
+            Validated on the {rail === 'btc' ? 'Bitcoin testnet4' : 'Sequentia'} network. If the
+            offering does not close, or your tokens cannot be delivered, your payment comes back here.
           </p>
         )}
       </div>

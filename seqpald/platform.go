@@ -341,6 +341,16 @@ func (s *server) handleMandate(w http.ResponseWriter, r *http.Request) {
 	}
 	chain := strings.ToLower(strings.TrimSpace(req.Chain))
 	addr := strings.TrimSpace(req.Address)
+	// Once the escrow is open, every subscription address commits to the payout
+	// script it named, and the release can pay nothing else. A new mandate
+	// would only appear to change where the raise goes.
+	if chain == "sequentia" {
+		if t, _ := s.st.EscrowTermsByIssuance(iss.ID); t != nil && t.IssuerAddress != addr {
+			writeErr(w, 409, "this offering's escrow is open and releases to %s, which every subscription "+
+				"address commits to; the Sequentia payout mandate cannot change", t.IssuerAddress)
+			return
+		}
+	}
 	switch chain {
 	case "sequentia":
 		if err := s.validateSeqAddress(addr); err != nil {

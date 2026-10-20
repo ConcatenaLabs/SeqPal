@@ -42,20 +42,28 @@ type Subscription struct {
 	USDRate    float64 `json:"usd_rate,omitempty"` // captured USD/BTC at confirmation (btc rail)
 	CreatedAt  int64   `json:"created_at"`
 	UpdatedAt  int64   `json:"updated_at"`
+	// The escrow covenant (Sequentia rail): the scriptPubKey of this
+	// subscription's own escrow address, the scriptPubKey its refund returns
+	// to, and the SUBSCRIPTION parameter that gives it its own address. Empty
+	// on every other rail.
+	EscrowSPK string `json:"escrow_spk,omitempty"`
+	RefundSPK string `json:"refund_spk,omitempty"`
+	EscrowRef string `json:"escrow_ref,omitempty"`
 }
 
 const subCols = `id, issuance_id, investor_aid, rail, token_atoms, pay_amount, pay_ccy,
     deposit_address, refund_address, state, funds_simulated, deposit_txid, confirmations,
-    deposited_atoms, usd_rate, escrow_from, created_at, updated_at`
+    deposited_atoms, usd_rate, escrow_from, created_at, updated_at, escrow_spk, refund_spk, escrow_ref`
 
 func (s *Store) InsertSubscription(sub *Subscription) error {
 	now := time.Now().Unix()
 	sub.CreatedAt, sub.UpdatedAt = now, now
 	_, err := s.db.Exec(
-		`INSERT INTO subscriptions (`+subCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		`INSERT INTO subscriptions (`+subCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		sub.ID, sub.IssuanceID, sub.InvestorAID, sub.Rail, sub.TokenAtoms, sub.PayAmount, sub.PayCcy,
 		sub.DepositAddress, sub.RefundAddress, sub.State, boolInt(sub.FundsSimulated), sub.DepositTxid,
-		sub.Confirmations, sub.DepositedAtoms, sub.USDRate, sub.EscrowFrom, sub.CreatedAt, sub.UpdatedAt)
+		sub.Confirmations, sub.DepositedAtoms, sub.USDRate, sub.EscrowFrom, sub.CreatedAt, sub.UpdatedAt,
+		sub.EscrowSPK, sub.RefundSPK, sub.EscrowRef)
 	return err
 }
 
@@ -116,7 +124,8 @@ func scanSubInto(sc scanner) (*Subscription, error) {
 	var simulated int
 	err := sc.Scan(&sub.ID, &sub.IssuanceID, &sub.InvestorAID, &sub.Rail, &sub.TokenAtoms, &sub.PayAmount,
 		&sub.PayCcy, &sub.DepositAddress, &sub.RefundAddress, &sub.State, &simulated, &sub.DepositTxid,
-		&sub.Confirmations, &sub.DepositedAtoms, &sub.USDRate, &sub.EscrowFrom, &sub.CreatedAt, &sub.UpdatedAt)
+		&sub.Confirmations, &sub.DepositedAtoms, &sub.USDRate, &sub.EscrowFrom, &sub.CreatedAt, &sub.UpdatedAt,
+		&sub.EscrowSPK, &sub.RefundSPK, &sub.EscrowRef)
 	if err != nil {
 		return nil, err
 	}

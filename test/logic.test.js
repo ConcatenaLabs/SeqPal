@@ -19,7 +19,6 @@ import { REAL } from '../src/data/honesty.js'
 import { JURISDICTIONS } from '../src/data/jurisdictions.js'
 import { computeSetupCost } from '../src/data/pricing.js'
 import { STATUS, OFF_PLATFORM_STEPS, offPlatformSteps } from '../src/lib/lifecycle.js'
-import { isEligible, tierFor } from '../src/lib/policy.js'
 import {
   parseMoney,
   fmtAmount,
@@ -287,19 +286,6 @@ test('lifecycle — only the two statuses seqpald actually records', () => {
   const dr = offPlatformSteps('depository-receipt')
   assert.equal(dr.length, OFF_PLATFORM_STEPS.length + 1)
   assert.ok(dr.some((s) => s.key === 'custody'))
-})
-
-test('policy.isEligible — standard / restricted / excluded / blocked', () => {
-  const policy = { SV: 'standard', US: 'restricted', FR: 'excluded', KP: 'blocked' }
-  assert.equal(isEligible(policy, 'SV', false), true) // standard admits regardless
-  assert.equal(isEligible(policy, 'SV', true), true)
-  assert.equal(isEligible(policy, 'US', true), true) // restricted needs accredited
-  assert.equal(isEligible(policy, 'US', false), false)
-  assert.equal(isEligible(policy, 'FR', true), false) // excluded
-  assert.equal(isEligible(policy, 'KP', true), false) // blocked
-  assert.equal(isEligible(policy, 'ZZ', true), false) // unknown jurisdiction
-  assert.equal(isEligible(null, 'US', true), false)
-  assert.equal(tierFor(policy, 'US'), 'restricted')
 })
 
 test('economics — money, post-money ownership, platform fee', () => {

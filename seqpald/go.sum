@@ -1,3 +1,5 @@
+github.com/ConcatenaLabs/sequentia-contracts/mirrors/go v0.0.0-20261020161610-e94ab989ee1d h1:kNKnsSCNc1OlKcK6sJ+6n4MFnEGBH1M7rf4KvuhvVOM=
+github.com/ConcatenaLabs/sequentia-contracts/mirrors/go v0.0.0-20261020161610-e94ab989ee1d/go.mod h1:5jR2E32go/g99VLuahpmBjTyHNcGBqm2SjCuSfUEPTQ=
 github.com/btcsuite/btcd/btcec/v2 v2.5.0 h1:KioMXOWa76b86sTZZOmbzv/ldaQCmB8KFAyn5PbB8E8=
 github.com/btcsuite/btcd/btcec/v2 v2.5.0/go.mod h1:+K/MYXcLBtHEQjRbjHuJChuybk4LCgjdjgRwil+e+Kk=
 github.com/btcsuite/btcd/chainhash/v2 v2.0.0 h1:PMLlSloHJuEeB80XG9EjpXWNEKAZAMLl6YHZ6YsEuoA=

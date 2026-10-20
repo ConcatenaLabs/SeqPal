@@ -51,7 +51,8 @@ ships in `src/lib/statements.js` (MARKET_ABUSE_TAG, LISTING_TAG), so the driver 
 what a real holder's wallet produces. It exercises the platform against a configurable base URL
 (default the live box `https://sequentiatestnet.com`, paths `/seqpal/api/*` and `/openamp/v1/*`)
 and produces the deferred proofs, each printing the on-chain txid / evidence:
-- M6: an ATOMIC USDX close, ONE tx delivering restricted tokens to the investor enclave AND USDX
+- M6: an ATOMIC USDX close (for a subscription paid into `seqpal-escrow`; one held by the escrow
+  covenant settles by `M14-CONTRACT.md`), ONE tx delivering restricted tokens to the investor enclave AND USDX
   to the issuer mandate (assert delivery_txid == release_txid, both legs in one tx).
 - M7: a pro-rata USDX distribution with per-holder txids paying registered mandate addresses,
   `sum(gross)==sum(net)+sum(withheld)`; a clawback sweep txid with its reason in `/openamp/v1/log`;

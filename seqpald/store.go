@@ -1200,6 +1200,76 @@ UPDATE subscriptions SET escrow_from = COALESCE((
 ), updated_at)
 WHERE deposited_atoms > 0;
 `,
+	// The subscription escrow covenant. A subscription on the Sequentia rail is
+	// paid to an address of its own, a covenant output no wallet of this
+	// platform holds a key to: the issuer's key releases it after the close and
+	// only into a transaction paying the issuer at least the minimum, the
+	// issuer's key returns it to the subscriber at any time, and after the
+	// deadline anyone returns it. escrow_terms fixes what every subscription
+	// address of an offering is derived from, once and for all: changing any of
+	// it would orphan every coin already paid. escrow_coins records the coins
+	// seen at those addresses, and escrow_spends is the intent record for each
+	// transaction that spends them, written before it is broadcast.
+	//
+	// A distribution becomes one transaction the issuer's own wallet funds and
+	// signs; the run keeps that transaction, so a lost write is healed by
+	// broadcasting the very same bytes again, and every holder's row keeps the
+	// output that paid it.
+	`
+CREATE TABLE escrow_terms (
+    issuance_id    TEXT PRIMARY KEY,
+    pay_asset      TEXT    NOT NULL,
+    release_key    TEXT    NOT NULL,
+    issuer_address TEXT    NOT NULL,
+    issuer_spk     TEXT    NOT NULL,
+    minimum_atoms  INTEGER NOT NULL,
+    close_lock     INTEGER NOT NULL,
+    deadline_lock  INTEGER NOT NULL,
+    fee_cap        INTEGER NOT NULL,
+    template_hash  TEXT    NOT NULL,
+    signature      TEXT    NOT NULL DEFAULT '',
+    created_at     INTEGER NOT NULL,
+    updated_at     INTEGER NOT NULL DEFAULT 0
+);
+ALTER TABLE subscriptions ADD COLUMN escrow_spk TEXT NOT NULL DEFAULT '';
+ALTER TABLE subscriptions ADD COLUMN refund_spk TEXT NOT NULL DEFAULT '';
+ALTER TABLE subscriptions ADD COLUMN escrow_ref TEXT NOT NULL DEFAULT '';
+CREATE INDEX idx_subs_escrow_spk ON subscriptions(escrow_spk) WHERE escrow_spk != '';
+CREATE TABLE escrow_coins (
+    txid            TEXT    NOT NULL,
+    vout            INTEGER NOT NULL,
+    subscription_id TEXT    NOT NULL,
+    issuance_id     TEXT    NOT NULL,
+    asset           TEXT    NOT NULL,
+    atoms           INTEGER NOT NULL,
+    height          INTEGER NOT NULL DEFAULT 0,
+    spent_txid      TEXT    NOT NULL DEFAULT '',
+    created_at      INTEGER NOT NULL,
+    updated_at      INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (txid, vout)
+);
+CREATE INDEX idx_escrow_coins_sub ON escrow_coins(subscription_id);
+CREATE TABLE escrow_spends (
+    id            TEXT PRIMARY KEY,
+    issuance_id   TEXT    NOT NULL,
+    kind          TEXT    NOT NULL,
+    state         TEXT    NOT NULL,
+    txid          TEXT    NOT NULL,
+    unsigned_tx   TEXT    NOT NULL,
+    signed_tx     TEXT    NOT NULL DEFAULT '',
+    inputs        TEXT    NOT NULL,
+    detail        TEXT    NOT NULL DEFAULT '',
+    error         TEXT    NOT NULL DEFAULT '',
+    created_at    INTEGER NOT NULL,
+    updated_at    INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX idx_escrow_spends_issuance ON escrow_spends(issuance_id);
+CREATE INDEX idx_escrow_spends_state ON escrow_spends(state);
+ALTER TABLE distributions ADD COLUMN payout_txid TEXT NOT NULL DEFAULT '';
+ALTER TABLE distributions ADD COLUMN payout_tx TEXT NOT NULL DEFAULT '';
+ALTER TABLE distribution_payments ADD COLUMN vout INTEGER NOT NULL DEFAULT -1;
+ALTER TABLE distribution_payments ADD COLUMN mandate_spk TEXT NOT NULL DEFAULT '';
+`,
 }
 
 // Store is seqpald's persistent state. Every financial fact the UI shows is

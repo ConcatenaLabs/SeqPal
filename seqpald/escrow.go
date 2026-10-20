@@ -238,7 +238,7 @@ func (s *server) releaseAsset(address string, atoms uint64, comment, asset strin
 	// src/wallet/rpc/spend.cpp: address, amount, comment, comment_to,
 	// subtractfeefromamount, replaceable, conf_target, estimate_mode,
 	// avoid_reuse, assetlabel, ignoreblindfail, fee_rate, fee_asset_label.
-	feeAsset, ferr := s.escrowFeeAsset()
+	feeAsset, ferr := s.escrowFeeAsset(asset)
 	if ferr != nil {
 		return "", ferr
 	}
@@ -352,23 +352,34 @@ func atomsFromNumber(n json.Number) uint64 {
 	return total
 }
 
-// escrowFeeAsset names the asset escrow sends pay their network fee in.
-// SEQPALD_FEE_ASSET overrides; the fallback is the node's "bitcoin" label
-// (tSEQ on the testnet), which the escrow wallet is kept funded in.
-func (s *server) escrowFeeAsset() (string, error) {
+// escrowFeeAsset names the asset an escrow-wallet send pays its network fee
+// in: SEQPALD_FEE_ASSET where a deployment names one, and otherwise the asset
+// being sent. The open fee market has no default fee asset and no privileged
+// one, so a send never falls back to the policy asset.
+func (s *server) escrowFeeAsset(moved string) (string, error) {
 	if v := os.Getenv("SEQPALD_FEE_ASSET"); v != "" {
 		return v, nil
 	}
-	res, err := s.nodeRPC("dumpassetlabels")
+	if moved == "" {
+		return "", fmt.Errorf("no fee asset: set SEQPALD_FEE_ASSET")
+	}
+	return moved, nil
+}
+
+// newPlatformRevenueAddress is a fresh address of the platform's own wallet,
+// for the platform's escrow fee where SEQPALD_REVENUE_ADDRESS is not set. It
+// receives the platform's own revenue and nothing a subscriber pays in.
+func (s *server) newPlatformRevenueAddress() (string, error) {
+	if err := s.ensureSeqEscrowWallet(); err != nil {
+		return "", err
+	}
+	res, err := s.walletRPC(seqEscrowWallet, "getnewaddress", "seqpal-escrow-fee")
 	if err != nil {
-		return "", fmt.Errorf("dumpassetlabels: %w", err)
+		return "", err
 	}
-	var labels map[string]string
-	if err := json.Unmarshal(res, &labels); err != nil {
-		return "", fmt.Errorf("dumpassetlabels: %w", err)
+	var addr string
+	if err := json.Unmarshal(res, &addr); err != nil {
+		return "", err
 	}
-	if a := labels["bitcoin"]; a != "" {
-		return a, nil
-	}
-	return "", fmt.Errorf("no fee asset: set SEQPALD_FEE_ASSET")
+	return addr, nil
 }

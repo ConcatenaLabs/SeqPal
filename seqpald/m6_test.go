@@ -84,18 +84,22 @@ func setupM6USDX(t *testing.T, h *m5h, price float64, tokens int) m6usdxFixture 
 
 	fx.invSession, fx.invAID, _ = h.verifiedInvestor(genPriv(t), "Investor", "HN", "ret")
 
-	sub := h.do("POST", "/api/issuances/"+fx.issID+"/subscribe", fx.invSession, map[string]any{
-		"rail": "usdx", "amount": tokens, "refund_address": "seq-refund-addr",
-	})
-	if sub.code != 200 {
-		t.Fatalf("subscribe usdx: %d %s", sub.code, sub.errMsg())
+	// These tests cover a subscription paid into the platform's escrow WALLET
+	// before the escrow covenant held subscriptions: such a row is still settled
+	// (and atomically, where the policy server has the payment leg) so the money
+	// already there reaches its owners. New subscriptions pay the covenant
+	// instead (m14_test.go), so the row is injected the way such a row exists.
+	legacy := &Subscription{
+		ID: mustID(), IssuanceID: fx.issID, InvestorAID: fx.invAID, Rail: "usdx",
+		TokenAtoms: uint64(tokens) * 100, PayAmount: usdToAtoms(float64(tokens) * price), PayCcy: "USDX",
+		RefundAddress: "seq-refund-addr", State: "created",
 	}
-	depAddr, _ := sub.body["deposit_address"].(string)
-	subObj, _ := sub.body["subscription"].(map[string]any)
-	fx.subID, _ = subObj["id"].(string)
-	if depAddr == "" || fx.subID == "" {
-		t.Fatalf("subscribe returned no deposit address / id: %s", sub.raw)
+	legacy.DepositAddress = "seq-legacy-dep-" + legacy.ID
+	if err := h.s.st.InsertSubscription(legacy); err != nil {
+		t.Fatalf("insert legacy subscription: %v", err)
 	}
+	depAddr := legacy.DepositAddress
+	fx.subID = legacy.ID
 
 	// Deposit the full pay amount and confirm it to in_escrow.
 	fx.depositAtoms = uint64(tokens) * uint64(price) * 1e8

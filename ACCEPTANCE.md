@@ -96,7 +96,7 @@ prints a box credential.
 | --- | --- | --- |
 | Wallet links AID to a new SeqPal ID by signing a challenge | `signChallenge` + `m2` wallet-link tests | PASS |
 | Promotion gate (DE lift), appropriateness, KID/risk, subscription-hash e-sign | `TestM5UKStatementGates…`, `gates`/`m4` tests | PASS |
-| Funds USDX from the faucet into the segregated escrow deposit address | `TestM5USDXSubscriptionLifecycleToSettled` + `LIVE-OP` funding | PASS / LIVE-OP |
+| Funds USDX from the faucet into her subscription's own escrow covenant address, credited from the chain | `TestM14SubscriptionPaysItsOwnCovenantAddress`, `TestM14DepositCreditedFromChainInPayAssetAtDepth` + `LIVE-OP` funding | PASS / LIVE-OP |
 
 ### 6. Investor B (US accredited) + card rail
 
@@ -111,9 +111,10 @@ prints a box credential.
 | Check | Proof | Status |
 | --- | --- | --- |
 | Issuer signs the closing authorization once (`signClosing`) | driver `--only m6` step 04; `m6_test.go` | DRIVER / PASS |
-| Investor A settles as ONE atomic txid: tokens to her enclave AND USDX to the issuer payout address AND the platform fee output | `TestM6_UsdxClose_AtomicOrFallback…`; driver asserts `delivery_txid == release_txid && atomic` on `GET /settlements` | PASS / DRIVER (LIVE-OP funding) |
+| Investor A's tokens are delivered first, then ONE release the issuer signs pays the raise (output 0, at least the minimum), the platform fee and the network fee; a release before the close is refused | `TestM14ReleaseOnlyAfterCloseSignedByTheIssuer`, `TestM14CloseBelowMinimumDeliversNothing`, `TestM14FailedDeliveryIsCancelledNotReleased` | PASS |
 | Investor B delivered by policy-co-signed transfer after testnet4 confirmations | `TestM5CloseDeliversAndReleases`, `TestM6_BTCReorgOut…` | PASS |
-| Closing idempotent, reconciled before retry, no double-pay | `TestM6_ReplayedClose…`, `TestM6_ReconcilesDeliveryBeforeRetry`, `TestM6_AtomicDisabledMidSettling…` | PASS |
+| Closing idempotent, reconciled before retry, no double-pay | `TestM14ReleaseLostWriteIsHealedWithTheSameBytes`, `TestM6_ReplayedClose…`, `TestM6_ReconcilesDeliveryBeforeRetry`, `TestM6_AtomicDisabledMidSettling…` | PASS |
+| An undelivered subscription is refunded from the deadline with no signature, and the subscriber holds the refund transaction | `TestM14DeadlineRefundsUndeliveredOnlyWithNoSignature`, `TestM14SubscriberSeesTheirRefundTransaction` | PASS |
 | Position simply appears in the unmodified web wallet, no privileged asset | `LIVE-OP` wallet check | LIVE-OP |
 
 ### 8. Register and audit
@@ -128,11 +129,11 @@ prints a box credential.
 
 | Check | Proof | Status |
 | --- | --- | --- |
-| USDX dividend: record-date snapshot, pro-rata, withholding math | `TestM7Distribution_BlocksUntilFundedThenPaysNetToMandates`; driver `--only m7` steps 07-08 | PASS / DRIVER |
+| USDX dividend: record-date snapshot, pro-rata, withholding math | `TestM7Distribution_PaysEveryHolderInOneIssuerFundedTx`; driver `--only m7` steps 07-09 | PASS / DRIVER |
 | `sum(gross) == sum(net) + sum(withheld)` | driver step 08 asserts the invariant; `m7_test.go` | DRIVER / PASS |
 | NET paid on-chain to registered mandate addresses, per-holder txids, downloadable statements | `m7_test.go` payout + artifacts; driver prints per-holder txids | PASS / DRIVER (LIVE-OP funding) |
 | Investor mandate must be an ordinary address (enclave rejected) | `TestM7InvestorMandate_EnclaveRejected_OrdinaryAcceptedBadSigRefused` | PASS |
-| Distribution reconciled, never double-pays | `TestM7Distribution_ReconcilesLostPayoutByMarker` | PASS |
+| Distribution reconciled, never double-pays | `TestM7Distribution_ReconcilesLostPayoutByTxid` | PASS |
 | Clawback sweep txid + reason in `/openamp/v1/log` | `TestM7Clawback_ReasonRequired_RecordsTxidAndLog_Idempotent`; driver `--only m7` step 09 | PASS / DRIVER |
 | Rules mutation: `GET /v1/assets/{id}` rules == anchored amendment head | `TestM7Amendment_LiveMutationKeepsChainHeadConsistent`, `…HalfAppliedMutationIsReconciled`; driver step 10 | PASS / DRIVER |
 | Stranded-key runbook: re-auth, new wallet-linked AID, clawback + re-deliver, every step logged | `TestM7Redeliver_EndToEndAndIdempotent`, `…UnknownOldIdentityRefused` | PASS |
@@ -164,8 +165,8 @@ endpoints) and completed live once the operator funds the referenced wallet.
 
 | Proof | Driver | Live prerequisite (operator) | Status |
 | --- | --- | --- | --- |
-| M6 atomic USDX close: one tx, `delivery_txid == release_txid` | `--only m6` | a funded USDX subscription on `ISSUANCE_ID`, escrow wallet tSEQ for fees | DRIVER + LIVE-OP |
-| M7 pro-rata distribution, `sum(gross)==sum(net)+sum(withheld)`, per-holder txids | `--only m7` | servicing-wallet USDX covering the gross pool (funding hook prints the deposit) | DRIVER + LIVE-OP |
+| M6 USDX close out of the escrow covenant: tokens delivered, then one release the issuer's wallet signs, `release_txid` on every settlement | `--only m6` | a USDX subscription in escrow on `ISSUANCE_ID` past its close, and the issuer's wallet holding the release key (`--sign-cmd`) | DRIVER + LIVE-OP |
+| M7 pro-rata distribution, `sum(gross)==sum(net)+sum(withheld)`, every holder paid in one transaction | `--only m7` | the issuer's own wallet funding and signing the payout | DRIVER + LIVE-OP |
 | M7 clawback sweep txid + reason in `/openamp/v1/log` | `--only m7` | a holder with a confirmed balance to sweep | DRIVER + LIVE-OP |
 | M7 rules == amendment head after a mutation | `--only m7` | an owned deployed `ISSUANCE_ID` (read-only assertion) | DRIVER |
 | M8 policy-co-signed P2P transfer settles | `--only m8` | investor holding the asset; both AIDs registered | DRIVER + LIVE-OP |
@@ -181,9 +182,9 @@ endpoints) and completed live once the operator funds the referenced wallet.
 The driver cannot fund live wallets: those keys live only on the box. Each step
 below prints its deposit address + amount and pauses (or runs `--fund-cmd`):
 
-1. A USDX subscription into the offering escrow (M6 close).
-2. The servicing wallet's USDX pool for a distribution (M7), plus a tSEQ balance
-   for network fees.
+1. A USDX subscription into its escrow covenant address (the close), and the
+   issuer's release signature from its own wallet.
+2. The issuer's own wallet funding and signing a distribution's payout (M7).
 3. A holder balance to clawback / burn / transfer (M7 clawback, M8 DR redeem,
    M8 P2P transfer).
 4. The setup fee (USDX) that gates a new deploy (M9 external-key).
@@ -196,6 +197,6 @@ All other checks are proven by the committed Go tests and the offline `--dry-run
 read-only surfaces reachable (`health` reports `ok:true`, `openamp_ok:true`,
 `issuer_token_ok:true`; 10 assets visible); every proof produced a real BIP340
 signature from a wallet signer over the SPA's statement bytes and shaped its
-exact request body; the atomic,
+exact request body; the escrow-release settlement,
 reconciliation, refusal-guard, supply, external-key, and set-hash invariants all
 asserted PASS; no request was broadcast and no secret was read or printed.

@@ -181,11 +181,18 @@ export default function Docs() {
         </p>
         <p>
           What the platform does hold, said plainly, is keys of its own: the enclave key of
-          each company treasury it provisions at KYB, the two escrow wallets it operates on
-          Sequentia and on Bitcoin testnet4, and the key it signs claims records with. A
-          company treasury is an enclave account like any other, so moving what a company
-          holds takes SeqPal and the policy server together; a holder&rsquo;s own position is
-          not among them. This is the interim arrangement, and it is the reason an issuer
+          each company treasury it provisions at KYB, the escrow enclave of each offering
+          that tokens are delivered from at closing, the native-BTC escrow wallet on Bitcoin
+          testnet4, the servicing wallet corporate-action dividends are paid from, and the key
+          it signs claims records with. A company treasury is an enclave account like any
+          other, so moving what a company holds takes SeqPal and the policy server together;
+          a holder&rsquo;s own position is not among them. Neither is a USDX subscription:
+          it is paid to an escrow address of its own that no SeqPal wallet holds a key to,
+          where the network lets it go to the issuer only after the close, in one release the
+          issuer signs that pays at least the offering&rsquo;s minimum, or back to the
+          subscriber by a cancel the issuer signs or, from the deadline, by anyone. A
+          distribution is paid in one transaction the issuer&rsquo;s own wallet funds and
+          signs. This is the interim arrangement, and it is the reason an issuer
           names an external issuer key and a recovery key: those are the paths that do not
           run through this platform at all.
         </p>

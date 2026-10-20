@@ -5,7 +5,8 @@ that **actually issues restricted assets on the Sequentia testnet** through a li
 [OpenAMP](https://github.com/ConcatenaLabs/openamp) policy server.
 
 `README.md`'s "What is real vs simulated" section is the most important thing in the repo. The
-token deployment, the USDX setup fee and the USDX / tBTC escrow are real; the scaffolding around
+token deployment, the USDX setup fee, the USDX escrow covenant, the tBTC escrow and the
+one-transaction distributions are real; the scaffolding around
 them (KYC/KYB review, the e-signature provider, incorporation and the RFSA registry, the card
 rail) is simulated so the flow can be walked end to end. Never blur that line in code or in copy.
 
@@ -165,7 +166,9 @@ rule that catches something that actually breaks.
   rule with a harder shape: it is charged for TIME, so its amount is unknowable when the money
   arrives. The clock starts at deposit confirmation (`escrow_from`), the amount is fixed at
   RELEASE by `escrowFeeFor`, and every later read returns what was charged -- a retry, a
-  reconcile or a refund must never reprice it. Its minimum and cap belong to the OFFERING, not
+  reconcile or a refund must never reprice it. Out of the escrow covenant it is an output of
+  the release; a cancel or a refund cannot withhold it (the covenant returns the coin less at
+  most its fee cap), so a failed offering on that rail pays no escrow fee out of escrow. Its minimum and cap belong to the OFFERING, not
   to one investor's cheque, so they are applied to the funds held together and apportioned.
   Never take more than the funds held; record the rest as owed.
 - **A DEPLOY mints, so it takes `st.LockIssuance` before it asks whether it already
@@ -212,8 +215,28 @@ rule that catches something that actually breaks.
   enclave key is half of the 2-of-2 every restricted asset sits behind, so a digest signer over
   it is a signing oracle that drains the account.
 - `seqpald` never holds a holder's key. It registers the holder's public key; the mint lands in a
-  per-offering escrow enclave whose key seqpald custodies and uses only to settle closings, and
-  it keeps the books and records (the SQLite DB).
+  per-offering escrow enclave whose key seqpald custodies and uses only to deliver tokens at
+  closing, and it keeps the books and records (the SQLite DB).
+- **Subscriber money on the Sequentia rail is held by the escrow covenant, never by a wallet of
+  this platform.** A USDX subscription pays an address of its own derived from the
+  `sequentia/subscription-escrow` template (`seqpald/escrow_covenant.go`, descriptor vendored at
+  `seqpald/covenants/` and pinned by its template hash; `M14-CONTRACT.md`). seqpald reads those
+  coins from the UTXO set (`scantxoutset`, `gettxout`), never through `seqpal-escrow`, and builds
+  the spends: the release and the cancel go to the issuer as the TRANSACTION, signed by the
+  issuer's own release key in its own wallet and verified here against that key before
+  `sendrawtransaction`; the refund after the deadline needs no signature. Never add a path that
+  pays a subscription into, or out of, a platform wallet. The order at closing is tokens first,
+  then the release, so a close run here never leaves a subscriber with neither (the covenant
+  cannot see the tokens, so this ordering is the platform's, not the chain's). Network fees on these spends are paid
+  in the payment asset out of the coins, never in another asset.
+- **A distribution is one transaction the issuer's own wallet funds and signs.** seqpald lists
+  the outputs, checks every holder's output exactly in what comes back, records the bytes and
+  the txid before the broadcast, and heals a lost write by sending the same bytes again
+  (`seqpald/distribution_tx.go`). No per-holder send, no funding deposit.
+- What is still custodial, said plainly: the native-BTC rail (`seqpal-btc-escrow`), the
+  corporate-action dividend claims (paid from the `seqpal-escrow` servicing wallet after the
+  issuer funds it), and subscriptions or distribution runs that were paid into `seqpal-escrow`
+  before the covenant held them, which settle out of it by the older state machines.
 - `seqpald` also holds the one server-side secret: OpenAMP's issuer endpoint is bearer-token gated,
   and that token must never reach a browser. `seqpald` holds it and is the only party that calls
   the issuer endpoint.
