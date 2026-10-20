@@ -1270,6 +1270,14 @@ ALTER TABLE distributions ADD COLUMN payout_tx TEXT NOT NULL DEFAULT '';
 ALTER TABLE distribution_payments ADD COLUMN vout INTEGER NOT NULL DEFAULT -1;
 ALTER TABLE distribution_payments ADD COLUMN mandate_spk TEXT NOT NULL DEFAULT '';
 `,
+	// max_supply is the most of a serviced token that will ever be created,
+	// issuance included, in whole tokens: what the issuer chose at deploy, and
+	// what the policy server's supply cap holds it to (the cap counts what is
+	// created after issuance, so it is max_supply less the initial supply). 0
+	// means the deploy did not record one.
+	`
+ALTER TABLE issuances ADD COLUMN max_supply INTEGER NOT NULL DEFAULT 0;
+`,
 }
 
 // Store is seqpald's persistent state. Every financial fact the UI shows is
@@ -1432,8 +1440,13 @@ type Issuance struct {
 	WhitelistRoot           string `json:"whitelist_root,omitempty"`
 	HolderCovenantAddress   string `json:"holder_covenant_address,omitempty"`
 	VerifierCovenantAddress string `json:"verifier_covenant_address,omitempty"`
-	CreatedAt               int64  `json:"created_at"`
-	UpdatedAt               int64  `json:"updated_at"`
+	// MaxSupply is the most of the token that will ever be created, issuance
+	// included, in whole tokens, as the issuer set it at deploy (0: not
+	// recorded). Only a serviced token can be created after issuance, so for it
+	// this bounds every later mint.
+	MaxSupply uint64 `json:"max_supply,omitempty"`
+	CreatedAt int64  `json:"created_at"`
+	UpdatedAt int64  `json:"updated_at"`
 }
 
 // DampPrepare is the two-phase handoff for a network-enforced deploy: what the
@@ -1651,7 +1664,7 @@ const issuanceCols = `id, owner_aid, COALESCE(entity_id,''), name, ticker, struc
     supply, precision, clawback, asset_id, txid, contract_hash, holder_aid, enclave_address,
     issuer_external, issuer_pubkey, enforcement, recovery_pubkey, supervision_pause,
     verifier_asset, verifier_amount, policy_commitment, whitelist_root,
-    holder_covenant_address, verifier_covenant_address, created_at, updated_at`
+    holder_covenant_address, verifier_covenant_address, max_supply, created_at, updated_at`
 
 func (s *Store) CreateIssuance(i *Issuance) error {
 	var entity any
@@ -1721,7 +1734,7 @@ func scanIssuanceInto(sc scanner) (*Issuance, error) {
 		&i.HolderAID, &i.EnclaveAddress, &issuerExternal, &i.IssuerPubkey, &i.Enforcement,
 		&i.RecoveryPubkey, &supervisionPause,
 		&i.VerifierAsset, &i.VerifierAmount, &i.PolicyCommitment, &i.WhitelistRoot,
-		&i.HolderCovenantAddress, &i.VerifierCovenantAddress,
+		&i.HolderCovenantAddress, &i.VerifierCovenantAddress, &i.MaxSupply,
 		&i.CreatedAt, &i.UpdatedAt)
 	if err != nil {
 		return nil, err

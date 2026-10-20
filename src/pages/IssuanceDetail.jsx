@@ -24,6 +24,10 @@ import CorporateActionsCard from '../components/CorporateActionsCard'
 import AmendmentChainCard from '../components/AmendmentChainCard'
 import DRConsole from '../components/DRConsole'
 import ListingCard from '../components/ListingCard'
+import MaxSupplyField, { maxSupplyOf } from '../components/MaxSupplyField'
+import SupplyFigures from '../components/SupplyFigures'
+import * as api from '../lib/api'
+import { usePoll } from '../lib/poll'
 import { useStore } from '../lib/store'
 import { view } from '../lib/issuance'
 import { downloadPortalBundle } from '../lib/portalBundle'
@@ -53,6 +57,9 @@ function DeployCard({ iss, onDeployed }) {
     precision: iss.precision >= 1 && iss.precision <= 8 ? iss.precision : 8,
     clawback: iss.clawback !== false,
     holderKey: '',
+    // '' follows the initial supply (the default: a final supply) until the
+    // issuer types a number of their own.
+    maxSupply: '',
   })
   // A network-enforced mint lands at a holding key, and the coin is spent by
   // signing with it. An OpenAMP account supplies one; a SeqPal ID that is only a
@@ -76,6 +83,12 @@ function DeployCard({ iss, onDeployed }) {
       const res = await deployIssuance({
         issuance_id: iss.id,
         supply: Number(form.supply.replace(/[^0-9]/g, '')) || 0,
+        // The most there will ever be of the token, issuance included. Only a
+        // serviced token can have more created later; for the others the server
+        // takes the supply as final.
+        ...((iss.enforcement || 'serviced') === 'serviced'
+          ? { max_supply: maxSupplyOf(form.maxSupply, form.supply) }
+          : {}),
         precision: Number(form.precision),
         // The enforcement election was made in the wizard and lives in the
         // committed terms; the deploy restates it.
@@ -165,6 +178,14 @@ function DeployCard({ iss, onDeployed }) {
         </div>
       </div>
 
+      <MaxSupplyField
+        supply={form.supply}
+        value={form.maxSupply}
+        onChange={(v) => setForm({ ...form, maxSupply: v })}
+        ticker={iss.ticker}
+        enforcement={iss.enforcement || 'serviced'}
+      />
+
       {namesHolderKey && (
         <div className="mt-4">
           <label className="label" htmlFor="dep-holder-key">
@@ -248,6 +269,13 @@ function DeployCard({ iss, onDeployed }) {
   )
 }
 
+// A live token's supply from the server: never a stored counter, so it is read
+// each time, and polled while the page is open.
+function LiveSupply({ iss }) {
+  const { data } = usePoll(() => api.issuanceSupply(iss.id), { intervalMs: 15000 })
+  return <SupplyFigures supply={data} className="mt-4" />
+}
+
 function AssetCard({ iss, watch }) {
   const live = iss.live
   return (
@@ -317,6 +345,9 @@ function AssetCard({ iss, watch }) {
             'Initial supply',
             iss.supply ? `${iss.supply.toLocaleString()} ${iss.ticker}` : 'not set',
           ],
+          ...(iss.maxSupply
+            ? [['The most there will ever be', `${iss.maxSupply.toLocaleString()} ${iss.ticker}`]]
+            : []),
           ['Precision', iss.precision || 'not set'],
           ['Target raise', iss.raise || 'not set'],
           ['Offering type', iss.isPublic ? 'Public offering' : 'Private placement'],
@@ -327,6 +358,7 @@ function AssetCard({ iss, watch }) {
           </div>
         ))}
       </dl>
+      {live && iss.assetId && iss.enforcement !== 'bearer' && <LiveSupply iss={iss} />}
       {iss.enforcement === 'network' && (
         <p className="mt-4 rounded-xl border border-ink-900/10 bg-ink-900/[0.02] px-4 py-3 text-xs leading-relaxed text-ink-700/85">
           Holders hold this token at addresses the network itself polices. Transfers do not need

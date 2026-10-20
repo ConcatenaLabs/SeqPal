@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -404,25 +405,98 @@ func TestM8_DRMintRaisesChainDerivedSupplyIdempotent(t *testing.T) {
 	}
 }
 
-func TestM8_DRMintHandlesTokenReblinding(t *testing.T) {
+// The most there will ever be, set at deploy, bounds every later mint: the cap
+// the policy server holds is that less the initial supply, a mint up to it goes
+// through, and one atom past it is refused in the issuer's words before the
+// policy server is asked, leaving the supply as it was.
+func TestM8_DRMintStaysUnderTheMostThereWillEverBe(t *testing.T) {
 	h := newM7Harness(t, m5opts{})
 	issuerSession, _, _ := h.register(genPriv(t), "Issuer", "HN")
-	issID, assetID, escrowAID := h.deployLivePrivate(issuerSession, "DRB", "HN", 1.0)
+	// 1,000,000 tokens now (precision 2), at most 1,000,050 ever: 5,000 atoms of room.
+	issID, assetID, escrowAID := h.deployLivePrivateMax(issuerSession, "DRB", "HN", 1.0, 1000050)
 	h.do("POST", "/api/issuances/"+issID+"/dr/enable", issuerSession, map[string]any{})
 	h.oa.setBalance(escrowAID, assetID, 100)
+	body := h.oa.issueBodies[len(h.oa.issueBodies)-1]
+	if got, _ := body["supply_cap"].(float64); got != 5000 {
+		t.Fatalf("supply_cap sent to the policy server = %v, want 5000 atoms", body["supply_cap"])
+	}
+	iss, _ := h.s.st.IssuanceByID(issID)
+	if iss.MaxSupply != 1000050 {
+		t.Fatalf("max_supply recorded = %d, want 1000050", iss.MaxSupply)
+	}
 
-	// The policy server re-blinds the reissuance token first (one 202 "reblinding"
-	// response), then broadcasts. seqpald retries the same request_id transparently.
-	h.oa.reblindLeft["reb-1"] = 1
-	m := h.do("POST", "/api/issuances/"+issID+"/dr/mint", issuerSession, map[string]any{"atoms": 250, "request_id": "reb-1"})
+	sv := h.do("GET", "/api/issuances/"+issID+"/supply", issuerSession, nil)
+	if sv.code != 200 || sv.body["room_atoms"].(float64) != 5000 || sv.body["max_atoms"].(float64) != 100005000 {
+		t.Fatalf("supply view: %d %s", sv.code, sv.raw)
+	}
+	if w, _ := sv.body["words"].(string); w != "50 DRB can still be created, and never more: the most there will ever be of DRB is 1,000,050." {
+		t.Fatalf("supply words: %q", w)
+	}
+
+	m := h.do("POST", "/api/issuances/"+issID+"/dr/mint", issuerSession, map[string]any{"atoms": 4000, "request_id": "cap-1"})
 	if m.code != 200 {
-		t.Fatalf("mint through reblinding: %d %s", m.code, m.raw)
+		t.Fatalf("mint under the cap: %d %s", m.code, m.raw)
 	}
-	if txid, _ := m.body["reissue_txid"].(string); txid == "" {
-		t.Fatalf("no reissue txid after reblinding: %s", m.raw)
+	m = h.do("POST", "/api/issuances/"+issID+"/dr/mint", issuerSession, map[string]any{"atoms": 1001, "request_id": "cap-2"})
+	if m.code != 409 {
+		t.Fatalf("one atom past the cap: %d %s", m.code, m.raw)
 	}
-	if h.oa.supplyOf(assetID) != 350 {
-		t.Fatalf("supply after reblinded mint=%d want 350", h.oa.supplyOf(assetID))
+	want := "This would create 10.01 DRB, but only 10 more can ever be created: the most there will ever be of DRB is 1,000,050, which you set when you issued it and nobody can raise. Nothing was created."
+	if m.errMsg() != want {
+		t.Fatalf("refusal: %q", m.errMsg())
+	}
+	if h.oa.supplyOf(assetID) != 4100 || h.oa.caps[assetID][1] != 4000 {
+		t.Fatalf("a refused mint changed the supply: %d minted %d", h.oa.supplyOf(assetID), h.oa.caps[assetID][1])
+	}
+	m = h.do("POST", "/api/issuances/"+issID+"/dr/mint", issuerSession, map[string]any{"atoms": 1000, "request_id": "cap-3"})
+	if m.code != 200 {
+		t.Fatalf("mint of exactly the room left: %d %s", m.code, m.raw)
+	}
+	m = h.do("POST", "/api/issuances/"+issID+"/dr/mint", issuerSession, map[string]any{"atoms": 1, "request_id": "cap-4"})
+	if m.code != 409 || m.errMsg() != "No more DRB can be created: all 1,000,050 that can ever exist already have been, the most you set when you issued it." {
+		t.Fatalf("at the cap: %d %q", m.code, m.errMsg())
+	}
+}
+
+// A retried request the policy server refuses past the cap is told in the same
+// words, from the policy server's own refusal.
+func TestM8_DRMintPolicyServerRefusalInPlainWords(t *testing.T) {
+	v := &supplyView{Ticker: "DRB", Precision: 2, Capped: true, CapAtoms: 5000, MintedAtoms: 4000, RoomAtoms: 1000,
+		InitialAtoms: 100000000, MaxAtoms: 100005000}
+	got := plainReissueError(v, 1001, fmt.Errorf("a mint of 1001 would bring the total minted through the supply cap above its cap of 5000 (4000 minted, 1000 left)"))
+	if !strings.HasPrefix(got, "This would create 10.01 DRB, but only 10 more can ever be created") {
+		t.Fatalf("got %q", got)
+	}
+	got = plainReissueError(v, 1, fmt.Errorf("a mint cannot be confidential: ..."))
+	if !strings.Contains(got, "always created in the open") {
+		t.Fatalf("got %q", got)
+	}
+}
+
+// The most there will ever be is never less than what is created now, and only
+// a serviced token can have more created later.
+func TestDeploy_MaxSupplyRefusals(t *testing.T) {
+	h := newM7Harness(t, m5opts{})
+	session, _, _ := h.register(genPriv(t), "Issuer", "HN")
+	issID := h.createIssuance(session, "CAP Co", "CAPL", map[string]any{
+		"jurisdictions": map[string]any{"HN": map[string]any{"access": "standard"}}, "price": 1.0})
+	d := h.do("POST", "/api/deploy", session, map[string]any{"issuance_id": issID, "supply": 1000, "precision": 0, "max_supply": 999})
+	if d.code != 400 || !strings.Contains(d.errMsg(), "cannot be less than the 1000 you are creating now") {
+		t.Fatalf("max below supply: %d %s", d.code, d.raw)
+	}
+	d = h.do("POST", "/api/deploy", session, map[string]any{"issuance_id": issID, "supply": 1000, "precision": 0,
+		"max_supply": 2000, "enforcement": "network"})
+	if d.code != 400 || !strings.Contains(d.errMsg(), "what you create now is all there will ever be") {
+		t.Fatalf("network with room: %d %s", d.code, d.raw)
+	}
+	// Omitted, the supply is final: the policy server is asked for a cap of 0.
+	d = h.do("POST", "/api/deploy", session, map[string]any{"issuance_id": issID, "supply": 1000, "precision": 0})
+	if d.code != 200 {
+		t.Fatalf("deploy: %d %s", d.code, d.raw)
+	}
+	body := h.oa.issueBodies[len(h.oa.issueBodies)-1]
+	if got, ok := body["supply_cap"].(float64); !ok || got != 0 {
+		t.Fatalf("supply_cap = %v, want 0", body["supply_cap"])
 	}
 }
 

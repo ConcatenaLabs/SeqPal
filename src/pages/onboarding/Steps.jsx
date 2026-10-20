@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Icon, StructureIcon } from '../../components/icons'
 import { Badge, DemoNote } from '../../components/ui'
 import Modal from '../../components/Modal'
+import MaxSupplyField, { maxSupplyOf } from '../../components/MaxSupplyField'
 import { useStore } from '../../lib/store'
 import { toTerms } from '../../lib/issuance'
 import { termsHash } from '../../lib/openamp'
@@ -2054,6 +2055,10 @@ export function Step7Checkout({ data, update, onDeployed }) {
       const dep = await deployIssuance({
         issuance_id: issuanceId,
         supply,
+        // The most there will ever be of the token (whole tokens, issuance
+        // included): asked below, defaulting to the initial supply. Only a
+        // serviced token can have more created later.
+        ...(!bearer && !network ? { max_supply: maxSupplyOf(data.maxSupply, supply) } : {}),
         precision,
         // The enforcement election travels with the deploy. A freely-tradable
         // asset has no issuer recovery power; otherwise the toggle from the
@@ -2235,6 +2240,16 @@ export function Step7Checkout({ data, update, onDeployed }) {
                 ? []
                 : [
                     [
+                      'The most there will ever be',
+                      (network ? supply : maxSupplyOf(data.maxSupply, supply)).toLocaleString() +
+                        ' ' +
+                        (data.ticker || 'tokens'),
+                    ],
+                  ]),
+              ...(bearer
+                ? []
+                : [
+                    [
                       'Issuer recovery power',
                       data.clawback !== false ? 'On: two signatures, always public' : 'Off',
                     ],
@@ -2248,6 +2263,14 @@ export function Step7Checkout({ data, update, onDeployed }) {
               </div>
             ))}
           </dl>
+          <MaxSupplyField
+            id="checkout-max-supply"
+            supply={supply}
+            value={data.maxSupply ?? ''}
+            onChange={(v) => update({ maxSupply: v })}
+            ticker={data.ticker}
+            enforcement={bearer ? 'bearer' : network ? 'network' : 'serviced'}
+          />
         </div>
 
         <div className="card p-6 lg:col-span-2">

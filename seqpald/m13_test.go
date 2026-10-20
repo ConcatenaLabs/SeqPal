@@ -367,7 +367,7 @@ func TestM13_FlowsThatCannotWorkRefuseWithAReason(t *testing.T) {
 		{"receipt programme", "POST", "/api/issuances/" + f.issID + "/dr/enable",
 			map[string]any{}, "nothing here to hold or to check"},
 		{"receipt mint", "POST", "/api/issuances/" + f.issID + "/dr/mint",
-			map[string]any{"atoms": 10}, "from your own wallet"},
+			map[string]any{"atoms": 10}, "has a final supply"},
 		{"receipt redeem", "POST", "/api/issuances/" + f.issID + "/dr/redeem",
 			map[string]any{"atoms": 10}, "from their own wallet"},
 	}

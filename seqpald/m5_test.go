@@ -90,9 +90,10 @@ type m5Stub struct {
 
 	// M8 instrumentation (additive; all inert by default so the M5/M6/M7 suite is
 	// byte-identical). reissues maps a DR-mint request_id to its reissue txid, so a
-	// retry is idempotent; reblindLeft makes POST /v1/issuer/reissue answer 202
-	// "reblinding" a set number of times before it broadcasts (the reissuance-token
-	// re-blinding retry loop). completeRefuse maps a pending transfer's recipient AID
+	// retry is idempotent; caps holds each asset's supply cap as openampd keeps
+	// it (the cap from the issuance's supply_cap, and what has been minted
+	// through it), and the reissue stub refuses past it with openampd's words.
+	// completeRefuse maps a pending transfer's recipient AID
 	// to a policy-refusal reason so POST /v1/transfers/{id}/complete returns a real
 	// 403 at co-sign (the first-class P2P refusal path). broadcastThenFailOnce makes
 	// the next /complete settle on chain (deliver + append the transparency-log
@@ -100,7 +101,8 @@ type m5Stub struct {
 	// is the settled transfer / burn transparency log the P2P + DR reconcilers scan;
 	// logSeq numbers those entries for the wallet-transfer poller cursor.
 	reissues              map[string]string
-	reblindLeft           map[string]int
+	caps                  map[string]*[2]uint64
+	issueBodies           []map[string]any
 	completeRefuse        map[string]string
 	broadcastThenFailOnce bool
 	txLog                 []map[string]any
@@ -147,7 +149,7 @@ func newM5Stub(t *testing.T) *m5Stub {
 		rulesWritten:   map[string]json.RawMessage{},
 		holdersHeight:  250000,
 		reissues:       map[string]string{},
-		reblindLeft:    map[string]int{},
+		caps:           map[string]*[2]uint64{},
 		completeRefuse: map[string]string{},
 		externalAssets: map[string]bool{},
 		assetIssuerPub: map[string]string{},
@@ -254,6 +256,10 @@ func newM5Stub(t *testing.T) *m5Stub {
 		id := pad64(byte('a'), f.nAsset)
 		rules, _ := json.Marshal(body["rules"])
 		f.assets[id] = map[string]any{"id": id, "ticker": "X", "name": "X", "rules": json.RawMessage(rules)}
+		f.issueBodies = append(f.issueBodies, body)
+		// openampd puts the token in a supply cap at issuance; absent, the cap is 0.
+		capAtoms, _ := body["supply_cap"].(float64)
+		f.caps[id] = &[2]uint64{uint64(capAtoms), 0}
 		f.mu.Unlock()
 		writeJSON(w, 200, map[string]any{
 			"asset": id, "txid": pad64(byte('b'), f.nAsset), "contract_hash": pad64(byte('c'), f.nAsset),
@@ -659,10 +665,9 @@ func newM5Stub(t *testing.T) *m5Stub {
 		}
 	})
 
-	// M8 OA-6 DR mint (reissuance): idempotent by request_id; optionally answers
-	// "reblinding" a set number of times first (the reissuance-token re-blinding
-	// retry loop). A broadcast lands the minted units in the target enclave, raising
-	// the chain-derived supply.
+	// M8 OA-6 DR mint (reissuance): idempotent by request_id, and refused past the
+	// asset's supply cap as openampd refuses it. A broadcast lands the minted units
+	// in the target enclave, raising the chain-derived supply.
 	mux.HandleFunc("POST /v1/issuer/reissue", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer test-issuer-token" {
 			writeJSON(w, 401, map[string]any{"error": "bad token"})
@@ -682,12 +687,19 @@ func newM5Stub(t *testing.T) *m5Stub {
 			writeJSON(w, 200, map[string]any{"reissue_txid": txid, "status": "done", "idempotent": true})
 			return
 		}
-		if n := f.reblindLeft[req.RequestID]; n > 0 {
-			f.reblindLeft[req.RequestID] = n - 1
+		c := f.caps[req.Asset]
+		if c == nil {
 			f.mu.Unlock()
-			writeJSON(w, 202, map[string]any{"status": "reblinding", "reblind_txid": fmt.Sprintf("%064x", 800000+n)})
+			writeJSON(w, 409, map[string]any{"error": "this asset's reissuance token is in no supply cap, so it cannot be minted: move it in with POST /v1/issuer/supply-cap"})
 			return
 		}
+		if c[1]+req.Atoms > c[0] {
+			f.mu.Unlock()
+			writeJSON(w, 409, map[string]any{"error": fmt.Sprintf("a mint of %d would bring the total minted through the supply cap above its cap of %d (%d minted, %d left)",
+				req.Atoms, c[0], c[1], c[0]-c[1])})
+			return
+		}
+		c[1] += req.Atoms
 		if f.balances[req.TargetAID] == nil {
 			f.balances[req.TargetAID] = map[string]uint64{}
 		}
@@ -733,8 +745,12 @@ func newM5Stub(t *testing.T) *m5Stub {
 			total += m[asset]
 		}
 		h := f.holdersHeight
+		resp := map[string]any{"asset": asset, "circulating_atoms": total, "height": h}
+		if c := f.caps[asset]; c != nil {
+			resp["supply_cap"] = map[string]any{"cap_atoms": c[0], "minted_atoms": c[1], "room_atoms": c[0] - c[1]}
+		}
 		f.mu.Unlock()
-		writeJSON(w, 200, map[string]any{"asset": asset, "circulating_atoms": total, "height": h})
+		writeJSON(w, 200, resp)
 	})
 
 	f.srv = httptest.NewServer(mux)
@@ -1374,13 +1390,20 @@ func (h *m5h) createIssuance(session, name, ticker string, terms map[string]any)
 // promotable_jurisdictions, so no RFSA gate) admitting the given jurisdiction.
 func (h *m5h) deployLivePrivate(session, ticker, jurisdiction string, price float64) (issID, assetID, escrowAID string) {
 	h.t.Helper()
+	return h.deployLivePrivateMax(session, ticker, jurisdiction, price, 2000000)
+}
+
+// deployLivePrivateMax deploys 1,000,000 tokens (precision 2) whose most there
+// will ever be is maxSupply whole tokens.
+func (h *m5h) deployLivePrivateMax(session, ticker, jurisdiction string, price float64, maxSupply uint64) (issID, assetID, escrowAID string) {
+	h.t.Helper()
 	terms := map[string]any{
 		"jurisdictions": map[string]any{jurisdiction: map[string]any{"access": "standard"}},
 		"price":         price,
 	}
 	issID = h.createIssuance(session, ticker+" Co", ticker, terms)
 	dep := h.do("POST", "/api/deploy", session, map[string]any{
-		"issuance_id": issID, "supply": 1000000, "precision": 2,
+		"issuance_id": issID, "supply": 1000000, "precision": 2, "max_supply": maxSupply,
 	})
 	if dep.code != 200 {
 		h.t.Fatalf("deploy: %d %s", dep.code, dep.errMsg())

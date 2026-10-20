@@ -19,7 +19,7 @@ Node and consensus conventions live in the
 |---|---|
 | `src/` | The React + Vite single-page app. It holds no key material: `localStorage` keeps UI preferences and, for a wallet linked by hand, the account's PUBLIC key. Records come from seqpald. |
 | `seqpald/` | The Go backend, its own module. It serves the built SPA (with history-API fallback) *and* the API, so one reverse-proxy route covers both. |
-| `scripts/` | `live-probe.sh`, the `e2e/` driver, and the `regenesis/` runbook scripts. |
+| `scripts/` | `live-probe.sh`, the `e2e/` driver, the `regenesis/` runbook scripts, and the regtest proofs on a real node: `regtest-escrow.sh` (the escrow covenant and distributions) and `regtest-supply-cap.sh` (the most there will ever be of a token, through the page, against a real openampd). |
 | `seqpald/M*-CONTRACT.md` | Per-milestone contracts, each with a matching `m*_test.go`. |
 
 ```sh

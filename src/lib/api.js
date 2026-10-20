@@ -494,8 +494,8 @@ export const drEnable = (id) =>
 
 // Mint = OA-6 reissuance into the custodian enclave. Body { atoms, target_aid?,
 // request_id? } (request_id is the idempotency key). Success → { op, reissue_txid,
-// state, circulating_atoms, height }. A 202 { state:'reblinding', request_id } means
-// the reissuance token is re-blinding; retry with the SAME request_id shortly.
+// state, circulating_atoms, height, supply }. A mint past the most there will
+// ever be of the token is refused (409) with the reason in the issuer's words.
 export const drMint = (id, body) =>
   req(`/issuances/${encodeURIComponent(id)}/dr/mint`, { method: 'POST', body })
 
@@ -508,6 +508,12 @@ export const drRedeem = (id, body) =>
 // The chain-derived circulating supply alone: { asset, circulating_atoms, height,
 // supply_source:'chain-derived' }. Never a stored counter.
 export const drSupply = (id) => req(`/issuances/${encodeURIComponent(id)}/dr/supply`)
+
+// A live token's supply: what exists, what was created at issuance and since,
+// what can still be created, and the most there will ever be (atoms), with the
+// same in a sentence: { circulating_atoms, initial_atoms, minted_atoms,
+// room_atoms, max_atoms, cap_atoms, capped, final, words, precision, ticker }.
+export const issuanceSupply = (id) => req(`/issuances/${encodeURIComponent(id)}/supply`)
 
 // ── bearer (freely-tradable) issuance ───────────────────────────────────────
 // Record the signed bearer attestation before a freely-tradable deploy. Body

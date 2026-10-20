@@ -59,6 +59,19 @@ registrar steps are simulated so the flow can be walked end to end.
   (`seqpald`) registers the issuer's enclave key and calls OpenAMP's issuer API,
   which builds and broadcasts the issuance transaction on Sequentia. The returned
   asset id, txid, contract hash and enclave AID are shown on the issuance page.
+- **The most there will ever be.** The deploy asks the issuer for the most of
+  the token that will ever be created, the initial supply included, and says
+  what it means: more can be created later only up to that number, and nobody,
+  the issuer and the platform included, can ever raise it. It defaults to the
+  initial supply, so the supply is final unless the issuer chooses otherwise,
+  because the power to create more is the power to dilute every holder. The
+  policy server holds the token's reissuance token in a supply cap of the room
+  above the initial supply from the issuance itself, and mints only through it
+  (`seqpald/supplycap.go`). Wherever the supply is shown, the page shows what
+  was created at issuance and since, what can still be created, and that
+  maximum; a mint past it is refused in plain words and nothing is built. New
+  tokens are always created in the open. A network-enforced token's supply is
+  final, and the deploy says so instead of asking.
 - Clawback is on by default, and the on-chain contract commits to a `terms_hash`
   binding SeqPal's compliance configuration (structure, jurisdiction matrix, deal
   terms) to the asset.

@@ -374,7 +374,7 @@ func (s *Store) DRProgramByIssuance(issuanceID string) (*DRProgram, error) {
 // DROp is one DR supply operation: a mint (OA-6 reissuance) or a redeem (OA-5
 // burn). request_id is the mandatory idempotency key; a retry with the same key
 // resolves to the same txid, so a crash-then-retry never double-mints or
-// double-burns. State machine: pending -> reblinding (mint only) -> broadcast |
+// double-burns. State machine: pending -> broadcast |
 // failed.
 type DROp struct {
 	ID              string `json:"id"`
