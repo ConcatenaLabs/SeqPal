@@ -657,3 +657,123 @@ func TestM14FakeChainRefusesBrokenReleases(t *testing.T) {
 		t.Fatalf("a release signed by another key: %q", r)
 	}
 }
+
+// A confidential payment to a subscription escrow is refused before anything
+// is paid or recorded: a confidential coin there could only be released, never
+// cancelled or refunded, because the return leaves read the coin's explicit
+// asset and amount.
+func TestM14ConfidentialSubscriptionRefusedBeforePayment(t *testing.T) {
+	e := newM14(t, 1)
+	h := e.h
+	sess, _, _ := h.verifiedInvestor(genPriv(t), "Conf", "HN", "ret")
+	before, _ := h.s.st.SubscriptionsByIssuance(e.issID)
+	res := h.do("POST", "/api/issuances/"+e.issID+"/subscribe", sess, map[string]any{
+		"rail": "usdx", "amount": 10, "refund_address": "seq-r", "confidential": true,
+	})
+	if res.code != 400 || !strings.Contains(res.errMsg(), "can only ever be released to the issuer") {
+		t.Fatalf("confidential subscription = %d %q, want 400 and the reason", res.code, res.errMsg())
+	}
+	after, _ := h.s.st.SubscriptionsByIssuance(e.issID)
+	if len(after) != len(before) {
+		t.Fatalf("a refused confidential subscription was recorded: %d -> %d", len(before), len(after))
+	}
+	// The same subscription, transparent, is taken.
+	res = h.do("POST", "/api/issuances/"+e.issID+"/subscribe", sess, map[string]any{
+		"rail": "usdx", "amount": 10, "refund_address": "seq-r",
+	})
+	if res.code != 200 {
+		t.Fatalf("transparent subscription: %d %s", res.code, res.errMsg())
+	}
+	assertNoWalletMoney(t, h)
+}
+
+// A built release carries what a wallet's contract engine needs to sign it
+// itself, read from the transaction seqpald built, and the sign endpoint takes
+// the whole signed transaction back: it must be the one built, every input
+// spent through its own leaf, every signature the release key's.
+func TestM14ReleaseSignedAsAWholeTransaction(t *testing.T) {
+	e := newM14(t, 1000)
+	h := e.h
+	a, _ := e.subscribePaid(t, "A", "seq-refund-a", 100)
+	b, _ := e.subscribePaid(t, "B", "seq-refund-b", 50)
+	h.seq.setHeight(int64(e.terms.CloseLock))
+	r := e.close(t)
+	if r.code != 200 {
+		t.Fatalf("close: %d %s", r.code, r.raw)
+	}
+	rel := spendsOf(t, r)["release"]
+	eng, _ := rel["engine"].(map[string]any)
+	if eng == nil {
+		t.Fatalf("the release view carries no engine request: %v", rel["engine_error"])
+	}
+	if eng["templateHash"] != escrowTemplateHash || eng["txid"] != rel["txid"] {
+		t.Fatalf("engine request names template %v and txid %v", eng["templateHash"], eng["txid"])
+	}
+	req := eng["request"].(map[string]any)
+	inputs := req["inputs"].([]any)
+	outputs := req["outputs"].([]any)
+	tx, _ := decodeHexTx(rel["unsigned_tx"].(string))
+	if req["path"] != "release" || len(inputs) != 2 || len(outputs) != len(tx.Out) ||
+		uint32(req["sequence"].(float64)) != escrowSequence {
+		t.Fatalf("engine request: path %v, %d inputs, %d outputs (tx %d), sequence %v", req["path"], len(inputs), len(outputs), len(tx.Out), req["sequence"])
+	}
+	if inputs[0].(map[string]any)["is"] != "contract" || inputs[1].(map[string]any)["is"] != "sibling" {
+		t.Fatalf("inputs %v: want the contract coin, then a sibling", inputs)
+	}
+	// Each coin's instance is its own subscription's, deriving its address.
+	subs := map[string]*Subscription{a.ID: a, b.ID: b}
+	stored, _ := h.s.st.EscrowSpendByID(rel["id"].(string))
+	insts := []map[string]any{eng["instance"].(map[string]any), inputs[1].(map[string]any)["instance"].(map[string]any)}
+	for i, in := range stored.Inputs {
+		want, _ := deriveEscrow(escrowParamsFor(e.terms, subs[in.SubscriptionID]), h.s.cfg.network)
+		got := insts[i]["params"].(map[string]any)
+		for k, v := range want.Params {
+			if got[k] != v {
+				t.Fatalf("input %d instance %s = %v, want %v", i, k, got[k], v)
+			}
+		}
+	}
+	if o := outputs[len(outputs)-1].(map[string]any); o["to"] != "fee" || o["asset"] != m5USDX {
+		t.Fatalf("last output %v: want the fee in USDX", o)
+	}
+	if o := outputs[0].(map[string]any); o["to"] != "pay" || o["script"] != fakeSPK(m14Payout) {
+		t.Fatalf("output 0 %v: want the issuer's payout", o)
+	}
+
+	// The signed transaction, as a wallet hands it back.
+	signed := func(priv string) string {
+		raw := e.signSpend(t, rel, priv)["signatures"].([]map[string]any)
+		sigs := map[int]string{}
+		for _, s := range raw {
+			sigs[s["vin"].(int)] = s["signature"].(string)
+		}
+		// assembleEscrowWitness verifies each signature; a wrong key is
+		// assembled by hand to reach the endpoint.
+		stx, _ := decodeHexTx(stored.UnsignedTx)
+		stx.NormalizeWitness()
+		for i, in := range stored.Inputs {
+			sig, _ := hex.DecodeString(sigs[i])
+			script, _ := hex.DecodeString(in.Script)
+			control, _ := hex.DecodeString(in.Control)
+			stx.InWit[i].ScriptWitness = [][]byte{sig, script, control}
+		}
+		return hex.EncodeToString(stx.Serialize())
+	}
+	// Another transaction: refused before anything is checked further.
+	other, _ := decodeHexTx(signed(e.releasePriv))
+	v0, _ := elements.ExplicitValueAmount(other.Out[0].Value)
+	other.Out[0].Value = elements.ExplicitValue(v0 - 1)
+	if w := e.postSigs(rel, map[string]any{"signed_tx": hex.EncodeToString(other.Serialize())}); w.code != 400 ||
+		!strings.Contains(w.errMsg(), "not the") || h.seq.broadcastCount() != 0 {
+		t.Fatalf("another transaction = %d %q, broadcasts %d", w.code, w.errMsg(), h.seq.broadcastCount())
+	}
+	// Signed by another key: refused, nothing broadcast.
+	if w := e.postSigs(rel, map[string]any{"signed_tx": signed(genPriv(t))}); w.code != 400 || h.seq.broadcastCount() != 0 {
+		t.Fatalf("another key = %d %q, broadcasts %d", w.code, w.errMsg(), h.seq.broadcastCount())
+	}
+	// The release key's: verified and broadcast.
+	if ok := e.postSigs(rel, map[string]any{"signed_tx": signed(e.releasePriv)}); ok.code != 200 || h.seq.broadcastCount() != 1 {
+		t.Fatalf("signed release = %d %s, broadcasts %d", ok.code, ok.raw, h.seq.broadcastCount())
+	}
+	assertNoWalletMoney(t, h)
+}

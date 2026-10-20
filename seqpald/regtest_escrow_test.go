@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -369,7 +370,7 @@ func (r *regtest) startSeqpald() {
 		"SEQPALD_NODE_PASS="+r.pass, "SEQPALD_USDX_ASSET="+r.usdx, "SEQPALD_PRICE_URL="+price.URL,
 		"SEQPALD_ELECTRS_URL=", "SEQPALD_REGISTRY_URL=", "SEQPALD_SETUP_FEE_USD=0", "SEQPALD_KYC_FEE_USD=0",
 		"SEQPALD_KYB_FEE_USD=0", "SEQPALD_ESCROW_FEE_BPS=50", "SEQPALD_ESCROW_CONFS=1", "SEQPALD_IDV_DECISION_SECS=1",
-		"SEQPALD_BLOCKS_PER_DAY=2", "SEQPALD_REVENUE_ADDRESS="+r.revenueAddr, "SEQPALD_WEBROOT=",
+		"SEQPALD_BLOCKS_PER_DAY=2", "SEQPALD_REVENUE_ADDRESS="+r.revenueAddr, "SEQPALD_WEBROOT="+os.Getenv("SEQPAL_REGTEST_WEBROOT"),
 	)
 	logf, err := os.Create(filepath.Join(r.work, "seqpald.log"))
 	if err != nil {
@@ -666,6 +667,177 @@ func (r *regtest) run() {
 	}
 	r.log("  ten holders paid in the one transaction %s (%d outputs in all, holders + change + fee)", payTxid, len(dtx.Vout))
 	r.assertHotWalletClean("at the end", append(append([]paidSub{}, subs1...), subs2...))
+
+	r.feesWithNoPolicyAsset(issuer)
+
+	if helper := os.Getenv("SEQPAL_REGTEST_ISSUER_PAGE"); helper != "" {
+		r.offeringFromThePage(helper, issuer)
+	}
+}
+
+// feesWithNoPolicyAsset mints a bearer token, whose funding seqpald pays from
+// its seqpal-escrow wallet, with that wallet holding USDX and none of the
+// policy asset: the fee asset is chosen by the rule every wallet uses (the
+// accepted asset whose largest coin covers the most fees), never a fallback to
+// the policy asset, so the mint pays its fee in USDX.
+func (r *regtest) feesWithNoPolicyAsset(issuer *actor) {
+	t := r.t
+	r.log("")
+	r.log("== fees from a wallet with no policy asset: a bearer mint funded by seqpal-escrow holding only USDX ==")
+	addr := r.str("seqpal-escrow", "getnewaddress", "fees", "bech32")
+	r.str("miner", "sendtoaddress", addr, "50", "", "", false, false, 1, "UNSET", false, r.usdx, false, nil, r.usdx)
+	r.mine(1)
+	var policy string
+	var labels map[string]string
+	json.Unmarshal(r.rpc("", "dumpassetlabels"), &labels)
+	policy = labels["bitcoin"]
+	var bal map[string]map[string]map[string]json.Number
+	json.Unmarshal(r.rpc("seqpal-escrow", "getbalances"), &bal)
+	r.log("  seqpal-escrow holds %v (policy asset %s: %v)", bal["mine"]["trusted"], policy, bal["mine"]["trusted"][policy])
+	if v, ok := bal["mine"]["trusted"][policy]; ok && v.String() != "0" && v.String() != "0.00000000" {
+		t.Fatalf("seqpal-escrow holds the policy asset: %v", v)
+	}
+	out := r.must(issuer, "POST", "/api/issuances", map[string]any{
+		"name": "ESCF Co", "ticker": "ESCF", "structure_id": "native-equity",
+		"terms": map[string]any{"jurisdictions": map[string]any{"HN": map[string]any{"access": "standard"}}, "price": 1.0},
+	})
+	issID, _ := out["issuance"].(map[string]any)["id"].(string)
+	first := r.must(issuer, "POST", "/api/issuances/"+issID+"/bearer-attestation", map[string]any{"no_us_nexus": true, "risk_accepted": true})
+	signThis, _ := first["sign_this"].(string)
+	digest := sha256.Sum256([]byte(signThis))
+	sig, err := signTagged(issuer.priv, bearerAttestationTag, digest[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.must(issuer, "POST", "/api/issuances/"+issID+"/bearer-attestation", map[string]any{"no_us_nexus": true, "risk_accepted": true, "statement_sig": sig})
+	dep := r.must(issuer, "POST", "/api/deploy", map[string]any{"issuance_id": issID, "supply": 1000000, "precision": 2,
+		"enforcement": "bearer", "recovery_pubkey": xonlyHex(t, genPriv(t))})
+	txid, _ := dep["txid"].(string)
+	if txid == "" {
+		t.Fatalf("bearer deploy returned no txid: %v", dep)
+	}
+	r.mine(1)
+	var tx struct {
+		Vsize int64 `json:"vsize"`
+		Vout  []struct {
+			Value        json.Number `json:"value"`
+			Asset        string      `json:"asset"`
+			ScriptPubKey struct {
+				Type string `json:"type"`
+			} `json:"scriptPubKey"`
+		} `json:"vout"`
+		Confirmations int64 `json:"confirmations"`
+	}
+	json.Unmarshal(r.rpc("", "getrawtransaction", txid, true), &tx)
+	fees := 0
+	for _, o := range tx.Vout {
+		if o.ScriptPubKey.Type == "fee" {
+			fees++
+			r.log("  bearer mint %s (%d vB, %d confirmation): fee output %s of asset %s", txid, tx.Vsize, tx.Confirmations, o.Value, o.Asset)
+			if o.Asset != r.usdx {
+				t.Fatalf("the mint paid its fee in %s, not USDX", o.Asset)
+			}
+		}
+	}
+	if fees != 1 || tx.Confirmations < 1 {
+		t.Fatalf("mint %s: %d fee outputs, %d confirmations", txid, fees, tx.Confirmations)
+	}
+	r.log("  the mint's fee is paid in USDX, the only asset the paying wallet holds; nothing fell back to the policy asset")
+}
+
+// issuerPage runs the issuer's browser wallet on seqpald's own issuer page:
+// SEQPAL_REGTEST_ISSUER_PAGE names the sequentia-extension drive
+// test/regtest/seqpal-issuer.mjs, which runs the extension's provider router
+// and its contract engine, opens the page in headless Chromium as the issuer
+// (its session cookie), clicks through the page and the wallet's approval page,
+// and prints what it did as JSON.
+func (r *regtest) issuerPage(helper, mode string, issuer *actor, issID string, extra ...string) map[string]any {
+	r.t.Helper()
+	args := []string{helper, mode}
+	if ev := os.Getenv("SEQPAL_REGTEST_PAGE_EVIDENCE"); ev != "" {
+		args = append(args, ev)
+	}
+	cmd := exec.Command("node", args...)
+	cmd.Env = append(os.Environ(), "SEQPAL_URL="+r.base, "SEQPAL_SESSION="+issuer.session, "SEQPAL_ISSUANCE="+issID,
+		"NODE_RPC_URL="+r.url, "NODE_RPC_AUTH="+r.user+":"+r.pass)
+	cmd.Env = append(cmd.Env, extra...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	for _, line := range strings.Split(strings.TrimSpace(stderr.String()), "\n") {
+		if strings.HasPrefix(line, "[seqpal-issuer") {
+			r.log("    %s", line)
+		}
+	}
+	if err != nil {
+		r.t.Fatalf("the issuer page (%s): %v\n%s", mode, err, stderr.String())
+	}
+	var res map[string]any
+	if err := json.Unmarshal(out, &res); err != nil {
+		r.t.Fatalf("the issuer page (%s) printed %q", mode, out)
+	}
+	return res
+}
+
+// offeringFromThePage is an offering whose escrow the issuer opens, and whose
+// release the issuer signs, in a browser wallet on SeqPal's issuer page: the
+// release key is the wallet's contract key, the terms are a statement signed
+// with it, and the release is rebuilt, shown and signed by the wallet's
+// contract engine, then verified and broadcast by seqpald.
+func (r *regtest) offeringFromThePage(helper string, issuer *actor) {
+	t := r.t
+	r.log("")
+	r.log("== offering 3: the escrow opened and released from the issuer page, by the browser wallet's contract engine ==")
+	iss3, _ := r.deploy(issuer, "ESCE")
+	r.sign2(issuer, "/api/issuances/"+iss3+"/mandate", map[string]any{"chain": "sequentia", "address": r.issuerPayout})
+	close3 := r.height() + 12
+	opened := r.issuerPage(helper, "open", issuer, iss3, "MINIMUM=250", fmt.Sprintf("CLOSE=%d", close3))
+	st := r.must(issuer, "GET", "/api/issuances/"+iss3+"/escrow", nil)
+	esc3, _ := st["escrow"].(map[string]any)
+	if esc3 == nil || esc3["release_key"] != opened["release_key"] {
+		t.Fatalf("the escrow the page opened: %v, the wallet's key %v", esc3, opened["release_key"])
+	}
+	r.log("  escrow opened from the page: release key %v (the browser wallet's contract key, proven by a tagged statement), minimum %d atoms, close %v",
+		esc3["release_key"], jsonAtoms(esc3["minimum_atoms"]), esc3["close_text"])
+	var subs3 []paidSub
+	var invs3 []*actor
+	for i, tokens := range []int{100, 150, 50} {
+		inv := r.newActor(fmt.Sprintf("Subscriber %c3", 'A'+i))
+		r.register(inv, "HN")
+		r.verify(inv)
+		p := r.subscribe(inv, iss3, tokens)
+		subs3 = append(subs3, p)
+		invs3 = append(invs3, inv)
+	}
+	r.mine(1)
+	for i, p := range subs3 {
+		r.waitSubState(invs3[i], p.id, "in_escrow")
+	}
+	r.mineTo(close3)
+	pre := r.must(issuer, "POST", "/api/issuances/"+iss3+"/close", map[string]any{})
+	sig := signCanonical(t, issuer.priv, pre["tag"].(string), pre["sign_this"].(string))
+	closed := r.must(issuer, "POST", "/api/issuances/"+iss3+"/close", map[string]any{"signature": sig, "signer_xonly": issuer.xonly})
+	spends, _ := closed["escrow_spends"].([]any)
+	if len(spends) != 1 {
+		t.Fatalf("close returned %d spends, want one release", len(spends))
+	}
+	rel := spends[0].(map[string]any)
+	if rel["engine"] == nil {
+		t.Fatalf("the release carries no engine request: %v", rel["engine_error"])
+	}
+	r.log("  seqpald delivered and built release %s over %d coins; the issuer signs it on the page", rel["txid"], len(rel["to_sign"].([]any)))
+	signed := r.issuerPage(helper, "release", issuer, iss3)
+	if signed["txid"] != rel["txid"] {
+		t.Fatalf("the page broadcast %v, seqpald built %v", signed["txid"], rel["txid"])
+	}
+	relTxid := rel["txid"].(string)
+	r.mine(1)
+	r.logMined("release (signed by the browser wallet's contract engine)", relTxid)
+	r.assertOutput(relTxid, 0, r.issuerPayoutSPK(), r.usdx, uint64(jsonAtoms(esc3["minimum_atoms"])), true)
+	for i, p := range subs3 {
+		r.waitSubState(invs3[i], p.id, "settled")
+	}
+	r.log("  all three settled with the release txid")
 }
 
 // --- helpers for the forced negatives ---------------------------------------------------

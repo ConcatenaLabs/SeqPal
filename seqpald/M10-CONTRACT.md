@@ -65,7 +65,7 @@ and produces the deferred proofs, each printing the on-chain txid / evidence:
 
 DESIGN for real running: the driver is STRUCTURED IN STEPS, resumable, and idempotent where it can
 be (reuse issuance/subscription ids). Wallet FUNDING (sending USDX to a deposit address, keeping
-escrow/servicing wallets fee-funded with tSEQ) is a privileged box operation: the driver must
+escrow/servicing wallets funded for fees in an asset the node accepts) is a privileged box operation: the driver must
 expose funding as a clearly marked hook or a documented manual step (print the deposit address +
 amount and wait / accept a `--fund-cmd`), NOT hardcode box credentials. It must NEVER print or
 embed secrets. It reads the base URL + any issuer token from env/flags, never inlined. A

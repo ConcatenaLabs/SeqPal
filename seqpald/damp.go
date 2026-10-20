@@ -102,15 +102,16 @@ const dampParamsMissing = "this deployment is prepared but not minted: your regi
 // It is not a platform setting and not something an issuer can raise later: the
 // on-chain rules program checks each of a transfer's inputs and outputs against
 // the published lists, so the number of slots it checks is fixed when the program
-// is compiled, and that number is part of the program's identity. The shipped
-// program bounds a transfer to four inputs and six outputs, which leaves room for
-// two of the holder's own coins. A holder with more coins than that makes more
-// than one transfer.
+// is compiled, and that number is part of the program's identity. The verifier
+// is compiled once per transaction shape, every shape a leaf of the same
+// covenant (opendamp's shape menu); the widest takes five inputs and seven
+// outputs: the verifier, a fee input and three of the holder's own coins. A
+// holder with more coins than that makes more than one transfer.
 //
 // Every issuer-facing surface that offers network enforcement states this, because
 // discovering it at the moment a transfer fails would be the worst place to learn
 // it.
-const maxCoinsPerTransfer = 2
+const maxCoinsPerTransfer = 3
 
 // initialHolderKey settles where a network-enforced mint lands. The key must be
 // one this account can sign with, because a network-enforced coin is spent by

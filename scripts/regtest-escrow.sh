@@ -13,6 +13,12 @@
 # script names the script error. It stops that node, by its own pid file, on
 # the way out, and removes the directory it created unless KEEP=1 (a WORKDIR
 # given to it is left in place).
+#
+# With ISSUER_PAGE (the sequentia-extension checkout's
+# test/regtest/seqpal-issuer.mjs) and CHROME (a Chromium) set, it also builds
+# this page, has seqpald serve it, and runs a third offering whose escrow the
+# issuer opens and releases from the issuance page with the browser wallet's
+# contract engine (PAGE_EVIDENCE names a directory for its screenshots).
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")/.." && pwd)"
@@ -100,9 +106,18 @@ echo "USDX $USDX, tip $(cli getblockcount)"
 echo "=== seqpald binary ==="
 (cd "$here/seqpald" && "$GO" build -o "$WORKDIR/seqpald" .)
 
+WEBROOT=""
+if [ -n "${ISSUER_PAGE:-}" ]; then
+	echo "=== the issuer page ==="
+	(cd "$here" && npm run build >/dev/null)
+	WEBROOT="$here/dist"
+fi
+
 echo "=== the proof ==="
 cd "$here/seqpald"
-SEQPAL_REGTEST_NODE_URL="http://127.0.0.1:$RPCPORT" \
+SEQPAL_REGTEST_ISSUER_PAGE="${ISSUER_PAGE:-}" SEQPAL_REGTEST_WEBROOT="$WEBROOT" \
+	SEQPAL_REGTEST_PAGE_EVIDENCE="${PAGE_EVIDENCE:-}" \
+	SEQPAL_REGTEST_NODE_URL="http://127.0.0.1:$RPCPORT" \
 	SEQPAL_REGTEST_NODE_USER=seqpal SEQPAL_REGTEST_NODE_PASS=regtest-only \
 	SEQPAL_REGTEST_USDX="$USDX" SEQPAL_REGTEST_SEQPALD="$WORKDIR/seqpald" \
 	SEQPAL_REGTEST_WORKDIR="$WORKDIR" SEQPAL_REGTEST_EVIDENCE="${EVIDENCE:+$EVIDENCE}" \

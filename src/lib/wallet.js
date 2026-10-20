@@ -106,6 +106,47 @@ export async function signTagged(tag, { statement, hash, label } = {}) {
   return res.signature
 }
 
+// The browser wallet's contract engine: the methods an issuer's wallet uses to
+// hold an escrow's release key and sign a release or a cancel itself.
+const CONTRACT_METHODS = ['getContractKey', 'signContractStatement', 'signContractSpend']
+
+// Whether this wallet can name its contract key and sign with it.
+export async function hasContractEngine() {
+  try {
+    const caps = await capabilities()
+    const have = new Set(caps?.methods || [])
+    return CONTRACT_METHODS.every((m) => have.has(m))
+  } catch {
+    return false
+  }
+}
+
+// The wallet's contract key, x-only hex: the key an escrow names as its release
+// key. Public; the wallet signs with it only on an approval.
+export async function contractKey() {
+  await request('connect', {})
+  const res = await request('getContractKey', {})
+  if (!res?.contract_key) throw new Error('The wallet returned no contract key.')
+  return res.contract_key
+}
+
+// A tagged statement signed with the contract key: the escrow's terms, which
+// prove the release key is the issuer's.
+export async function signContractStatement(tag, statement) {
+  const res = await request('signContractStatement', { tag, statement })
+  if (!res?.signature) throw new Error('The wallet returned no signature.')
+  return res.signature
+}
+
+// A spend of a contract signed by the wallet's contract engine, under its
+// five-point approval, and handed back unbroadcast: seqpald checks it is the
+// transaction it built and verifies every signature before it broadcasts.
+export async function signContractSpend({ templateHash, instance, request: req }) {
+  const res = await request('signContractSpend', { templateHash, instance, request: req, broadcast: false })
+  if (!res?.hex) throw new Error('The wallet returned no signed transaction.')
+  return res.hex
+}
+
 // Co-sign an enclave spend seqpald built. The wallet is handed the TRANSACTION,
 // never a digest: it decodes it, recomputes every sighash from the enclave leaf
 // itself, and refuses on a mismatch. `leaf` selects which spend path is being

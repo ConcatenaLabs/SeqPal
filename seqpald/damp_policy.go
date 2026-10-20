@@ -226,8 +226,8 @@ func (s *server) handlePolicyStatus(w http.ResponseWriter, r *http.Request) {
 		"asset":            iss.AssetID,
 		"ops":              ops,
 		// The bound at the top of every issuer-facing surface: the rules program a
-		// transfer runs is sized, so a holder can combine at most two of their coins
-		// of this token in one transfer.
+		// transfer runs is sized, so a holder can combine at most three of their
+		// coins of this token in one transfer.
 		"max_coins_per_transfer": maxCoinsPerTransfer,
 	}
 	// The published policy is a PUBLIC read: no issuer token, and the issuer can

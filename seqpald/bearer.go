@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 )
@@ -525,25 +524,11 @@ func (s *server) decodeRawTransaction(txHex string) (*decodedTx, error) {
 	return &d, nil
 }
 
-// bearerFeeAsset names the asset the bearer mint's funding pays its network
-// fee in. This chain has an open fee market with no default fee asset, so
-// fundrawtransaction must be told one. SEQPALD_FEE_ASSET overrides; the
-// fallback is the node's "bitcoin" label (tSEQ on the testnet), which the
-// escrow wallet is kept funded in for exactly these fees.
+// bearerFeeAsset names the asset the escrow wallet's own transactions pay
+// their network fee in when they move no asset of their own: the bearer mint's
+// funding and the supervision transactions. It is the rule every wallet uses
+// (feeAssetFor): the accepted asset whose largest coin in the wallet covers the
+// most fees, never a fallback to the policy asset.
 func (s *server) bearerFeeAsset() (string, error) {
-	if v := os.Getenv("SEQPALD_FEE_ASSET"); v != "" {
-		return v, nil
-	}
-	res, err := s.nodeRPC("dumpassetlabels")
-	if err != nil {
-		return "", fmt.Errorf("dumpassetlabels: %w", err)
-	}
-	var labels map[string]string
-	if err := json.Unmarshal(res, &labels); err != nil {
-		return "", fmt.Errorf("dumpassetlabels: %w", err)
-	}
-	if a := labels["bitcoin"]; a != "" {
-		return a, nil
-	}
-	return "", fmt.Errorf("no fee asset: set SEQPALD_FEE_ASSET")
+	return s.feeAssetFor(seqEscrowWallet, "")
 }

@@ -132,7 +132,9 @@ registrar steps are simulated so the flow can be walked end to end.
   transfer seqpald signs with the escrow enclave key and the policy server
   co-signs, and only then is the issuer handed the release to sign: the
   transaction itself, never a digest, which a Sequentia node wallet checks and
-  signs with `signopenamptransfer`. seqpald verifies every signature against the
+  signs with `signopenamptransfer`, or which a browser wallet's contract engine
+  rebuilds, shows and signs from the issuance page when the release key is that
+  wallet's contract key. seqpald verifies every signature against the
   release key before it broadcasts. So the money depends on nobody's goodwill:
   it leaves escrow only by one of those three ways, and the deadline returns it
   if nobody acts. The tokens depend on SeqPal and the policy server. The network

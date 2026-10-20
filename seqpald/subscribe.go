@@ -22,7 +22,22 @@ type subscribeReq struct {
 	Rail          string  `json:"rail"`   // usdx | btc | card | bank
 	Amount        float64 `json:"amount"` // whole tokens to purchase
 	RefundAddress string  `json:"refund_address"`
+	// Confidential asks to pay the escrow with a confidential transfer. It is
+	// the holder's choice everywhere else; the escrow refuses it (below).
+	Confidential bool `json:"confidential,omitempty"`
 }
+
+// escrowRefusesConfidential is why a confidential payment to a subscription
+// escrow is refused before anything is paid. The escrow's cancel and refund
+// leaves read the coin's asset and amount at its own input, explicitly, to
+// return it to the subscriber less at most the fee cap; a confidential coin
+// shows neither, so neither leaf can ever spend it. Only the release can,
+// which does not read its inputs. Such a coin could never come back to the
+// subscriber, whatever happened to the offering.
+const escrowRefusesConfidential = "a subscription escrow takes transparent payments only: a confidential " +
+	"coin there can only ever be released to the issuer, never cancelled or refunded to you, because the " +
+	"escrow's return paths read the coin's amount and asset, which a confidential transfer hides. Pay " +
+	"with a transparent transfer (the default), or choose another rail"
 
 func (s *server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 	acct := principal(r)
@@ -173,6 +188,10 @@ func (s *server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, 503, "the USDX rail is not available on this deployment")
 			return
 		}
+		if req.Confidential {
+			writeErr(w, 400, "%s", escrowRefusesConfidential)
+			return
+		}
 		// The payment goes to an escrow covenant address of this subscription's
 		// own, which no wallet of this platform holds a key to. It is derived
 		// from the offering's escrow terms, which the issuer fixes when it opens
@@ -237,6 +256,7 @@ func (s *server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 				"refund_leaf": map[string]any{"script": hex.EncodeToString(inst.Leaves["refund"].Script),
 					"control": hex.EncodeToString(inst.Leaves["refund"].Control)},
 				"note": "Pay from a transparent transfer (the default) to this address. It belongs to no wallet. " +
+					"A confidential payment here could only ever be released to the issuer, never returned to you. " +
 					"Before the close it can only come back to your refund address. From the close the issuer's " +
 					"key can also release it, in a transaction that pays the issuer's payout address at least " +
 					"the offering's minimum; SeqPal asks for that signature only after your tokens are delivered. " +

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Icon } from './icons'
 import { Badge } from './ui'
 import { txUrl } from '../lib/chain'
@@ -8,6 +8,21 @@ import { usePoll } from '../lib/poll'
 import { useStore } from '../lib/store'
 import OfflineSignature from './OfflineSignature'
 import { fmtRail, subStateChip, settlementModel } from '../lib/money'
+import * as wallet from '../lib/wallet'
+
+// Whether this browser has a wallet that can hold an escrow's release key and
+// sign with it (its contract engine). Asked once per mount, never assumed.
+function useContractWallet() {
+  const [ok, setOk] = useState(false)
+  useEffect(() => {
+    let live = true
+    wallet.waitForProvider().then((p) => (p ? wallet.hasContractEngine() : false)).then((v) => live && setOk(v))
+    return () => {
+      live = false
+    }
+  }, [])
+  return ok
+}
 
 // A short investor AID for the book.
 const shortAid = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '-')
@@ -77,6 +92,26 @@ function SpendPanel({ iss, spend, onDone }) {
   const kind = SPEND_KIND[spend.kind] || { title: spend.kind, color: 'slate' }
   const outs = spend.detail?.outputs || []
   const toSign = spend.state === 'built' && spend.sign_command
+  const canEngine = useContractWallet() && toSign && spend.engine
+
+  // The browser wallet's contract engine rebuilds this transaction from the
+  // escrow's template and each coin's instance, shows it under its five-point
+  // approval and signs every escrow input with its contract key. The signed
+  // transaction comes back here unbroadcast; seqpald checks it is this one and
+  // verifies every signature before it broadcasts.
+  const signInWallet = async () => {
+    setErr(null)
+    setBusy(true)
+    try {
+      const hex = await wallet.signContractSpend(spend.engine)
+      await api.signEscrowSpendTx(iss.id, spend.id, hex)
+      onDone()
+    } catch (e) {
+      setErr(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const submit = async () => {
     setErr(null)
@@ -127,6 +162,17 @@ function SpendPanel({ iss, spend, onDone }) {
         </p>
       )}
       {spend.error && <p className="mt-1.5 text-xs text-rose-600">{spend.error}</p>}
+      {canEngine && (
+        <div className="mt-3">
+          <p className="text-xs leading-relaxed text-ink-700/75">
+            Your browser wallet holds a contract key. If it is this escrow&rsquo;s release key, the wallet
+            rebuilds this transaction itself, shows you what it spends and pays, and signs it.
+          </p>
+          <button onClick={signInWallet} disabled={busy} className="btn-primary mt-2 disabled:opacity-50" data-sign-in-wallet={spend.id}>
+            {busy ? 'Waiting for the wallet' : 'Sign in this browser\u2019s wallet'}
+          </button>
+        </div>
+      )}
       {toSign && (
         <div className="mt-3">
           <p className="text-xs leading-relaxed text-ink-700/75">
@@ -174,6 +220,7 @@ function OpenEscrowForm({ iss, onOpened }) {
   const [sig, setSig] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
+  const hasWallet = useContractWallet()
 
   const body = () => ({
     release_key: key.trim().toLowerCase(),
@@ -202,6 +249,19 @@ function OpenEscrowForm({ iss, onOpened }) {
       setSig('')
       onOpened()
     })
+  // The browser wallet's contract key as the release key, and the terms signed
+  // with it as a tagged statement.
+  const useWalletKey = () =>
+    run(async () => {
+      setKey(await wallet.contractKey())
+    })
+  const signWithWallet = () =>
+    run(async () => {
+      const signature = await wallet.signContractStatement(prep.tag, prep.sign_this)
+      await api.openEscrow(iss.id, { ...body(), signature })
+      setPrep(null)
+      onOpened()
+    })
 
   return (
     <div className="mt-4 rounded-xl border border-ink-900/10 bg-ink-900/[0.02] p-4">
@@ -217,6 +277,11 @@ function OpenEscrowForm({ iss, onOpened }) {
         <div className="sm:col-span-3">
           <label className="label" htmlFor="esc-key">Release key (x-only, 64 hex)</label>
           <input id="esc-key" className="input font-mono text-xs" value={key} onChange={(e) => setKey(e.target.value)} />
+          {hasWallet && (
+            <button type="button" onClick={useWalletKey} disabled={busy} className="btn-outline mt-2 text-xs disabled:opacity-50" data-use-wallet-key>
+              Use this browser wallet&rsquo;s contract key
+            </button>
+          )}
         </div>
         <div>
           <label className="label" htmlFor="esc-min">Minimum raise (USDX)</label>
@@ -238,6 +303,11 @@ function OpenEscrowForm({ iss, onOpened }) {
           <div>From {prep.escrow.deadline_text}, anyone can return an undelivered subscription to its subscriber.</div>
           <div>A refund keeps back at most {usdx(prep.escrow.fee_cap)} for its network fee.</div>
         </div>
+      )}
+      {prep?.sign_this && hasWallet && (
+        <button onClick={signWithWallet} disabled={busy} className="btn-primary mt-3 disabled:opacity-50" data-sign-terms-in-wallet>
+          {busy ? 'Waiting for the wallet' : 'Sign the terms in this browser\u2019s wallet'}
+        </button>
       )}
       {prep?.sign_this_message && (
         <div className="mt-3">

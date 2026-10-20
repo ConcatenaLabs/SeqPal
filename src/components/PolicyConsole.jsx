@@ -5,6 +5,15 @@ import * as api from '../lib/api'
 import { useStore } from '../lib/store'
 import { txUrl } from '../lib/chain'
 
+// The per-transfer bound as the sentence says it. seqpald reports it
+// (max_coins_per_transfer); three is what the rules programs a token is issued
+// with allow.
+const COUNT_WORDS = ['no', 'one', 'two', 'three', 'four', 'five']
+function coinsInWords(n) {
+  const k = Number.isInteger(n) && n > 0 ? n : 3
+  return `${COUNT_WORDS[k] || k} of their coin${k === 1 ? '' : 's'}`
+}
+
 // Who can hold this token, and court-ordered freezes, for a token whose rules
 // the network enforces.
 //
@@ -246,7 +255,7 @@ export default function PolicyConsole({ iss }) {
       </p>
       <p className="mt-2 rounded-lg bg-ink-900/[0.03] px-3 py-2 text-xs leading-relaxed text-ink-700/75">
         A holder can combine at most{' '}
-        {pol?.max_coins_per_transfer === 1 ? 'one of their coins' : 'two of their coins'} of
+        {coinsInWords(pol?.max_coins_per_transfer)} of
         this token in a single transfer. A holder with more makes more than one transfer.
         This is fixed when the token is created and cannot be raised later.
       </p>

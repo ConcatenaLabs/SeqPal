@@ -334,7 +334,7 @@ function AssetCard({ iss, watch }) {
           every transfer of this token has to spend it, which is what makes the rules bind. Changing
           the policy, or halting the token, is done from that address with your issuer key, and a
           change takes effect when the updated list is published rather than the moment you make it.
-          One limit worth knowing: a holder can combine at most two of their coins of this token in
+          One limit worth knowing: a holder can combine at most three of their coins of this token in
           a single transfer, and one transfer moves one holder's coins only, so two holders cannot pay from the same transfer, so a holder with more makes more than one transfer.
         </p>
       )}

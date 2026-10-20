@@ -327,6 +327,15 @@ export const signEscrowSpend = (id, spendID, signatures) =>
     body: { signatures },
   })
 
+// Owner: the same, as the whole transaction a browser wallet's contract engine
+// signed (signContractSpend with broadcast: false). seqpald reads each input's
+// signature out of it and verifies them as above.
+export const signEscrowSpendTx = (id, spendID, signedTx) =>
+  req(`/issuances/${encodeURIComponent(id)}/escrow/spends/${encodeURIComponent(spendID)}/sign`, {
+    method: 'POST',
+    body: { signed_tx: signedTx },
+  })
+
 // Owner: build a cancel returning chosen subscriptions (or every undelivered
 // one) to their subscribers, for the issuer to sign: { subscription_ids? } →
 // { spend }.
