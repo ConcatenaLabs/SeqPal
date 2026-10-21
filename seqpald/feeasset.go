@@ -100,7 +100,59 @@ func (s *server) feeRates() (map[string]uint64, error) {
 		}
 		out[strings.ToLower(a)] = n.Uint64()
 	}
-	return out, nil
+	// The node keys an asset it has a label for by that label (the policy
+	// asset is "bitcoin"), and a wallet's coins by asset id: read the labels so
+	// that every accepted asset is compared by its id, the policy asset too.
+	labelled := false
+	for a := range out {
+		if !isAssetID(a) {
+			labelled = true
+			break
+		}
+	}
+	if !labelled {
+		return out, nil
+	}
+	lres, err := s.nodeRPC("dumpassetlabels")
+	if err != nil {
+		return nil, fmt.Errorf("dumpassetlabels: %w", err)
+	}
+	var labels map[string]string
+	if err := json.Unmarshal(lres, &labels); err != nil {
+		return nil, fmt.Errorf("dumpassetlabels: %w", err)
+	}
+	return ratesByAssetID(out, labels), nil
+}
+
+// ratesByAssetID re-keys a rate table whose keys may be labels to asset ids,
+// using the node's labels. A label the node cannot resolve is dropped: no
+// coin could match it.
+func ratesByAssetID(rates map[string]uint64, labels map[string]string) map[string]uint64 {
+	byLabel := make(map[string]string, len(labels))
+	for l, id := range labels {
+		byLabel[strings.ToLower(l)] = strings.ToLower(id)
+	}
+	out := make(map[string]uint64, len(rates))
+	for k, r := range rates {
+		if isAssetID(k) {
+			out[k] = r
+		} else if id, ok := byLabel[k]; ok && isAssetID(id) {
+			out[id] = r
+		}
+	}
+	return out
+}
+
+func isAssetID(s string) bool {
+	if len(s) != 64 {
+		return false
+	}
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			return false
+		}
+	}
+	return true
 }
 
 // walletFeeCoins lists a wallet's spendable coins for the rule.

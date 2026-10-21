@@ -63,3 +63,19 @@ func TestBearerMintFeeFromAWalletWithNoPolicyAsset(t *testing.T) {
 		}
 	}
 }
+
+// The node keys the policy asset by its label: the rule still compares it by
+// its id, so a wallet whose best coin is the policy asset pays in it.
+func TestFeeRatesKeyedByLabelAreReadByAssetID(t *testing.T) {
+	policy := strings.Repeat("c8", 32)
+	usdx := m5USDX
+	rates := ratesByAssetID(map[string]uint64{"bitcoin": 100000000, usdx: 100000000, "nolabel": 5},
+		map[string]string{"bitcoin": strings.ToUpper(policy), "USDX": usdx})
+	if rates[policy] != 100000000 || rates[usdx] != 100000000 || len(rates) != 2 {
+		t.Fatalf("rates by asset id: %v", rates)
+	}
+	got, err := pickFeeAsset("", rates, []feeCoin{{policy, 6e8}, {usdx, 5e8}})
+	if err != nil || got != policy {
+		t.Fatalf("a policy coin worth more pays: got %q, %v", got, err)
+	}
+}
