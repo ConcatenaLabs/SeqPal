@@ -19,7 +19,7 @@ Node and consensus conventions live in the
 |---|---|
 | `src/` | The React + Vite single-page app. It holds no key material: `localStorage` keeps UI preferences and, for a wallet linked by hand, the account's PUBLIC key. Records come from seqpald. |
 | `seqpald/` | The Go backend, its own module. It serves the built SPA (with history-API fallback) *and* the API, so one reverse-proxy route covers both. |
-| `scripts/` | `live-probe.sh`, the `e2e/` driver, the `regenesis/` runbook scripts, and the regtest proofs on a real node: `regtest-escrow.sh` (the escrow covenant and distributions) and `regtest-supply-cap.sh` (the most there will ever be of a token, through the page, against a real openampd). |
+| `scripts/` | `live-probe.sh`, the `e2e/` driver, the `regenesis/` runbook scripts, and the regtest proofs on a real node: `regtest-escrow.sh` (the escrow covenant and distributions), `regtest-payouts.sh` (distributions and refunds paid to wallets, against a payment service) and `regtest-supply-cap.sh` (the most there will ever be of a token, through the page, against a real openampd). |
 | `seqpald/M*-CONTRACT.md` | Per-milestone contracts, each with a matching `m*_test.go`. |
 
 ```sh
@@ -229,10 +229,22 @@ rule that catches something that actually breaks.
   then the release, so a close run here never leaves a subscriber with neither (the covenant
   cannot see the tokens, so this ordering is the platform's, not the chain's). Network fees on these spends are paid
   in the payment asset out of the coins, never in another asset.
-- **A distribution is one transaction the issuer's own wallet funds and signs.** seqpald lists
-  the outputs, checks every holder's output exactly in what comes back, records the bytes and
-  the txid before the broadcast, and heals a lost write by sending the same bytes again
-  (`seqpald/distribution_tx.go`). No per-holder send, no funding deposit.
+- **A distribution is one payment the issuer's own wallet makes.** Either to the holders'
+  wallets (`seqpald/payouts.go`, `seqpald/PAYOUTS.md`): seqpald names each holder by its SeqPal
+  ID's enclave key, gives the issuer the list, and records the payment's reference only when
+  the payment service's public status names EXACTLY that list -- the asset, every key once,
+  every amount, nobody else. Or in one on-chain transaction: seqpald lists the outputs, checks
+  every holder's output exactly in what comes back, records the bytes and the txid before the
+  broadcast, and heals a lost write by sending the same bytes again
+  (`seqpald/distribution_tx.go`). No per-holder send, no funding deposit, no key here. A refund
+  after the release is the same payment to the subscribers' wallets.
+- **The payment service is never named on a page.** It is a hidden product: the issuer reads
+  "pay N holders", a total, the most the fee can be and a deadline; a holder reads "paid to
+  your wallet". `test/payouts.test.js` fails if a page names it. Repository docs may.
+- **A restricted asset is never the paid asset of a payment to wallets.** Every token issued
+  here carries rules (the policy server's 2-of-2, a network whitelist, its issuer's
+  supervision), and an allocation in a wallet would not carry them; `restrictedAsset` refuses
+  them, and an asset the policy server knows, whoever issued it.
 - What is still custodial, said plainly: the native-BTC rail (`seqpal-btc-escrow`), the
   corporate-action dividend claims (paid from the `seqpal-escrow` servicing wallet after the
   issuer funds it), and subscriptions or distribution runs that were paid into `seqpal-escrow`

@@ -17,6 +17,7 @@ import PayoutMandateCard from '../components/PayoutMandateCard'
 import ClosingCard from '../components/ClosingCard'
 import DistributionConsole from '../components/DistributionConsole'
 import FreezeClawbackConsole from '../components/FreezeClawbackConsole'
+import RefundCard from '../components/RefundCard'
 import SupervisionConsole from '../components/SupervisionConsole'
 import PolicyConsole from '../components/PolicyConsole'
 import WhitelistAccess from '../components/WhitelistAccess'
@@ -571,6 +572,7 @@ export default function IssuanceDetail() {
                 <>
                   <PayoutMandateCard iss={iss} />
                   <ClosingCard iss={iss} />
+                  <RefundCard iss={iss} />
                 </>
               )}
 

@@ -71,12 +71,16 @@ type config struct {
 	policyFeeSats        int64  // network fee reference (SEQ-sats) for fee_convert derivation
 
 	// M5 money engine.
-	btcURL      string // testnet4 (parent-chain) Bitcoin node RPC for the native-BTC escrow
-	btcUser     string // testnet4 RPC username (mainchainrpcuser)
-	btcPass     string // testnet4 RPC password (mainchainrpcpassword)
-	usdxAsset   string // USDX asset id (Sequentia payment asset)
-	escrowConfs int64  // confirmations before a deposit becomes in_escrow
-	atomicClose bool   // M6: settle USDX subscriptions as ONE atomic DvP tx (closing v2); v1 fallback otherwise
+	btcURL    string // testnet4 (parent-chain) Bitcoin node RPC for the native-BTC escrow
+	btcUser   string // testnet4 RPC username (mainchainrpcuser)
+	btcPass   string // testnet4 RPC password (mainchainrpcpassword)
+	usdxAsset string // USDX asset id (Sequentia payment asset)
+	// The payment service that pays many wallets at once (payouts.go): an
+	// operator's base URL, without /v1. Empty: distributions and refunds are
+	// paid only by one on-chain transaction.
+	payoutURL   string
+	escrowConfs int64 // confirmations before a deposit becomes in_escrow
+	atomicClose bool  // M6: settle USDX subscriptions as ONE atomic DvP tx (closing v2); v1 fallback otherwise
 	// The subscription escrow covenant. The deadline is the close plus this many
 	// days, from which anyone may refund a subscriber; the fee cap is the most a
 	// refund or a cancel may keep back from a coin for its network fee, in the
@@ -234,6 +238,7 @@ func main() {
 	flag.StringVar(&cfg.btcURL, "btcurl", env("SEQPALD_BTC_RPC_URL", ""), "testnet4 (parent-chain) Bitcoin node RPC URL for the native-BTC escrow (empty = BTC rail disabled)")
 	flag.StringVar(&cfg.btcUser, "btcuser", env("SEQPALD_BTC_RPC_USER", ""), "testnet4 Bitcoin RPC username (mainchainrpcuser)")
 	flag.StringVar(&cfg.btcPass, "btcpass", env("SEQPALD_BTC_RPC_PASS", ""), "testnet4 Bitcoin RPC password (mainchainrpcpassword)")
+	flag.StringVar(&cfg.payoutURL, "payouturl", env("SEQPALD_PAYOUT_URL", ""), "payment service that pays many wallets at once (base URL, no /v1); empty: off")
 	flag.StringVar(&cfg.usdxAsset, "usdxasset", env("SEQPALD_USDX_ASSET", "2a515539da5e6a60caa7766ecd65bac0c10d15717ddd2088844ba58f4d04b9de"), "USDX asset id (Sequentia payment asset)")
 	// Zero confirmations is not a setting this platform has: nothing here is
 	// final at 0-conf, and a deposit that has not confirmed has not arrived.
@@ -494,6 +499,13 @@ func (s *server) handler() http.Handler {
 	mux.HandleFunc("GET /api/issuances/{id}/distributions/{runID}", s.requireSession(s.handleGetDistribution))
 	mux.HandleFunc("POST /api/issuances/{id}/distributions/{runID}/snapshot", s.requireSession(s.requireEnclave(s.handleSnapshotDistribution)))
 	mux.HandleFunc("POST /api/issuances/{id}/distributions/{runID}/execute", s.requireSession(s.requireEnclave(s.handleExecuteDistribution)))
+	// Payouts to many wallets at once: a distribution's holders, a refund's
+	// subscribers, in one payment the issuer's own wallet makes.
+	mux.HandleFunc("POST /api/issuances/{id}/distributions/{runID}/payout", s.requireSession(s.requireEnclave(s.handleDistributionPayout)))
+	mux.HandleFunc("POST /api/issuances/{id}/refunds", s.requireSession(s.handleCreateRefund))
+	mux.HandleFunc("GET /api/issuances/{id}/payouts", s.requireSession(s.handleListPayouts))
+	mux.HandleFunc("GET /api/issuances/{id}/payouts/{pid}/list", s.requireSession(s.handlePayoutList))
+	mux.HandleFunc("POST /api/issuances/{id}/payouts/{pid}/reference", s.requireSession(s.handlePayoutReference))
 
 	// M7 servicing consoles: the freeze/clawback console (owner-scoped, reason
 	// required), the holder notices inbox, and the stranded-key re-delivery runbook

@@ -124,8 +124,14 @@ func (s *server) executeIssuerFunded(w http.ResponseWriter, r *http.Request, acc
 	s.writeDistributionView(w, d)
 }
 
-// AssetPayCcy is the asset a run pays in. Distributions pay USDX.
-func (d *Distribution) AssetPayCcy(s *server) string { return strings.ToLower(s.cfg.usdxAsset) }
+// AssetPayCcy is the asset a run pays in: the one the issuer chose, USDX
+// unless it chose another.
+func (d *Distribution) AssetPayCcy(s *server) string {
+	if d.PayAsset != "" {
+		return strings.ToLower(d.PayAsset)
+	}
+	return strings.ToLower(s.cfg.usdxAsset)
+}
 
 // matchPayoutOutputs finds, for each planned row, a distinct output paying
 // exactly its script, its asset and its net amount, in the clear. It returns

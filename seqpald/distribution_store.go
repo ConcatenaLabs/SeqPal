@@ -103,22 +103,24 @@ type Distribution struct {
 	// issuer's own wallet: its txid and its bytes, recorded before broadcast.
 	PayoutTxid string `json:"payout_txid,omitempty"`
 	PayoutTx   string `json:"payout_tx,omitempty"`
+	// The asset the run pays in: any unrestricted asset; empty is USDX.
+	PayAsset string `json:"pay_asset,omitempty"`
 }
 
 const distCols = `id, issuance_id, asset_id, pool_atoms, memo, state, deposit_address, funded_atoms,
     funded_txid, snapshot_height, total_held, dust_atoms, gross_total, withheld_total, net_total,
     dividend_equiv, statement_hash, withholding_hash, crs_hash, anchor_txid, created_at, updated_at,
-    payout_txid, payout_tx`
+    payout_txid, payout_tx, pay_asset`
 
 func (s *Store) InsertDistribution(d *Distribution) error {
 	now := time.Now().Unix()
 	d.CreatedAt, d.UpdatedAt = now, now
 	_, err := s.db.Exec(
-		`INSERT INTO distributions (`+distCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		`INSERT INTO distributions (`+distCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		d.ID, d.IssuanceID, d.AssetID, d.PoolAtoms, d.Memo, d.State, d.DepositAddress, d.FundedAtoms,
 		d.FundedTxid, d.SnapshotHeight, d.TotalHeld, d.DustAtoms, d.GrossTotal, d.WithheldTotal, d.NetTotal,
 		boolInt(d.DividendEquiv), d.StatementHash, d.WithholdingHash, d.CRSHash, d.AnchorTxid, d.CreatedAt, d.UpdatedAt,
-		d.PayoutTxid, d.PayoutTx)
+		d.PayoutTxid, d.PayoutTx, d.PayAsset)
 	return err
 }
 
@@ -180,7 +182,7 @@ func scanDistInto(sc scanner) (*Distribution, error) {
 	err := sc.Scan(&d.ID, &d.IssuanceID, &d.AssetID, &d.PoolAtoms, &d.Memo, &d.State, &d.DepositAddress,
 		&d.FundedAtoms, &d.FundedTxid, &d.SnapshotHeight, &d.TotalHeld, &d.DustAtoms, &d.GrossTotal,
 		&d.WithheldTotal, &d.NetTotal, &dividend, &d.StatementHash, &d.WithholdingHash, &d.CRSHash,
-		&d.AnchorTxid, &d.CreatedAt, &d.UpdatedAt, &d.PayoutTxid, &d.PayoutTx)
+		&d.AnchorTxid, &d.CreatedAt, &d.UpdatedAt, &d.PayoutTxid, &d.PayoutTx, &d.PayAsset)
 	if err != nil {
 		return nil, err
 	}
