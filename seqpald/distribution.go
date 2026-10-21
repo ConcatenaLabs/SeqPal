@@ -117,6 +117,9 @@ type createDistReq struct {
 	PoolAtoms uint64  `json:"pool_atoms"`
 	PoolUSD   float64 `json:"pool_usd"`
 	Memo      string  `json:"memo"`
+	// The asset the run pays in, by id: any unrestricted asset. Empty is USDX,
+	// and PoolUSD is read in USDX.
+	Asset string `json:"asset"`
 }
 
 // handleCreateDistribution is POST /api/issuances/{id}/distributions (owner):
@@ -157,8 +160,22 @@ func (s *server) handleCreateDistribution(w http.ResponseWriter, r *http.Request
 		writeErr(w, 400, "bad request body")
 		return
 	}
+	payAsset := strings.ToLower(strings.TrimSpace(req.Asset))
+	if strings.EqualFold(payAsset, s.cfg.usdxAsset) || strings.EqualFold(payAsset, "usdx") {
+		payAsset = ""
+	}
+	if payAsset != "" {
+		if !xonlyRe.MatchString(payAsset) {
+			writeErr(w, 400, "asset must be an asset id, 64 hexadecimal characters")
+			return
+		}
+		// A restricted asset's rules travel with it; a payout cannot carry them.
+		if s.refuseRestricted(w, acct.AID, payAsset, "distribution") {
+			return
+		}
+	}
 	pool := req.PoolAtoms
-	if pool == 0 && req.PoolUSD > 0 {
+	if pool == 0 && req.PoolUSD > 0 && payAsset == "" {
 		pool = usdToAtoms(req.PoolUSD)
 	}
 	if pool == 0 {
@@ -176,6 +193,7 @@ func (s *server) handleCreateDistribution(w http.ResponseWriter, r *http.Request
 		Memo:          strings.TrimSpace(req.Memo),
 		State:         "open",
 		DividendEquiv: isDepositoryReceipt(iss.StructureID),
+		PayAsset:      payAsset,
 	}
 	if err := s.st.InsertDistribution(d); err != nil {
 		writeErr(w, 500, "could not create the distribution run")
@@ -185,7 +203,7 @@ func (s *server) handleCreateDistribution(w http.ResponseWriter, r *http.Request
 		"issuance_id": iss.ID, "run": d.ID, "pool_atoms": pool,
 	})
 	writeJSON(w, 200, map[string]any{
-		"distribution": d, "pay_ccy": "USDX",
+		"distribution": d, "pay_ccy": s.assetLabel(d.AssetPayCcy(s)),
 		"note": "take the record-date snapshot, then pay every holder in one transaction your own wallet " +
 			"funds and signs; nothing is deposited with the platform",
 	})
@@ -402,6 +420,11 @@ func (s *server) handleExecuteDistribution(w http.ResponseWriter, r *http.Reques
 	}
 	if d.State != "snapshotted" && d.State != "paying" {
 		writeErr(w, 409, "snapshot the run before executing (state is %q)", d.State)
+		return
+	}
+	// A run paid to its holders' wallets (payouts.go) is followed there.
+	if p, _ := s.st.PayoutBySource("distribution", d.ID); p != nil {
+		writeErr(w, 409, "this run is paid to the holders' wallets in one payment (%s); it is not paid on chain as well", p.ID)
 		return
 	}
 	// A run is paid by one transaction the issuer funds and signs

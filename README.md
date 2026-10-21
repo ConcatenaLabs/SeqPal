@@ -162,13 +162,31 @@ registrar steps are simulated so the flow can be walked end to end.
   the platform's `seqpal-btc-escrow` wallet, and at closing seqpald delivers the
   tokens and pays the issuer, or refunds the subscriber, from that wallet. Bitcoin
   script cannot check an offering's minimum, so this rail has no covenant.
-- Distributions are paid by the issuer, in one transaction. After the
-  record-date snapshot seqpald lists one output per holder -- the holder's
-  registered payout address and their net after withholding -- and the issuer's
-  own wallet funds and signs that transaction. seqpald checks that every
-  holder's output is in it exactly before it broadcasts it, and records the one
-  txid on every holder's row. Nothing is deposited with the platform, and the
-  withheld amounts stay with the issuer. Corporate-action dividends are paid
+- Distributions are paid by the issuer, in one payment from its own wallet, in
+  USDX or any other unrestricted asset; a restricted token is refused as the
+  paid asset, because its transfer rules would not travel with it. After the
+  record-date snapshot there are two ways to pay:
+  - **to the holders' wallets** (where `SEQPALD_PAYOUT_URL` names a payment
+    service): seqpald names each holder by the key of its SeqPal ID, which its
+    own wallet holds, and gives the issuer a payment list. The issuer's wallet
+    pays it and hands back a payment reference, which seqpald records only when
+    the payment names exactly the list. Each holder's wallet collects its share
+    by itself the next time it opens; what nobody collects by the deadline
+    comes back to the issuer, and seqpald records each share as paid,
+    collected or returned. `seqpald/PAYOUTS.md` has the details;
+  - **in one on-chain transaction**: seqpald lists one output per holder -- the
+    holder's registered payout address and their net after withholding -- and
+    the issuer's own wallet funds and signs that transaction. seqpald checks
+    that every holder's output is in it exactly before it broadcasts it, and
+    records the one txid on every holder's row.
+
+  Either way nothing is deposited with the platform, and the withheld amounts
+  stay with the issuer.
+- A refund after the escrow released an offering's money (the offering unwound
+  after closing) is paid the same way, to the subscribers' wallets, from the
+  issuer's own wallet: each subscriber gets what it deposited. It moves no
+  tokens; taking those back is a clawback. Money still in the escrow covenant is
+  refunded by the covenant itself. Corporate-action dividends are paid
   differently: the issuer funds a deposit into the platform's servicing wallet,
   and each holder's claim is paid from it.
 

@@ -3,6 +3,7 @@ import { Icon } from './icons'
 import { Badge } from './ui'
 import CopyId from './CopyId'
 import DepositBox from './money/DepositBox'
+import WalletPayout from './WalletPayout'
 import * as api from '../lib/api'
 import { docUrl } from '../lib/api'
 import { usePoll } from '../lib/poll'
@@ -228,6 +229,15 @@ function RunPanel({ iss, runID, confsHint, onClose }) {
   const [err, setErr] = useState(null)
   const [payout, setPayout] = useState(null)
 
+  const { data: pays, refresh: refreshPays } = usePoll(() => api.listPayouts(iss.id), {
+    intervalMs: 8000,
+    deps: [iss.id],
+  })
+  const walletPayout = (pays?.payouts || []).find(
+    (v) => v.payout.kind === 'distribution' && v.payout.source_id === runID,
+  )
+  const walletsAvailable = !!pays?.available
+
   const d = data?.distribution
   const payments = data?.payments || []
 
@@ -237,6 +247,7 @@ function RunPanel({ iss, runID, confsHint, onClose }) {
     try {
       await fn()
       await refresh()
+      await refreshPays()
     } catch (e) {
       setErr(e.message)
     } finally {
@@ -376,7 +387,27 @@ function RunPanel({ iss, runID, confsHint, onClose }) {
                   : 'Execute net USDX payouts'}
             </button>
           )}
-          {d.state === 'snapshotted' && !d.deposit_address && !payout && (
+          {d.state === 'snapshotted' && !d.deposit_address && !payout && !walletPayout && walletsAvailable && (
+            <div className="mt-3 rounded-lg border border-seq-200 bg-seq-50/40 px-4 py-3">
+              <p className="text-xs leading-relaxed text-ink-700/80">
+                Pay every holder straight to their wallet in one payment from your own wallet. Each holder&rsquo;s
+                wallet collects it the next time it opens; whatever is not collected by the deadline comes back to
+                you.
+              </p>
+              <button
+                onClick={() => act(() => api.payDistributionToWallets(iss.id, runID))}
+                disabled={busy}
+                className="btn-primary mt-2 disabled:opacity-60"
+              >
+                <Icon.wallet width={16} height={16} />
+                {busy ? 'Preparing…' : "Pay the holders' wallets"}
+              </button>
+            </div>
+          )}
+          {walletPayout && (
+            <WalletPayout iss={iss} view={walletPayout} onChange={() => { refresh(); refreshPays() }} />
+          )}
+          {d.state === 'snapshotted' && !d.deposit_address && !payout && !walletPayout && (
             <button
               onClick={() =>
                 act(async () => {
@@ -388,7 +419,7 @@ function RunPanel({ iss, runID, confsHint, onClose }) {
               className="btn-primary mt-3 disabled:opacity-60"
             >
               <Icon.coins width={16} height={16} />
-              {busy ? 'Preparing…' : 'Prepare the payout transaction'}
+              {busy ? 'Preparing…' : walletsAvailable ? 'Pay in one on-chain transaction instead' : 'Prepare the payout transaction'}
             </button>
           )}
           {d.state === 'snapshotted' && !d.deposit_address && payout && (
@@ -402,7 +433,7 @@ function RunPanel({ iss, runID, confsHint, onClose }) {
               }}
             />
           )}
-          {d.state === 'paying' && !d.deposit_address && (
+          {d.state === 'paying' && !d.deposit_address && !walletPayout && (
             <div className="mt-3 text-xs text-ink-700/75">
               The payout {d.payout_txid ? <CopyId value={d.payout_txid} kind="tx" label="payout txid" /> : null}{' '}
               is recorded and on its way.
@@ -418,8 +449,10 @@ function RunPanel({ iss, runID, confsHint, onClose }) {
           {d.state === 'complete' && (
             <div className="mt-3 space-y-2">
               <div className="flex items-center gap-2 text-sm font-medium text-emerald-700">
-                <Icon.check width={16} height={16} /> Run complete. Net paid on chain in USDX
-                {d.payout_txid ? ', every holder in one transaction' : ''}.
+                <Icon.check width={16} height={16} /> Run complete.{' '}
+                {walletPayout
+                  ? "Net paid to the holders' wallets in one payment."
+                  : `Net paid on chain${d.payout_txid ? ', every holder in one transaction' : ''}.`}
               </div>
               <div className="flex flex-wrap gap-3 text-sm">
                 {d.withholding_hash && (
@@ -465,6 +498,8 @@ function RunPanel({ iss, runID, confsHint, onClose }) {
 function CreateForm({ iss, onCreated, onCancel }) {
   const [usd, setUsd] = useState('')
   const [memo, setMemo] = useState('')
+  const [asset, setAsset] = useState('')
+  const [other, setOther] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
 
@@ -474,10 +509,14 @@ function CreateForm({ iss, onCreated, onCancel }) {
     try {
       const amount = Number(String(usd).replace(/[^0-9.]/g, '')) || 0
       if (amount <= 0) {
-        setErr('Enter a positive USDX pool amount.')
+        setErr('Enter a positive pool amount.')
         return
       }
-      const res = await api.createDistribution(iss.id, { pool_usd: amount, memo: memo.trim() })
+      const a = other ? asset.trim().toLowerCase() : ''
+      const body = a
+        ? { asset: a, pool_atoms: Math.round(amount * 1e8), memo: memo.trim() }
+        : { pool_usd: amount, memo: memo.trim() }
+      const res = await api.createDistribution(iss.id, body)
       onCreated(res)
     } catch (e) {
       setErr(e.message)
@@ -496,7 +535,7 @@ function CreateForm({ iss, onCreated, onCancel }) {
       <div className="mt-4 space-y-3">
         <div>
           <label className="label" htmlFor="dist-usd">
-            Gross pool (USDX)
+            Gross pool ({other ? 'in that asset' : 'USDX'})
           </label>
           <div className="relative">
             <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-ink-700/60">
@@ -511,6 +550,21 @@ function CreateForm({ iss, onCreated, onCancel }) {
               onChange={(e) => setUsd(e.target.value)}
             />
           </div>
+        </div>
+        <div>
+          <button type="button" onClick={() => setOther(!other)} className="text-xs font-medium text-seq-600 hover:underline">
+            {other ? 'Pay in USDX' : 'Pay in another asset'}
+          </button>
+          {other && (
+            <input
+              className="input mt-1 font-mono text-xs"
+              spellCheck={false}
+              placeholder="asset id (64 characters); a restricted asset is refused"
+              value={asset}
+              onChange={(e) => setAsset(e.target.value)}
+              aria-label="asset id"
+            />
+          )}
         </div>
         <div>
           <label className="label" htmlFor="dist-memo">
@@ -564,11 +618,13 @@ export default function DistributionConsole({ iss }) {
         </Badge>
       </div>
       <p className="mt-1.5 text-sm leading-relaxed text-ink-700/70">
-        Run a real USDX distribution to holders of record. Snapshot the on-chain register at a
-        Sequentia block height, review the pro-rata and withholding table, then pay every holder
-        their net in one transaction that your own wallet funds and signs, to the payout address
-        each registered. Nothing is deposited with SeqPal. A holder with no registered mandate is
-        skipped with a portal notice, never paid to a guessed address.
+        Run a real distribution to holders of record, in USDX or another unrestricted asset.
+        Snapshot the on-chain register at a Sequentia block height, review the pro-rata and
+        withholding table, then pay every holder their net in one payment from your own wallet:
+        straight to each holder&rsquo;s wallet, which collects it when it next opens, or in one
+        on-chain transaction to the payout address each registered. Nothing is deposited with
+        SeqPal. A holder who cannot be paid is left out with the reason, never paid to a guessed
+        address.
       </p>
 
       {mode === 'create' && (

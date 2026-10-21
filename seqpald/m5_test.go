@@ -176,10 +176,11 @@ func newM5Stub(t *testing.T) *m5Stub {
 	mux.HandleFunc("GET /v1/users/{aid}", func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		u, ok := f.users[r.PathValue("aid")]
-		var cats []string
+		var cats, keys []string
 		var frozen bool
 		if ok {
 			cats = append([]string{}, u.Categories...)
+			keys = append([]string{}, u.Pubkeys...)
 			frozen = u.Frozen
 		}
 		f.mu.Unlock()
@@ -190,7 +191,8 @@ func newM5Stub(t *testing.T) *m5Stub {
 		if cats == nil {
 			cats = []string{}
 		}
-		writeJSON(w, 200, map[string]any{"aid": r.PathValue("aid"), "categories": cats, "frozen": frozen})
+		// openampd answers a user's keys too (store.User.Pubkeys).
+		writeJSON(w, 200, map[string]any{"aid": r.PathValue("aid"), "pubkeys": keys, "categories": cats, "frozen": frozen})
 	})
 
 	mux.HandleFunc("GET /v1/users/{aid}/address", func(w http.ResponseWriter, r *http.Request) {

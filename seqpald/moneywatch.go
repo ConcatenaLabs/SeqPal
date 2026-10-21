@@ -33,6 +33,8 @@ func (s *server) watchDeposits() {
 	s.payDueActionClaims()
 	// The subscription escrow: lost writes healed, and refunds from the deadline.
 	s.watchEscrowSpends()
+	// Payouts to many wallets at once: paid, collected, returned.
+	s.watchPayouts()
 }
 
 func (s *server) watchSubscriptionDeposits() {

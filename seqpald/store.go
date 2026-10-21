@@ -1278,6 +1278,57 @@ ALTER TABLE distribution_payments ADD COLUMN mandate_spk TEXT NOT NULL DEFAULT '
 	`
 ALTER TABLE issuances ADD COLUMN max_supply INTEGER NOT NULL DEFAULT 0;
 `,
+	// Payouts to many wallets at once (payouts.go): a distribution run's holders
+	// or a refund's subscribers, each named by the key of their OpenAMP account,
+	// paid by one payment the issuer's own wallet makes. A run pays in the asset
+	// the issuer chose (pay_asset; empty is USDX). One payout per distribution
+	// run; a payment reference recorded against one payout only; a key once per
+	// payout; and a subscription in at most one live refund, so nobody is
+	// refunded twice.
+	`
+ALTER TABLE distributions ADD COLUMN pay_asset TEXT NOT NULL DEFAULT '';
+CREATE TABLE payouts (
+    id              TEXT PRIMARY KEY,
+    issuance_id     TEXT NOT NULL,
+    kind            TEXT NOT NULL,
+    source_id       TEXT NOT NULL DEFAULT '',
+    asset           TEXT NOT NULL,
+    state           TEXT NOT NULL,
+    reference       TEXT NOT NULL DEFAULT '',
+    total_atoms     INTEGER NOT NULL DEFAULT 0,
+    holders         INTEGER NOT NULL DEFAULT 0,
+    left_out        INTEGER NOT NULL DEFAULT 0,
+    fee_bound       INTEGER NOT NULL DEFAULT 0,
+    round_txid      TEXT NOT NULL DEFAULT '',
+    expiry          INTEGER NOT NULL DEFAULT 0,
+    deadline        INTEGER NOT NULL DEFAULT 0,
+    collected_atoms INTEGER NOT NULL DEFAULT 0,
+    returned_atoms  INTEGER NOT NULL DEFAULT 0,
+    return_txids    TEXT NOT NULL DEFAULT '',
+    memo            TEXT NOT NULL DEFAULT '',
+    created_at      INTEGER NOT NULL,
+    updated_at      INTEGER NOT NULL
+);
+CREATE INDEX idx_payouts_issuance ON payouts(issuance_id);
+CREATE UNIQUE INDEX idx_payouts_distribution ON payouts(source_id) WHERE kind = 'distribution';
+CREATE UNIQUE INDEX idx_payouts_reference ON payouts(reference) WHERE reference != '';
+CREATE TABLE payout_rows (
+    payout_id       TEXT NOT NULL,
+    holder_aid      TEXT NOT NULL,
+    subscription_id TEXT NOT NULL DEFAULT '',
+    named_key       TEXT NOT NULL DEFAULT '',
+    atoms           INTEGER NOT NULL,
+    state           TEXT NOT NULL,
+    reason          TEXT NOT NULL DEFAULT '',
+    claim_index     INTEGER NOT NULL DEFAULT -1,
+    leaf_id         TEXT NOT NULL DEFAULT '',
+    returned_in     TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (payout_id, holder_aid)
+);
+CREATE UNIQUE INDEX idx_payout_rows_key ON payout_rows(payout_id, named_key) WHERE named_key != '';
+CREATE UNIQUE INDEX idx_payout_rows_refund ON payout_rows(subscription_id)
+    WHERE subscription_id != '' AND state IN ('planned', 'pending', 'paid', 'collected');
+`,
 }
 
 // Store is seqpald's persistent state. Every financial fact the UI shows is

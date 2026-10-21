@@ -354,7 +354,11 @@ func (r *regtest) signSpend(spend map[string]any) json.RawMessage {
 	return out.Signatures
 }
 
-func (r *regtest) startSeqpald() {
+func (r *regtest) startSeqpald() { r.startSeqpaldWith(nil) }
+
+// startSeqpaldWith starts seqpald with `extra` environment besides the
+// regtest's own.
+func (r *regtest) startSeqpaldWith(extra []string) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		r.t.Fatal(err)
@@ -372,6 +376,7 @@ func (r *regtest) startSeqpald() {
 		"SEQPALD_KYB_FEE_USD=0", "SEQPALD_ESCROW_FEE_BPS=50", "SEQPALD_ESCROW_CONFS=1", "SEQPALD_IDV_DECISION_SECS=1",
 		"SEQPALD_BLOCKS_PER_DAY=2", "SEQPALD_REVENUE_ADDRESS="+r.revenueAddr, "SEQPALD_WEBROOT="+os.Getenv("SEQPAL_REGTEST_WEBROOT"),
 	)
+	cmd.Env = append(cmd.Env, extra...)
 	logf, err := os.Create(filepath.Join(r.work, "seqpald.log"))
 	if err != nil {
 		r.t.Fatal(err)

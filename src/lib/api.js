@@ -397,6 +397,37 @@ export const executeDistribution = (id, runID, body = {}) =>
     body,
   })
 
+// Owner: pay a snapshotted run's holders in one payment to their wallets,
+// each named by its SeqPal ID's key. Settles the list once (a second call
+// returns it): { payout, rows[], asset_label, summary }.
+export const payDistributionToWallets = (id, runID) =>
+  req(`/issuances/${encodeURIComponent(id)}/distributions/${encodeURIComponent(runID)}/payout`, {
+    method: 'POST',
+    body: {},
+  })
+
+// Owner: refund subscribers whose money was released to the issuer, in one
+// payment to their wallets. Body { subscription_ids?, memo? } (every released
+// subscription when none is named). Returns as payDistributionToWallets.
+export const createRefund = (id, body = {}) =>
+  req(`/issuances/${encodeURIComponent(id)}/refunds`, { method: 'POST', body })
+
+// Owner: every payment to wallets an issuance made or planned:
+// { payouts[{ payout, rows[], asset_label, summary }], available }.
+export const listPayouts = (id) => req(`/issuances/${encodeURIComponent(id)}/payouts`)
+
+// The payment list a payout's wallet pays (a file to download).
+export const payoutListUrl = (id, pid) =>
+  `${BASE}/issuances/${encodeURIComponent(id)}/payouts/${encodeURIComponent(pid)}/list`
+
+// Owner: record the reference of the payment the issuer's wallet made. Refused
+// unless the payment names exactly the planned list.
+export const recordPayoutReference = (id, pid, reference) =>
+  req(`/issuances/${encodeURIComponent(id)}/payouts/${encodeURIComponent(pid)}/reference`, {
+    method: 'POST',
+    body: { reference },
+  })
+
 // Owner: freeze or unfreeze a holder at the policy server. REASON REQUIRED. Body
 // { holder_aid, frozen, reason } → { holder_aid, frozen, reason, log_url, note }.
 export const consoleFreeze = (id, body) =>
