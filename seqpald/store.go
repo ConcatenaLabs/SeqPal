@@ -1329,6 +1329,12 @@ CREATE UNIQUE INDEX idx_payout_rows_key ON payout_rows(payout_id, named_key) WHE
 CREATE UNIQUE INDEX idx_payout_rows_refund ON payout_rows(subscription_id)
     WHERE subscription_id != '' AND state IN ('planned', 'pending', 'paid', 'collected');
 `,
+	// tree_operator is, for an issuance elected "tree", the key of the operator
+	// whose tree the policy server holds the token's holdings in once it enabled
+	// it at deploy. Empty while it has not (and for every other election).
+	`
+ALTER TABLE issuances ADD COLUMN tree_operator TEXT NOT NULL DEFAULT '';
+`,
 }
 
 // Store is seqpald's persistent state. Every financial fact the UI shows is
@@ -1473,9 +1479,12 @@ type Issuance struct {
 	IssuerExternal bool   `json:"issuer_external,omitempty"`
 	IssuerPubkey   string `json:"issuer_pubkey,omitempty"`
 	// Enforcement (M10) is the issuer's election: "serviced" (the co-signed
-	// OpenAMP path, the default), "network" (OpenDAMP, gated on SEQPALD_DAMP and
-	// minted at a holding key the issuer names), or "bearer" (a
-	// consensus-supervised asset issued through the node's raw path). For a bearer asset the supervision descriptor is (operational key =
+	// OpenAMP path, the default), "tree" (serviced, and its holdings may also sit
+	// in the issuer's tree, where transfers between registered holders settle at
+	// once under the same rules; gated on SEQPALD_TREE_OPERATOR), "network"
+	// (OpenDAMP, gated on SEQPALD_DAMP and minted at a holding key the issuer
+	// names), or "bearer" (a consensus-supervised asset issued through the
+	// node's raw path). For a bearer asset the supervision descriptor is (operational key =
 	// IssuerPubkey, RecoveryPubkey, SupervisionPause), committed in the asset id.
 	Enforcement      string `json:"enforcement,omitempty"`
 	RecoveryPubkey   string `json:"recovery_pubkey,omitempty"`
@@ -1496,8 +1505,11 @@ type Issuance struct {
 	// recorded). Only a serviced token can be created after issuance, so for it
 	// this bounds every later mint.
 	MaxSupply uint64 `json:"max_supply,omitempty"`
-	CreatedAt int64  `json:"created_at"`
-	UpdatedAt int64  `json:"updated_at"`
+	// TreeOperator is, for a "tree" issuance, the operator key the policy server
+	// enabled the token's tree with; empty until it has.
+	TreeOperator string `json:"tree_operator,omitempty"`
+	CreatedAt    int64  `json:"created_at"`
+	UpdatedAt    int64  `json:"updated_at"`
 }
 
 // DampPrepare is the two-phase handoff for a network-enforced deploy: what the
@@ -1715,7 +1727,7 @@ const issuanceCols = `id, owner_aid, COALESCE(entity_id,''), name, ticker, struc
     supply, precision, clawback, asset_id, txid, contract_hash, holder_aid, enclave_address,
     issuer_external, issuer_pubkey, enforcement, recovery_pubkey, supervision_pause,
     verifier_asset, verifier_amount, policy_commitment, whitelist_root,
-    holder_covenant_address, verifier_covenant_address, max_supply, created_at, updated_at`
+    holder_covenant_address, verifier_covenant_address, max_supply, tree_operator, created_at, updated_at`
 
 func (s *Store) CreateIssuance(i *Issuance) error {
 	var entity any
@@ -1785,7 +1797,7 @@ func scanIssuanceInto(sc scanner) (*Issuance, error) {
 		&i.HolderAID, &i.EnclaveAddress, &issuerExternal, &i.IssuerPubkey, &i.Enforcement,
 		&i.RecoveryPubkey, &supervisionPause,
 		&i.VerifierAsset, &i.VerifierAmount, &i.PolicyCommitment, &i.WhitelistRoot,
-		&i.HolderCovenantAddress, &i.VerifierCovenantAddress, &i.MaxSupply,
+		&i.HolderCovenantAddress, &i.VerifierCovenantAddress, &i.MaxSupply, &i.TreeOperator,
 		&i.CreatedAt, &i.UpdatedAt)
 	if err != nil {
 		return nil, err

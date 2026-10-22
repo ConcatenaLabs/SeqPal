@@ -31,7 +31,7 @@ export default function NewIssuance() {
   const [data, setData] = useState({
     principal: null, // { kind:'individual'|'entity', name, entity_id }
     structureId: null,
-    // The enforcement election: 'serviced' (default) | 'network' | 'bearer'.
+    // The enforcement election: 'serviced' (default) | 'tree' | 'network' | 'bearer'.
     enforcement: 'serviced',
     isPublic: false,
     entityName: '', // the new Próspera LLC's name (set before formation docs)

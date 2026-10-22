@@ -151,6 +151,16 @@ export default function InvestorPortal() {
                       it is acquired by being on its published holder list. This
                       is where a verified holder asks to be, since it is the only
                       page about that token they can reach. */}
+                  {offering.enforcement === 'tree' && (
+                    <p className="mt-6 rounded-xl border border-ink-900/10 bg-ink-900/[0.02] px-4 py-3 text-sm leading-relaxed text-ink-700/85">
+                      Transfers of this token between approved investors can settle at once in
+                      the issuer&rsquo;s tree, checked against the same rules. You can always take
+                      your tokens out to your own account on the chain, without the issuer&rsquo;s
+                      approval, after a short wait. The issuer can refuse a transfer and, where
+                      the token keeps the clawback option, take back a holding once it is on the
+                      chain; it cannot move your holding without you.
+                    </p>
+                  )}
                   {offering.enforcement === 'network' && (
                     <div className="mt-6">
                       <WhitelistAccess

@@ -111,6 +111,11 @@ type docContext struct {
 	// row's persisted election, so the browser's pre-deploy generation and the
 	// deploy-time regeneration agree.
 	Bearer bool
+	// Tree marks the tree election: a serviced token whose holdings may also
+	// sit in the issuer's tree. The memorandum and the subscription agreement
+	// then state what the tree is and what the issuer can and cannot do there;
+	// every other election's documents are unchanged.
+	Tree bool
 	// EntityJurisdiction fills the registered-office term in the articles of
 	// incorporation when the issuance is bound to an entity record. Only bearer
 	// documents read it, so non-bearer output is unaffected.
@@ -250,6 +255,7 @@ func (s *server) docContextFor(iss *Issuance, cleanTerms map[string]any) (docCon
 		Price:              price,
 		IssuerExternal:     iss.IssuerExternal,
 		Bearer:             enforcement == "bearer",
+		Tree:               enforcement == "tree",
 		EntityJurisdiction: entityJurisdiction,
 	}, nil
 }
@@ -445,6 +451,17 @@ func bearerRiskFactors(ctx docContext) []string {
 	}
 }
 
+// treeMemorandum states, for a token elected for the issuer's tree, what the
+// tree is and the issuer's powers in it, in plain words.
+const treeMemorandum = "Holdings of this token may also sit in the issuer's tree, a register of holdings off the chain run by the issuer, where a transfer between eligible holders settles at once. " +
+	"Every such transfer is checked against the same eligibility and transfer restrictions as a transfer on the chain, and is refused when it would break one. " +
+	"A holder can at any time take its holding out of the tree to its own account on the chain, without the issuer's approval, after a short delay. " +
+	"In the tree the issuer can refuse to approve a transfer and, only where this token kept the clawback option, take a holding back once it is on the chain; it cannot move a holder's holding without the holder. " +
+	"A holding left in the tree past its service period must be taken out before it lapses."
+
+// treeRepresentation is the subscriber's acknowledgment of the tree.
+const treeRepresentation = "The subscriber acknowledges that holdings may sit in the issuer's tree, where transfers are checked against the same restrictions, that it can take its holding out to its own account on the chain at any time, and that it must do so before a holding's service period lapses."
+
 func docOfferingMemorandum(ctx docContext) (string, string) {
 	title := "Offering Memorandum: " + ctx.OfferingName + " (" + ctx.Ticker + ")"
 	var b strings.Builder
@@ -476,6 +493,10 @@ func docOfferingMemorandum(ctx docContext) (string, string) {
 		b.WriteString(para(ctx.RegS))
 	}
 	b.WriteString(para("US 506(c) purchasers hold Rule 144 restricted securities: resale is limited to the Rule 144 holding period, Section 4(a)(7), or an offshore resale under Rule 904. Concurrent Regulation S and 506(c) tranches are distinct, non-integrated offerings under the Rule 152 framework."))
+	if ctx.Tree {
+		b.WriteString(heading("The issuer's tree"))
+		b.WriteString(para(treeMemorandum))
+	}
 	b.WriteString(heading("Risk factors"))
 	b.WriteString(riskFactors(structureRiskFactors(ctx)))
 	return title, docPage("offering-memorandum", title, b.String())
@@ -506,6 +527,9 @@ func docSubscriptionAgreement(ctx docContext) (string, string) {
 		"The subscriber acknowledges the custody conclusion and the finality and reorg behavior stated in the offering memorandum.",
 		"US purchasers under Rule 506(c) confirm verified accredited status and acknowledge Rule 144 restricted-securities resale limits.",
 	}))
+	if ctx.Tree {
+		b.WriteString(riskFactors([]string{treeRepresentation}))
+	}
 	b.WriteString(heading("Distribution compliance"))
 	if ctx.RegS != "" {
 		b.WriteString(para(ctx.RegS))

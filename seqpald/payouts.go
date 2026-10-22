@@ -210,6 +210,8 @@ func issuanceKindWord(iss *Issuance) string {
 		return "network-enforced"
 	case "bearer":
 		return "freely tradable, under its issuer's supervision"
+	case "tree":
+		return "transfers co-signed by the policy server, in the issuer's tree as on the chain"
 	default:
 		return "transfers co-signed by the policy server"
 	}

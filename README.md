@@ -235,11 +235,22 @@ recovery.
      jurisdiction/accreditation policy (Appendix C matrix, per-issuance caps, and
      the public-offering overlay) baked into the token.
   7. Checkout & deploy — pay the setup fee in USDX, then deploy.
-- **Enforcement election** (step 3) — three models, recorded on the issuance
+- **Enforcement election** (step 3) — four models, recorded on the issuance
   and sent with the deploy:
   - *SeqPal enforces your rules* (`serviced`, the default) — an OpenAMP
     restricted asset; the policy server co-signs every transfer off-chain, with
     zero consensus changes.
+  - *SeqPal enforces your rules, and transfers settle at once* (`tree`) — the
+    same OpenAMP asset, minted the same way, whose holdings may also sit in the
+    issuer's tree: leaves the tree's operator co-signs only beside the policy
+    server's approval (openampd's `/v1/issuer/tree` endpoints), so a transfer
+    between approved holders settles at once under the same rules, and a holder
+    can always take its tokens out to its own enclave on the chain. The deploy
+    mints as `serviced` does, then turns the tree on at the policy server with
+    the deployment's operator key (`SEQPALD_TREE_OPERATOR`); unset, the election
+    is refused with a 501 and nothing is minted. When the policy server does not
+    turn it on, the token stays a serviced one, the deploy says so, and the
+    issuer asks again from the token's page (`POST /api/issuances/{id}/tree`).
   - *The network enforces your rules* (`network`) — OpenDAMP: the rules are
     published as on-chain covenants enforced by Sequentia consensus. A
     deployment capability (`SEQPALD_DAMP`); refused with a 501 where it is unset.

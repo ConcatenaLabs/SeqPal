@@ -203,6 +203,13 @@ export default function FreezeClawbackConsole({ iss }) {
         this asset is seized into the issuer enclave. The reason is recorded in the public,
         hash-chained transparency log alongside the sweep txid.
       </p>
+      {iss?.enforcement === 'tree' && (
+        <p className="mt-2 text-sm leading-relaxed text-ink-700/70">
+          In your tree: a frozen holder&rsquo;s transfers are refused there too. A clawback here takes
+          the holder&rsquo;s coins on the chain; a holding in the tree is taken back only once it is
+          on the chain, by its own clawback path, which the tree&rsquo;s operator brings there.
+        </p>
+      )}
 
       <div
         className={`mt-3 rounded-lg border px-4 py-3 text-xs leading-relaxed ${

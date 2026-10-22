@@ -32,7 +32,7 @@ export default function Docs() {
         the public records you can check without trusting SeqPal.
       </p>
 
-      <Section icon={Icon.shield} title="How enforcement works: the three models">
+      <Section icon={Icon.shield} title="How enforcement works: the four models">
         <p>
           When you issue a token you choose who can hold it and who enforces the rules.
           Each choice maps to a distinct protocol mechanism:
@@ -60,6 +60,38 @@ export default function Docs() {
               server&rsquo;s blinding keys. Transparent stays the default, and a supervised
               (freely-tradable) asset is always transparent, because consensus must read
               its outputs to enforce a freeze.
+            </p>
+          </div>
+          <div className="rounded-xl border border-ink-900/10 bg-ink-900/[0.02] p-4">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-ink-900">
+                SeqPal enforces your rules, and transfers settle at once
+              </span>
+              <Badge color="btc">OpenAMP</Badge>
+            </div>
+            <p className="mt-1.5">
+              This model is the standard one with the issuer&rsquo;s tree beside it. A holding
+              may leave its enclave for a leaf of the issuer&rsquo;s tree: one output on chain
+              holds the coins, and each holder&rsquo;s share is a leaf of pre-signed
+              transactions that only the holder and the tree&rsquo;s operator can spend
+              together. A transfer between registered holders then reassigns leaves off the
+              chain and settles at once. The operator co-signs a leaf&rsquo;s spend only beside
+              the OpenAMP policy server&rsquo;s own signature over the same message, and the
+              policy server signs only a transfer that passes the issuer&rsquo;s rules, the same
+              checks as on chain, with the same refusals in the transparency log; a holder&rsquo;s
+              leaves count in its balance, the holder caps and the velocity window like its
+              enclave coins.
+            </p>
+            <p className="mt-2">
+              Each leaf has one path its holder can take alone: after a delay, it pays the
+              whole leaf to the holder&rsquo;s own enclave on chain, and to nothing else, so the
+              asset&rsquo;s rules keep applying there. The issuer&rsquo;s powers in the tree
+              are the ones it has over the enclave: to refuse a transfer, and, only where the
+              asset kept the clawback option at issuance, to take a leaf back once it is on
+              chain, through the same clawback leaf the enclave carries. Without that option a
+              leaf has no such path. Nobody, the issuer included, can move a holder&rsquo;s leaf
+              without the holder&rsquo;s signature. Transfers in the tree pause if the operator
+              or the policy server is down; the holder&rsquo;s own path out does not.
             </p>
           </div>
           <div className="rounded-xl border border-ink-900/10 bg-ink-900/[0.02] p-4">
@@ -215,8 +247,10 @@ export default function Docs() {
           all live on that one server, with backups and a restore runbook. The
           plain-language disclosure of what pauses and what keeps trading during an outage
           is on the Legal and Status pages; mechanically, OpenAMP transfers need the
-          co-signer and therefore pause, while OpenDAMP and supervised bearer assets are
-          enforced by the chain itself and keep settling.
+          co-signer and therefore pause (so do transfers in the issuer&rsquo;s tree, whose
+          holders can still take their tokens out to their own enclaves on chain), while
+          OpenDAMP and supervised bearer assets are enforced by the chain itself and keep
+          settling.
         </p>
         <p>
           The policy key is reached only through a signer interface, a deliberate seam in

@@ -318,6 +318,9 @@ func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		// refused with a 501. Deploys are always transparent mints.
 		"confidential": s.cfg.confidential,
 		"damp":         s.cfg.damp,
+		// Whether a token can be held in the issuer's tree here, where transfers
+		// between approved holders settle at once (enforcement "tree").
+		"tree": s.cfg.treeOperator != "",
 		// The setup fee is a real gate: an unpaid one refuses the deploy with a
 		// 402. What it COSTS is per-offering, priced from the published schedule
 		// and that issuance's own terms, so there is no one number to report
