@@ -122,6 +122,11 @@ type config struct {
 	// M10: OpenDAMP capability flag. Off by default; enforcement=network deploys
 	// are refused 501 until it is on (and the OpenDAMP path exists).
 	damp bool
+
+	// treeOperator is the x-only key of the operator whose tree a "tree"
+	// issuance's holdings may sit in (SEQPALD_TREE_OPERATOR). Empty: the
+	// election is refused 501 and nothing is minted.
+	treeOperator string
 }
 
 type server struct {
@@ -281,6 +286,10 @@ func main() {
 		}
 	}
 	cfg.damp = env("SEQPALD_DAMP", "") == "1" || strings.EqualFold(env("SEQPALD_DAMP", ""), "true")
+	cfg.treeOperator = strings.ToLower(strings.TrimSpace(env("SEQPALD_TREE_OPERATOR", "")))
+	if cfg.treeOperator != "" && !validXOnly(cfg.treeOperator) {
+		log.Fatalf("SEQPALD_TREE_OPERATOR must be the tree operator's x-only key, 64 hex characters")
+	}
 	cfg.setupFeeOverrideUSD = envFloat("SEQPALD_SETUP_FEE_USD", -1)
 	// The provider bills per check either way, so the fee is what recoups it. A
 	// deployment that sets either to zero simply does not charge for that check.
@@ -417,6 +426,7 @@ func (s *server) handler() http.Handler {
 	mux.HandleFunc("PATCH /api/issuances/{id}", s.requireSession(s.handlePatchIssuance))
 	mux.HandleFunc("POST /api/issuances/{id}/compile", s.requireSession(s.handleCompile))
 	mux.HandleFunc("POST /api/deploy", s.requireSession(s.handleDeploy))
+	mux.HandleFunc("POST /api/issuances/{id}/tree", s.requireSession(s.handleIssuanceTree))
 
 	// M10 bearer enforcement: the annually-refreshable attestation a bearer
 	// deploy requires, and the supervision (freeze/unfreeze) console for live

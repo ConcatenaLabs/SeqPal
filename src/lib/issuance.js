@@ -32,9 +32,11 @@ function buildJurisdictions(policy, eligCategories) {
 }
 
 export function toTerms(d) {
-  // The enforcement election (serviced | network | bearer): who can hold the
-  // token and who enforces the rules, chosen early in the wizard and committed
-  // in the terms like every other deal term.
+  // The enforcement election (serviced | tree | network | bearer): who can hold
+  // the token and who enforces the rules, chosen early in the wizard and
+  // committed in the terms like every other deal term. A tree token is a
+  // serviced one whose holdings may also sit in the issuer's tree, so it takes
+  // the serviced rule set.
   const enforcement = d.enforcement || 'serviced'
   const terms = {
     enforcement,
@@ -121,6 +123,9 @@ export function view(iss) {
     // The most there will ever be of the token, whole tokens, as set at deploy
     // (0 when the deploy did not record one).
     maxSupply: iss.max_supply || 0,
+    // A tree token's operator, once the policy server enabled its tree (empty
+    // before, and for every other election).
+    treeOperator: iss.tree_operator || '',
     live: iss.status === 'live',
   }
 }

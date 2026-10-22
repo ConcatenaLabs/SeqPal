@@ -344,12 +344,12 @@ export function Step2Structure({ data, update }) {
 
 /* ──────────────── Step 3, Enforcement election ──────────────── */
 
-// Who can hold the token, and who enforces the rules. Three models, chosen
+// Who can hold the token, and who enforces the rules. Four models, chosen
 // before the deal terms because the choice shapes which rules exist at all.
-// The "network" model is a per-deployment capability probed live from
-// GET /api/health (field `damp`): when the deployment cannot run it, the card
-// says so and cannot be selected, so the deploy never discovers a refusal at
-// checkout.
+// The "network" and "tree" models are per-deployment capabilities probed live
+// from GET /api/health (fields `damp` and `tree`): when the deployment cannot
+// run one, its card says so and cannot be selected, so the deploy never
+// discovers a refusal at checkout.
 const ENFORCEMENT_MODELS = [
   {
     id: 'serviced',
@@ -363,6 +363,20 @@ const ENFORCEMENT_MODELS = [
       'Transfers pause if SeqPal’s service is down.',
     ],
     regulatory: 'The strongest compliance story for offers that reach US, EU, or UK investors.',
+  },
+  {
+    id: 'tree',
+    badge: null,
+    title: 'SeqPal enforces your rules, and transfers settle at once',
+    body: 'Everything in the standard option, and your holders can also keep the token in your tree, where a transfer between approved investors settles in an instant after the same check against your rules.',
+    goodFor: 'Tokens that change hands often between approved investors, where waiting for the chain slows every trade.',
+    tradeoffs: [
+      'The same rules as the standard option, checked on every transfer in the tree as on the chain.',
+      'A holder can always take their tokens out of the tree into their own account on the chain, without your approval, after a short wait.',
+      'You can refuse a transfer and, if you keep the clawback option, take back a holding once it is on the chain. You cannot move anyone’s holding without them.',
+      'Transfers in the tree pause if the service that runs it is down; holders can still take their tokens out.',
+    ],
+    regulatory: 'The compliance story of the standard option: every holder is an investor you approved, and every transfer is checked against your rules.',
   },
   {
     id: 'network',
@@ -400,18 +414,26 @@ const ENFORCEMENT_MODELS = [
 ]
 
 export function Step3Enforcement({ data, update }) {
-  // Whether this deployment can run network-enforced rules, probed live.
+  // Whether this deployment can run network-enforced rules, and hold a token in
+  // the issuer's tree, probed live.
   const [dampAvailable, setDampAvailable] = useState(null)
+  const [treeAvailable, setTreeAvailable] = useState(null)
   // And whether this issuer has an OpenAMP account to mint a serviced token into.
   const { servicedAvailable } = useStore()
   useEffect(() => {
     let cancelled = false
     health()
       .then((h) => {
-        if (!cancelled) setDampAvailable(!!h.damp)
+        if (!cancelled) {
+          setDampAvailable(!!h.damp)
+          setTreeAvailable(!!h.tree)
+        }
       })
       .catch(() => {
-        if (!cancelled) setDampAvailable(null)
+        if (!cancelled) {
+          setDampAvailable(null)
+          setTreeAvailable(null)
+        }
       })
     return () => {
       cancelled = true
@@ -446,8 +468,9 @@ export function Step3Enforcement({ data, update }) {
           // Both of these settle through, or are supervised by, an account this
           // issuer may not have set up. Only the chain-enforced option needs
           // nothing of the sort.
-          const needsServicing = (m.id === 'serviced' || m.id === 'bearer') && !servicedAvailable
-          const unavailable = (isNetwork && dampAvailable === false) || needsServicing
+          const needsServicing = (m.id === 'serviced' || m.id === 'tree' || m.id === 'bearer') && !servicedAvailable
+          const unavailable =
+            (isNetwork && dampAvailable === false) || (m.id === 'tree' && treeAvailable === false) || needsServicing
           const selected = data.enforcement === m.id
           return (
             // A div rather than a button so the "How this works" link inside
@@ -516,7 +539,7 @@ export function Step3Enforcement({ data, update }) {
               {unavailable && (
                 <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
                   {needsServicing
-                    ? 'This option needs an account your SeqPal ID has not set up yet: one settles through SeqPal, the other is supervised by a key that signs its freezes. Set one up from your passport, or choose the option the chain enforces on its own.'
+                    ? 'This option needs an account your SeqPal ID has not set up yet: these settle through SeqPal, or are supervised by a key that signs their freezes. Set one up from your passport, or choose the option the chain enforces on its own.'
                     : 'Not available on this deployment.'}
                 </p>
               )}
@@ -2230,7 +2253,9 @@ export function Step7Checkout({ data, update, onDeployed }) {
                   ? 'Nobody restricts transfers: freely tradable, court-order freezes only'
                   : data.enforcement === 'network'
                     ? 'The network, from your published rules'
-                    : 'SeqPal checks every transfer against your rules',
+                    : data.enforcement === 'tree'
+                      ? 'SeqPal checks every transfer against your rules, on the chain and in your tree'
+                      : 'SeqPal checks every transfer against your rules',
               ],
               ['Unit of account', data.unit === 'BTC' ? 'BTC (₿)' : 'USD ($)'],
               ['Target raise', data.raise || 'not set'],
@@ -2269,7 +2294,7 @@ export function Step7Checkout({ data, update, onDeployed }) {
             value={data.maxSupply ?? ''}
             onChange={(v) => update({ maxSupply: v })}
             ticker={data.ticker}
-            enforcement={bearer ? 'bearer' : network ? 'network' : 'serviced'}
+            enforcement={bearer ? 'bearer' : network ? 'network' : data.enforcement === 'tree' ? 'tree' : 'serviced'}
           />
         </div>
 
@@ -2470,7 +2495,7 @@ const DEPLOY_HINT = {
   404: 'The issuance record could not be found on the server.',
   409: 'Choose a different ticker. Tickers are checked against the assets already live on the platform.',
   429: 'The deploy rate limit is per account and per platform over a rolling hour. Wait and try again.',
-  501: 'This deployment cannot run network-enforced rules. Pick a supported enforcement model and deploy again; nothing was minted.',
+  501: 'This deployment cannot run the model you picked for who holds your token. Pick a supported one and deploy again; nothing was minted.',
   502: 'SeqPal’s transfer service refused or could not be reached. Nothing was minted.',
   503: 'The platform has no issuer token configured, so no deployment can be made from here right now.',
 }

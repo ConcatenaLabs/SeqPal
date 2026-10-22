@@ -59,6 +59,13 @@ SEQPALD_CONFIDENTIAL=
 # mints. Preparation mints a small internal verifier asset on the issuer's
 # behalf; an abandoned preparation leaves that asset unused, which is harmless.
 SEQPALD_DAMP=
+# The issuer's tree (enforcement=tree): the x-only key of the operator whose
+# tree a tree token's holdings may sit in. Unset, a deploy electing
+# enforcement=tree is refused 501, nothing is minted, and /api/health reports
+# "tree": false. Set it only when the policy server runs its tree tool
+# (openampd -arcaenclave) and the operator with this key serves the asset's
+# tree; a deploy then mints as a serviced one and turns the tree on.
+SEQPALD_TREE_OPERATOR=
 ```
 
 Bearer (supervised) issuance and the W-3 corporate-action snapshots also depend
@@ -113,6 +120,7 @@ native-BTC escrow rail is off unless `SEQPALD_BTC_RPC_URL` is set.
 | `SEQPALD_ESCROW_FEE_CAP_ATOMS` (`-escrowfeecap`) | `100000` | most a cancel or a refund out of the escrow covenant may keep back from each coin for its network fee, in the payment asset's atoms. Fixed into an offering's terms when its escrow opens |
 | `SEQPALD_REVENUE_ADDRESS` (`-revenueaddress`) | empty | Sequentia address the platform's escrow fee is paid to, as an output of each release; empty = a fresh address of the platform's own `seqpal-escrow` wallet. It receives the fee and nothing a subscriber pays in |
 | `SEQPALD_DAMP` | unset | `1`/`true`: network-enforced (OpenDAMP) deploys allowed; see above |
+| `SEQPALD_TREE_OPERATOR` | unset | x-only key of the operator of the issuer's tree: `tree` deploys allowed and their tree turned on at the policy server; see above |
 | `SEQPALD_SETUP_FEE_USD` | unset | OVERRIDE of the published setup price, not the price. Unset, an offering is charged what `src/data/pricing.js` quotes for its structure and terms. Set, that amount instead; zero waives the fee |
 | `SEQPALD_ESCROW_FEE_BPS` | unset | OVERRIDE of the published escrow schedule with a flat rate in basis points of the deposit. Unset, the platform charges what it publishes: 0.25% a month accrued daily, $5,000 minimum, 3% cap |
 | `SEQPALD_KYC_FEE_USD` | `20` | identity verification fee, collected before the check is submitted to the provider. The default is the published price in `src/data/pricing.js`; zero charges nothing |

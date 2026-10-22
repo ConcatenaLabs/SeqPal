@@ -130,6 +130,11 @@ type m5Stub struct {
 	dampCompleteBodies []map[string]any
 	dampPrepared       map[string]map[string]any
 	dampCompleteErr    string
+
+	// The issuer's tree (additive; inert by default): every body POSTed to
+	// /v1/issuer/tree, and a refusal it answers with instead when set.
+	treeBodies []map[string]any
+	treeRefuse string
 }
 
 // m5pendingClaw is a two-phase clawback build the stub returned but has not yet
@@ -245,6 +250,24 @@ func newM5Stub(t *testing.T) *m5Stub {
 		writeJSON(w, 200, map[string]any{"ok": true})
 	})
 
+	mux.HandleFunc("POST /v1/issuer/tree", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-issuer-token" {
+			writeJSON(w, 401, map[string]any{"error": "bad token"})
+			return
+		}
+		var body map[string]any
+		raw, _ := readAllLimited(r.Body, 1<<20)
+		json.Unmarshal(raw, &body)
+		f.mu.Lock()
+		f.treeBodies = append(f.treeBodies, body)
+		refuse := f.treeRefuse
+		f.mu.Unlock()
+		if refuse != "" {
+			writeJSON(w, 409, map[string]any{"error": refuse})
+			return
+		}
+		writeJSON(w, 200, map[string]any{"asset": body["asset"], "tree": map[string]any{"operator": body["operator"]}})
+	})
 	mux.HandleFunc("POST /v1/issuer/assets", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer test-issuer-token" {
 			writeJSON(w, 401, map[string]any{"error": "bad token"})
