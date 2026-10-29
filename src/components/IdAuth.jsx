@@ -561,7 +561,7 @@ export function AuthPanel({ onDone }) {
             </button>
             {ext === 'absent' && (
               <p className="text-center text-xs text-ink-700/60">
-                No Sequentia wallet extension is installed in this browser.
+                Ambra browser, the wallet extension, is not installed in this browser.
               </p>
             )}
             <button onClick={() => setPhase('link')} className="btn-outline w-full">

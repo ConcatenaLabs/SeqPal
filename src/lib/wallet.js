@@ -56,7 +56,7 @@ export function waitForProvider(ms = 1500) {
 
 async function request(method, params) {
   const p = provider()
-  if (!p) throw new Error('No Sequentia wallet extension is available in this browser.')
+  if (!p) throw new Error('Ambra browser, the wallet extension, is not available in this browser.')
   return p.request({ method, params })
 }
 
