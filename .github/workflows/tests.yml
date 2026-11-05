@@ -1,0 +1,41 @@
+# The whole gate CLAUDE.md names, on every pull request and on main: the web app's `npm test`
+# (eslint no-undef + node --test) and production build, and seqpald's build and tests. Node 18
+# and Go 1.25.0 are what the testnet server builds SeqPal with.
+#
+# Not run here, by design:
+# - SKIPPED (needs a regtest node, an Arca operator or a browser): the seqpald tests gated on
+#   SEQPAL_REGTEST_*, SEQPAL_PAYOUT_* or CHROME skip themselves without them, and
+#   scripts/regtest-*.sh are not run.
+name: tests
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  web:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+  seqpald:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.0'
+          cache-dependency-path: seqpald/go.sum
+      - working-directory: seqpald
+        run: go build ./...
+      - working-directory: seqpald
+        run: go test ./...
