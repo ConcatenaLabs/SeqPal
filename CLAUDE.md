@@ -32,7 +32,8 @@ npm test             # eslint (no-undef) + node --test
 cd seqpald && go build ./... && go test ./...
 ```
 
-There is no CI. Those commands are the whole gate.
+CI (`.github/workflows/tests.yml`) runs those commands, and `npm run build`, on every pull
+request and on `main`. The tests that need a regtest node or a browser skip themselves there.
 
 `eslint` runs one rule, `no-undef`, and it earns its place: a bundler only resolves what
 crosses a module boundary, so `vite build` compiles a call to an identifier that does not

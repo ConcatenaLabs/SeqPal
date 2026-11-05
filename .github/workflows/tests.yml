@@ -1,0 +1,53 @@
+# The whole gate CLAUDE.md names, on every pull request and on main: the web app's `npm test`
+# (eslint no-undef + node --test) and production build, and seqpald's build and tests. The build
+# runs on Node 18 and seqpald on Go 1.25.0, what the testnet server builds SeqPal with. `npm test`
+# runs on Node 22: the app's code is the browser's and uses its global `crypto`, which Node only
+# provides from 19 on.
+#
+# Not run here, by design:
+# - SKIPPED (needs a regtest node, an Arca operator or a browser): the seqpald tests gated on
+#   SEQPAL_REGTEST_*, SEQPAL_PAYOUT_* or CHROME skip themselves without them, and
+#   scripts/regtest-*.sh are not run.
+name: tests
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  web-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+  web-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+  seqpald:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.0'
+          cache-dependency-path: seqpald/go.sum
+      - working-directory: seqpald
+        run: go build ./...
+      - working-directory: seqpald
+        run: go test ./...
