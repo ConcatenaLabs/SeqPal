@@ -546,9 +546,6 @@ export const drSupply = (id) => req(`/issuances/${encodeURIComponent(id)}/dr/sup
 // room_atoms, max_atoms, cap_atoms, capped, final, words, precision, ticker }.
 export const issuanceSupply = (id) => req(`/issuances/${encodeURIComponent(id)}/supply`)
 
-// A tree token: ask the policy server again to turn on its tree when the
-// deploy could not. { enabled, operator, note }. Owner session only.
-export const enableTree = (id) => req(`/issuances/${encodeURIComponent(id)}/tree`, { method: 'POST', body: {} })
 
 // ── bearer (freely-tradable) issuance ───────────────────────────────────────
 // Record the signed bearer attestation before a freely-tradable deploy. Body

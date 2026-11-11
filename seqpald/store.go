@@ -1329,9 +1329,8 @@ CREATE UNIQUE INDEX idx_payout_rows_key ON payout_rows(payout_id, named_key) WHE
 CREATE UNIQUE INDEX idx_payout_rows_refund ON payout_rows(subscription_id)
     WHERE subscription_id != '' AND state IN ('planned', 'pending', 'paid', 'collected');
 `,
-	// tree_operator is, for an issuance elected "tree", the key of the operator
-	// whose tree the policy server holds the token's holdings in once it enabled
-	// it at deploy. Empty while it has not (and for every other election).
+	// tree_operator is read by nothing: issuances are never held in an Ark
+	// tree (retired.go). The column stays, since a migration only adds.
 	`
 ALTER TABLE issuances ADD COLUMN tree_operator TEXT NOT NULL DEFAULT '';
 `,
@@ -1479,9 +1478,7 @@ type Issuance struct {
 	IssuerExternal bool   `json:"issuer_external,omitempty"`
 	IssuerPubkey   string `json:"issuer_pubkey,omitempty"`
 	// Enforcement (M10) is the issuer's election: "serviced" (the co-signed
-	// OpenAMP path, the default), "tree" (serviced, and its holdings may also sit
-	// in the issuer's tree, where transfers between registered holders settle at
-	// once under the same rules; gated on SEQPALD_TREE_OPERATOR), "network"
+	// OpenAMP path, the default; a stored "tree" reads as it), "network"
 	// (OpenDAMP, gated on SEQPALD_DAMP and minted at a holding key the issuer
 	// names), or "bearer" (a consensus-supervised asset issued through the
 	// node's raw path). For a bearer asset the supervision descriptor is (operational key =
@@ -1505,11 +1502,8 @@ type Issuance struct {
 	// recorded). Only a serviced token can be created after issuance, so for it
 	// this bounds every later mint.
 	MaxSupply uint64 `json:"max_supply,omitempty"`
-	// TreeOperator is, for a "tree" issuance, the operator key the policy server
-	// enabled the token's tree with; empty until it has.
-	TreeOperator string `json:"tree_operator,omitempty"`
-	CreatedAt    int64  `json:"created_at"`
-	UpdatedAt    int64  `json:"updated_at"`
+	CreatedAt int64  `json:"created_at"`
+	UpdatedAt int64  `json:"updated_at"`
 }
 
 // DampPrepare is the two-phase handoff for a network-enforced deploy: what the
@@ -1722,12 +1716,13 @@ func (s *Store) EntityByID(id string) (*Entity, error) {
 
 // issuanceCols deliberately omits the issuances.confidential column: it survives
 // in the schema (additive migrations only) but confidentiality is a per-transfer
-// choice now, so the issuance record neither writes nor reads it.
+// choice now, so the issuance record neither writes nor reads it. The
+// tree_operator column is omitted for the same reason (retired.go).
 const issuanceCols = `id, owner_aid, COALESCE(entity_id,''), name, ticker, structure_id, status, terms,
     supply, precision, clawback, asset_id, txid, contract_hash, holder_aid, enclave_address,
     issuer_external, issuer_pubkey, enforcement, recovery_pubkey, supervision_pause,
     verifier_asset, verifier_amount, policy_commitment, whitelist_root,
-    holder_covenant_address, verifier_covenant_address, max_supply, tree_operator, created_at, updated_at`
+    holder_covenant_address, verifier_covenant_address, max_supply, created_at, updated_at`
 
 func (s *Store) CreateIssuance(i *Issuance) error {
 	var entity any
@@ -1797,12 +1792,13 @@ func scanIssuanceInto(sc scanner) (*Issuance, error) {
 		&i.HolderAID, &i.EnclaveAddress, &issuerExternal, &i.IssuerPubkey, &i.Enforcement,
 		&i.RecoveryPubkey, &supervisionPause,
 		&i.VerifierAsset, &i.VerifierAmount, &i.PolicyCommitment, &i.WhitelistRoot,
-		&i.HolderCovenantAddress, &i.VerifierCovenantAddress, &i.MaxSupply, &i.TreeOperator,
+		&i.HolderCovenantAddress, &i.VerifierCovenantAddress, &i.MaxSupply,
 		&i.CreatedAt, &i.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
 	i.Terms = json.RawMessage(terms)
+	i.Enforcement = readEnforcement(i.Enforcement)
 	i.Clawback = clawback != 0
 	i.IssuerExternal = issuerExternal != 0
 	i.SupervisionPause = supervisionPause != 0

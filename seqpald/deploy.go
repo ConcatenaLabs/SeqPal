@@ -117,12 +117,11 @@ type deployReq struct {
 	IssuerPubkey string `json:"issuer_pubkey"`
 
 	// Enforcement (M10) is the issuer's election: "serviced" (the co-signed
-	// OpenAMP path; the default, also selected by an empty string), "tree"
-	// (serviced, with the token's tree enabled at the policy server so holdings
-	// may sit in the issuer's tree; refused 501 unless SEQPALD_TREE_OPERATOR is
-	// set), "network" (OpenDAMP; refused 501 unless SEQPALD_DAMP is enabled, the
-	// election is still recorded), or "bearer" (a consensus-supervised asset
-	// issued through the node's raw path, no openampd involvement).
+	// OpenAMP path; the default, also selected by an empty string), "network"
+	// (OpenDAMP; refused 501 unless SEQPALD_DAMP is enabled, the election is
+	// still recorded), or "bearer" (a consensus-supervised asset issued through
+	// the node's raw path, no openampd involvement). "tree" is refused 400 with
+	// treeRetired (retired.go).
 	Enforcement string `json:"enforcement"`
 	// RecoveryPubkey (bearer only) is the supervision recovery key: a 64-hex
 	// x-only key DISTINCT from the session key, whose only power is rotating the
@@ -222,14 +221,15 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		enforcement = "serviced"
 	}
 	switch enforcement {
-	case "serviced", "tree", "network", "bearer":
+	case "serviced", "network", "bearer":
+	case "tree":
+		refuse(400, treeRetired)
+		return
 	default:
-		refuse(400, `enforcement must be "serviced", "tree", "network", or "bearer"`)
+		refuse(400, `enforcement must be "serviced", "network", or "bearer"`)
 		return
 	}
-	// A tree token is a serviced token whose holdings may also sit in the
-	// issuer's tree: everything below that holds for one holds for the other.
-	servicedKind := enforcement == "serviced" || enforcement == "tree"
+	servicedKind := enforcement == "serviced"
 	if iss.Status != "live" {
 		_ = s.st.UpdateIssuanceFields(iss.ID, map[string]any{"enforcement": enforcement})
 	}
@@ -270,10 +270,6 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	}
 	if enforcement == "network" && !s.cfg.damp {
 		refuse(501, "network enforcement is not available on this deployment")
-		return
-	}
-	if enforcement == "tree" && s.cfg.treeOperator == "" {
-		refuse(501, "instant transfers are not available on this deployment")
 		return
 	}
 	var recoveryKey string
@@ -707,12 +703,6 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	resp["escrow_aid"] = escrow.AID
 	resp["holder_aid"] = escrow.AID
 	resp["rules"] = compiled
-	// The tree: enabled at the policy server once the token exists. A failure
-	// leaves a serviced token, said so in the answer; the issuer enables it later
-	// at POST /api/issuances/{id}/tree.
-	if enforcement == "tree" {
-		resp["tree"] = s.enableTree(acct.AID, iss)
-	}
 	if issuerExternal {
 		// So the SPA can render the two-phase clawback posture (the issuer's own key
 		// co-signs seizures; the platform cannot move a holder's position alone).
