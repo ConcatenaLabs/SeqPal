@@ -27,7 +27,6 @@ import DRConsole from '../components/DRConsole'
 import ListingCard from '../components/ListingCard'
 import MaxSupplyField, { maxSupplyOf } from '../components/MaxSupplyField'
 import SupplyFigures from '../components/SupplyFigures'
-import TreeCard from '../components/TreeCard'
 import * as api from '../lib/api'
 import { usePoll } from '../lib/poll'
 import { useStore } from '../lib/store'
@@ -88,7 +87,7 @@ function DeployCard({ iss, onDeployed }) {
         // The most there will ever be of the token, issuance included. Only a
         // serviced token can have more created later; for the others the server
         // takes the supply as final.
-        ...(['serviced', 'tree'].includes(iss.enforcement || 'serviced')
+        ...((iss.enforcement || 'serviced') === 'serviced'
           ? { max_supply: maxSupplyOf(form.maxSupply, form.supply) }
           : {}),
         precision: Number(form.precision),
@@ -313,9 +312,7 @@ function AssetCard({ iss, watch }) {
               ? 'Freely tradable · court-order freezes only'
               : iss.enforcement === 'network'
                 ? 'Network-enforced rules · verified holders'
-                : iss.enforcement === 'tree'
-                  ? 'Policy server · transfer-restricted enclave · instant transfers in your tree'
-                  : 'Policy server · transfer-restricted enclave',
+                : 'Policy server · transfer-restricted enclave',
           ],
           ['Asset id', <CopyId key="a" value={iss.assetId} kind="asset" label="asset id" />],
           ['Issuance txid', <CopyId key="t" value={iss.txid} kind="tx" label="issuance txid" />],
@@ -543,8 +540,6 @@ export default function IssuanceDetail() {
 
         <div className="space-y-6 lg:col-span-2">
           <AssetCard iss={iss} watch={watch} />
-
-          {iss.enforcement === 'tree' && <TreeCard iss={iss} />}
 
           <DataRoom iss={iss} />
 

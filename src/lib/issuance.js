@@ -32,11 +32,9 @@ function buildJurisdictions(policy, eligCategories) {
 }
 
 export function toTerms(d) {
-  // The enforcement election (serviced | tree | network | bearer): who can hold
-  // the token and who enforces the rules, chosen early in the wizard and
-  // committed in the terms like every other deal term. A tree token is a
-  // serviced one whose holdings may also sit in the issuer's tree, so it takes
-  // the serviced rule set.
+  // The enforcement election (serviced | network | bearer): who can hold the
+  // token and who enforces the rules, chosen early in the wizard and committed
+  // in the terms like every other deal term.
   const enforcement = d.enforcement || 'serviced'
   const terms = {
     enforcement,
@@ -94,12 +92,20 @@ export function toTerms(d) {
   return terms
 }
 
+// readEnforcement is an election as it is read back: a stored "tree" (a
+// serviced token whose holdings could once also sit in the issuer's tree) is
+// "serviced", which is what it is on the chain; restricted assets stay there.
+export function readEnforcement(e) {
+  const v = String(e || '').trim().toLowerCase()
+  return !v || v === 'tree' ? 'serviced' : v
+}
+
 export function view(iss) {
   if (!iss) return null
   const t = iss.terms && typeof iss.terms === 'object' ? iss.terms : {}
   return {
     ...iss,
-    enforcement: t.enforcement || iss.enforcement || 'serviced',
+    enforcement: readEnforcement(t.enforcement || iss.enforcement),
     structureId: iss.structure_id || t.structure_id || '',
     isPublic: !!t.is_public,
     unit: t.unit || 'USD',
@@ -123,9 +129,6 @@ export function view(iss) {
     // The most there will ever be of the token, whole tokens, as set at deploy
     // (0 when the deploy did not record one).
     maxSupply: iss.max_supply || 0,
-    // A tree token's operator, once the policy server enabled its tree (empty
-    // before, and for every other election).
-    treeOperator: iss.tree_operator || '',
     live: iss.status === 'live',
   }
 }
